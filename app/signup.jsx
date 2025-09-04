@@ -10,7 +10,7 @@ import {
   Picker
 } from 'react-native';
 import Modal from 'react-native-modal';
-import { useAuth } from '../hooks/useAuth';
+import { useCustomAuth } from '../hooks/useCustomAuth';
 import { router } from 'expo-router';
 
 const SignUp = () => {
@@ -25,7 +25,7 @@ const SignUp = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   
-  const { signUp } = useAuth();
+  const { signUp } = useCustomAuth();
 
   // Validation functions
   const validateName = (name) => {
@@ -148,17 +148,47 @@ const SignUp = () => {
       setLoading(true);
       const { data, error } = await signUp(email, password, {
         name: name.trim(),
-        birthdate: birthdate.toISOString()
+        birthdate: birthdate.toISOString().split('T')[0] // Format as YYYY-MM-DD for database
       });
       
       if (error) {
-        Alert.alert('Sign Up Error', error.message);
+        // Handle rate limiting specifically
+        if (error.code === 'RATE_LIMIT_EXCEEDED') {
+          Alert.alert(
+            'Too Many Attempts', 
+            error.message + '\n\n💡 You can also try using a different email address.',
+            [
+              {
+                text: 'Use Different Email',
+                onPress: () => setEmail(''),
+                style: 'default'
+              },
+              {
+                text: 'OK',
+                style: 'cancel'
+              }
+            ]
+          );
+        } else {
+          Alert.alert('Sign Up Error', error.message);
+        }
       } else {
-        // Navigate to OTP verification page
-        router.push({
-          pathname: '/otp-verification',
-          params: { email: email }
-        });
+        Alert.alert(
+          'Success!', 
+          'Account created successfully! Please check your email for the verification code.',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                // Navigate to OTP verification page
+                router.push({
+                  pathname: '/otp-verification',
+                  params: { email: email }
+                });
+              }
+            }
+          ]
+        );
       }
     } catch (err) {
       Alert.alert('Error', 'Something went wrong. Please try again.');

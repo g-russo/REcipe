@@ -7,7 +7,7 @@ import {
   Alert, 
   StyleSheet 
 } from 'react-native';
-import { useAuth } from '../hooks/useAuth';
+import { useCustomAuth } from '../hooks/useCustomAuth';
 import { router } from 'expo-router';
 
 const SignIn = () => {
@@ -15,7 +15,7 @@ const SignIn = () => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   
-  const { signIn } = useAuth();
+  const { signIn } = useCustomAuth();
 
   const handleSignIn = async () => {
     if (!email || !password) {
@@ -28,7 +28,40 @@ const SignIn = () => {
       const { data, error } = await signIn(email, password);
       
       if (error) {
-        Alert.alert('Sign In Error', error.message);
+        // Provide more helpful error messages
+        let errorMessage = error.message;
+        
+        if (errorMessage.includes('Invalid login credentials')) {
+          errorMessage = 'Invalid email or password. Please check your credentials and try again.';
+        } else if (errorMessage.includes('Email not confirmed')) {
+          errorMessage = 'Please verify your email address first. Check your inbox for the verification email.';
+        } else if (errorMessage.includes('not verified')) {
+          errorMessage = 'Please verify your email address before signing in. Check your inbox for the verification email.';
+        }
+        
+        Alert.alert('Sign In Error', errorMessage, [
+          {
+            text: 'Resend Verification',
+            onPress: () => {
+              Alert.alert(
+                'Resend Verification',
+                'Would you like to go to sign up to resend verification email?',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  { 
+                    text: 'Yes', 
+                    onPress: () => router.push('/signup') 
+                  }
+                ]
+              );
+            },
+            style: 'default'
+          },
+          {
+            text: 'OK',
+            style: 'cancel'
+          }
+        ]);
       } else {
         Alert.alert('Success', 'Signed in successfully!');
         router.push('/'); // Navigate to home screen
@@ -82,6 +115,12 @@ const SignIn = () => {
           Don't have an account? Sign Up
         </Text>
       </TouchableOpacity>
+      
+      <TouchableOpacity onPress={() => router.push('/forgot-password')} style={styles.forgotPasswordButton}>
+        <Text style={styles.forgotPasswordText}>
+          Forgot Password?
+        </Text>
+      </TouchableOpacity>
     </View>
   );
 };
@@ -123,6 +162,15 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: '#007AFF',
     fontSize: 16,
+  },
+  forgotPasswordButton: {
+    marginTop: 15,
+    alignItems: 'center',
+  },
+  forgotPasswordText: {
+    color: '#666',
+    fontSize: 16,
+    textDecorationLine: 'underline',
   },
 });
 
