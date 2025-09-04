@@ -18,7 +18,7 @@ const NewPassword = () => {
   const [showPassword, setShowPassword] = useState(false);
 
   const { resetPassword } = useCustomAuth();
-  const { email, resetToken } = useLocalSearchParams();
+  const { email, resetToken, returnTo } = useLocalSearchParams();
 
   const validatePassword = (password) => {
     const minLength = password.length >= 8;
@@ -70,9 +70,16 @@ const NewPassword = () => {
 
     try {
       setLoading(true);
+      console.log('🔄 Starting password reset...');
+      console.log('📧 Email:', email);
+      console.log('🔙 Return to:', returnTo);
+      
       const { data, error } = await resetPassword(email, password, resetToken);
       
+      console.log('🔍 Reset password result:', { data: !!data, error: !!error });
+      
       if (error) {
+        console.error('❌ Password reset error:', error);
         if (error.message.includes('expired') || error.message.includes('invalid')) {
           Alert.alert(
             'Reset Session Expired',
@@ -80,7 +87,10 @@ const NewPassword = () => {
             [
               {
                 text: 'Start Over',
-                onPress: () => router.replace('/forgot-password')
+                onPress: () => router.replace({
+                  pathname: '/forgot-password',
+                  params: { returnTo: returnTo || '/signin' }
+                })
               }
             ]
           );
@@ -88,13 +98,24 @@ const NewPassword = () => {
           Alert.alert('Error', error.message);
         }
       } else {
+        console.log('✅ Password reset successful!');
+        const redirectPath = returnTo || '/signin';
+        console.log('🎯 Redirecting to:', redirectPath);
+        
+        const redirectMessage = returnTo && returnTo !== '/signin' 
+          ? 'You can now continue where you left off.' 
+          : 'You can now sign in with your new password.';
+          
         Alert.alert(
           'Password Reset Successful! 🎉',
-          'Your password has been changed successfully. You can now sign in with your new password.',
+          `Your password has been changed successfully. ${redirectMessage}`,
           [
             {
-              text: 'Sign In Now',
-              onPress: () => router.replace('/signin')
+              text: returnTo && returnTo !== '/signin' ? 'Continue' : 'Sign In Now',
+              onPress: () => {
+                console.log('🚀 User clicked button, redirecting to:', redirectPath);
+                router.replace(redirectPath);
+              }
             }
           ]
         );
@@ -208,9 +229,11 @@ const NewPassword = () => {
 
       <TouchableOpacity
         style={styles.cancelButton}
-        onPress={() => router.replace('/signin')}
+        onPress={() => router.replace(returnTo || '/signin')}
       >
-        <Text style={styles.cancelButtonText}>Cancel and Sign In</Text>
+        <Text style={styles.cancelButtonText}>
+          {returnTo && returnTo !== '/signin' ? 'Cancel and Go Back' : 'Cancel and Sign In'}
+        </Text>
       </TouchableOpacity>
     </ScrollView>
   );

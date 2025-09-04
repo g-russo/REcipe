@@ -1,5 +1,23 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import * as Crypto from 'expo-crypto'
+
+// Simple hash function for React Native using expo-crypto
+const simpleHash = async (password) => {
+  try {
+    // Use SHA-256 hashing
+    const hash = await Crypto.digestStringAsync(
+      Crypto.CryptoDigestAlgorithm.SHA256,
+      password,
+      { encoding: Crypto.CryptoEncoding.HEX }
+    )
+    return hash
+  } catch (error) {
+    console.error('Error hashing password:', error)
+    // Fallback to simple Base64 encoding if crypto fails
+    return btoa(password)
+  }
+}
 
 export function useCustomAuth() {
   const [user, setUser] = useState(null)
@@ -13,7 +31,7 @@ export function useCustomAuth() {
       
       if (session?.user) {
         setUser(session.user)
-        await fetchCustomUserData(session.user.id)
+        await fetchCustomUserData(session.user.email)
       }
       
       setLoading(false)
@@ -27,7 +45,7 @@ export function useCustomAuth() {
         setUser(session?.user ?? null)
         
         if (session?.user) {
-          await fetchCustomUserData(session.user.id)
+          await fetchCustomUserData(session.user.email)
         } else {
           setCustomUserData(null)
         }
@@ -39,13 +57,13 @@ export function useCustomAuth() {
     return () => subscription?.unsubscribe()
   }, [])
 
-  // Fetch custom user data from tbl_users
-  const fetchCustomUserData = async (authID) => {
+  // Fetch custom user data from tbl_users by email
+  const fetchCustomUserData = async (userEmail) => {
     try {
       const { data, error } = await supabase
         .from('tbl_users')
         .select('*')
-        .eq('authID', authID)
+        .eq('userEmail', userEmail)
         .single()
 
       if (!error && data) {
@@ -92,13 +110,15 @@ export function useCustomAuth() {
         console.log('📝 Now attempting to create custom user record...')
         
         try {
+          // Hash the password for secure storage
+          const hashedPassword = await simpleHash(password)
+          
           const { data: customUserData, error: customUserError } = await supabase
             .from('tbl_users')
             .insert({
-              authID: authData.user.id,
               userName: userData.name,
               userEmail: email,
-              userPassword: password, // Note: In production, you might want to hash this
+              userPassword: hashedPassword,
               userBday: userData.birthdate,
               isVerified: false
             })
@@ -129,16 +149,7 @@ export function useCustomAuth() {
           } else {
             console.log('✅ Custom user created successfully:', customUserData)
             console.log('🎉 User now exists in BOTH Supabase auth AND custom tbl_users table!')
-            
-            // Only try to generate custom OTP if custom user was created successfully
-            try {
-              console.log('📧 Generating custom OTP...')
-              await generateAndStoreOTP(authData.user.id, 'signup')
-              console.log('✅ Custom OTP generated successfully!')
-            } catch (otpError) {
-              console.error('❌ Error generating custom OTP:', otpError)
-              console.log('⚠️ Custom OTP generation failed, but Supabase auth OTP should still work')
-            }
+            console.log('📧 Supabase will send OTP email for verification')
           }
         } catch (tableError) {
           console.error('❌ Database table error:', tableError)
@@ -155,14 +166,58 @@ export function useCustomAuth() {
     }
   }
 
-  // Generate and store OTP in custom table
-  const generateAndStoreOTP = async (authID, purpose = 'signup') => {
+  // Store verified OTP for audit purposes
+  const storeVerifiedOTP = async (email, otpCode, purpose) => {
     try {
-      // Get userID from tbl_users
+      // Get user data from custom table
       const { data: userData, error: userError } = await supabase
         .from('tbl_users')
         .select('userID')
-        .eq('authID', authID)
+        .eq('userEmail', email)
+        .single()
+
+      if (userData && !userError) {
+        // Save the verified OTP for audit purposes
+        await supabase
+          .from('tbl_otp')
+          .insert({
+            userEmail: email,
+            userID: userData.userID,
+            otpCode: otpCode,
+            purpose: purpose,
+            isUsed: true,
+            createdAt: new Date().toISOString(),
+            usedAt: new Date().toISOString(),
+            timeout: new Date(Date.now() + 5 * 60 * 1000).toISOString(), // 5 minutes from creation
+            ipAddress: null,
+            userAgent: null
+          })
+
+        console.log('📝 Verified OTP saved to audit table:', {
+          email,
+          purpose,
+          timestamp: new Date().toISOString()
+        })
+
+        return true
+      } else {
+        console.log('⚠️ User not found in custom table, skipping audit log')
+        return false
+      }
+    } catch (error) {
+      console.error('❌ Error storing verified OTP:', error)
+      return false
+    }
+  }
+
+  // Generate and store OTP in custom table for audit logs
+  const generateAndStoreOTP = async (userEmail, purpose = 'signup') => {
+    try {
+      // Get userID from tbl_users using email
+      const { data: userData, error: userError } = await supabase
+        .from('tbl_users')
+        .select('userID')
+        .eq('userEmail', userEmail)
         .single()
 
       if (userError || !userData) {
@@ -176,22 +231,32 @@ export function useCustomAuth() {
       const timeout = new Date()
       timeout.setMinutes(timeout.getMinutes() + 5)
 
-      // Store OTP in database
+      // Store OTP in database for audit logs
       const { data: otpData, error: otpError } = await supabase
-        .from('tbl_OTP')
+        .from('tbl_otp')
         .insert({
-          authID,
+          userEmail: userEmail,
           userID: userData.userID,
           otpCode,
           timeout: timeout.toISOString(),
           purpose,
-          isUsed: false
+          isUsed: false,
+          createdAt: new Date().toISOString(),
+          ipAddress: null, // Can be populated if available
+          userAgent: null  // Can be populated if available
         })
         .select()
 
       if (otpError) {
         throw otpError
       }
+
+      console.log('📝 OTP stored for audit log:', {
+        userEmail,
+        purpose,
+        otpCode: '[HIDDEN]',
+        timeout: timeout.toISOString()
+      })
 
       return { success: true, otpData }
     } catch (err) {
@@ -200,60 +265,63 @@ export function useCustomAuth() {
     }
   }
 
-  // Verify OTP using custom table or fallback to Supabase
+  // Verify OTP using Supabase auth and save for audit
   const verifyOTP = async (email, otpCode, purpose = 'signup') => {
     try {
       setLoading(true)
 
-      // Try custom table verification first
-      try {
-        // Get the user by email
-        const { data: userData, error: userError } = await supabase
-          .from('tbl_users')
-          .select('userID, authID')
-          .eq('userEmail', email)
-          .single()
+      console.log('🔐 Verifying OTP with Supabase...')
+      console.log('📧 Email:', email)
+      console.log('🔢 Purpose:', purpose)
 
-        if (userData && !userError) {
-          // Check if OTP exists and is valid in custom table
-          const { data: otpData, error: otpError } = await supabase
-            .from('tbl_OTP')
-            .select('*')
-            .eq('authID', userData.authID)
-            .eq('otpCode', otpCode)
-            .eq('purpose', purpose)
-            .eq('isUsed', false)
-            .gte('timeout', new Date().toISOString())
-            .single()
-
-          if (otpData && !otpError) {
-            // Mark OTP as used
-            await supabase
-              .from('tbl_OTP')
-              .update({ isUsed: true })
-              .eq('otpID', otpData.otpID)
-
-            // Update user verification status
-            await supabase
-              .from('tbl_users')
-              .update({ isVerified: true })
-              .eq('userID', userData.userID)
-          }
-        }
-      } catch (customError) {
-        console.log('Custom table verification not available, using Supabase auth only:', customError)
-      }
-
-      // Always try Supabase auth verification (this is what actually completes the auth process)
+      // First verify with Supabase auth (this is the primary verification)
       const { data: authData, error: authError } = await supabase.auth.verifyOtp({
         email,
         token: otpCode,
         type: purpose
       })
 
+      if (authError) {
+        console.error('❌ Supabase OTP verification failed:', authError)
+        throw authError
+      }
+
+      if (!authData || !authData.user) {
+        throw new Error('OTP verification failed - no user data returned')
+      }
+
+      console.log('✅ Supabase OTP verification successful!')
+
+      // Store the verified OTP for audit purposes and update user verification
+      try {
+        const auditStored = await storeVerifiedOTP(email, otpCode, purpose)
+        
+        if (auditStored) {
+          // Get user data to update verification status
+          const { data: userData, error: userError } = await supabase
+            .from('tbl_users')
+            .select('userID')
+            .eq('userEmail', email)
+            .single()
+
+          if (userData && !userError) {
+            // Update user verification status
+            await supabase
+              .from('tbl_users')
+              .update({ isVerified: true })
+              .eq('userID', userData.userID)
+
+            console.log('✅ User verification status updated to true')
+          }
+        }
+      } catch (auditError) {
+        console.error('❌ Error with audit logging or verification update:', auditError)
+        console.log('⚠️ OTP verification succeeded but audit/verification update failed')
+      }
+
       return { data: authData, error: authError }
     } catch (err) {
-      console.error('OTP verification error:', err)
+      console.error('❌ OTP verification error:', err)
       return { data: null, error: err }
     } finally {
       setLoading(false)
@@ -265,10 +333,14 @@ export function useCustomAuth() {
     try {
       setLoading(true)
 
+      console.log('🔄 Resending OTP...')
+      console.log('📧 Email:', email)
+      console.log('🔢 Purpose:', purpose)
+
       // Get user data
       const { data: userData, error: userError } = await supabase
         .from('tbl_users')
-        .select('userID, authID')
+        .select('userID')
         .eq('userEmail', email)
         .single()
 
@@ -276,31 +348,42 @@ export function useCustomAuth() {
         throw new Error('User not found')
       }
 
-      // Mark all existing OTPs as used
-      await supabase
-        .from('tbl_OTP')
-        .update({ isUsed: true })
-        .eq('authID', userData.authID)
-        .eq('purpose', purpose)
+      // Mark all existing OTPs as used for audit trail (if any exist)
+      try {
+        await supabase
+          .from('tbl_otp')
+          .update({ 
+            isUsed: true,
+            usedAt: new Date().toISOString()
+          })
+          .eq('userEmail', email)
+          .eq('purpose', purpose)
+          .eq('isUsed', false)
+        
+        console.log('📝 Marked existing OTPs as used for audit trail')
+      } catch (auditError) {
+        console.log('⚠️ Could not update audit trail, continuing with resend')
+      }
 
-      // Generate new OTP
-      await generateAndStoreOTP(userData.authID, purpose)
-
-      // Resend via Supabase auth
+      // Resend via Supabase auth (this generates and sends new OTP)
       const { data, error } = await supabase.auth.resend({
         type: purpose,
         email
       })
 
-      // Handle rate limiting for resend
-      if (error?.message?.includes('email rate limit exceeded')) {
-        const rateLimitError = new Error('Too many email requests. Please wait 15 minutes before requesting another verification code.')
-        rateLimitError.code = 'RATE_LIMIT_EXCEEDED'
-        rateLimitError.originalError = error
-        throw rateLimitError
+      if (error) {
+        // Handle rate limiting for resend
+        if (error?.message?.includes('email rate limit exceeded')) {
+          const rateLimitError = new Error('Too many email requests. Please wait 15 minutes before requesting another verification code.')
+          rateLimitError.code = 'RATE_LIMIT_EXCEEDED'
+          rateLimitError.originalError = error
+          throw rateLimitError
+        }
+        throw error
       }
 
-      return { data, error }
+      console.log('✅ OTP resent successfully via Supabase')
+      return { data, error: null }
     } catch (err) {
       console.error('Resend OTP error:', err)
       return { data: null, error: err }
@@ -363,13 +446,15 @@ export function useCustomAuth() {
             // Optionally, create a record in custom table if you want
             if (authData.user.email_confirmed_at) {
               try {
+                // Hash the password for secure storage
+                const hashedPassword = await simpleHash(password)
+                
                 await supabase
                   .from('tbl_users')
                   .insert({
-                    authID: authData.user.id,
                     userName: authData.user.user_metadata?.name || 'User',
                     userEmail: email,
-                    userPassword: password, // Note: This is not ideal, but matches your current schema
+                    userPassword: hashedPassword,
                     userBday: authData.user.user_metadata?.birthdate || '2000-01-01',
                     isVerified: true
                   })
@@ -408,37 +493,20 @@ export function useCustomAuth() {
   const requestPasswordReset = async (email) => {
     try {
       setLoading(true)
+      
+      console.log('📧 Requesting password reset for:', email)
 
-      // Check if user exists and is verified
-      const { data: userData, error: userError } = await supabase
-        .from('tbl_users')
-        .select('userID, authID, isVerified')
-        .eq('userEmail', email)
-        .single()
-
-      if (userError || !userData) {
-        throw new Error('User not found with this email address')
-      }
-
-      if (!userData.isVerified) {
-        throw new Error('Account not verified. Please complete email verification first.')
-      }
-
-      // Clean up old password reset OTPs
-      await supabase
-        .from('tbl_OTP')
-        .update({ isUsed: true })
-        .eq('authID', userData.authID)
-        .eq('purpose', 'forgot_password')
-
-      // Generate new OTP for password reset
-      await generateAndStoreOTP(userData.authID, 'forgot_password')
-
-      // Send OTP via Supabase auth (this will use your email template)
+      // Send OTP via Supabase auth (this sends the actual OTP email)
       const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: 'REcipe://reset-password' // This won't be used since we're using OTP
+        redirectTo: 'REcipe://reset-password'
       })
 
+      if (error) {
+        console.error('❌ Password reset request failed:', error)
+        throw error
+      }
+
+      console.log('✅ Password reset email sent via Supabase')
       return { data, error }
     } catch (err) {
       console.error('Password reset request error:', err)
@@ -453,44 +521,43 @@ export function useCustomAuth() {
     try {
       setLoading(true)
 
-      // Get user data
-      const { data: userData, error: userError } = await supabase
-        .from('tbl_users')
-        .select('userID, authID')
-        .eq('userEmail', email)
-        .single()
+      console.log('🔐 Verifying password reset OTP with Supabase...')
+      console.log('📧 Email:', email)
+      console.log('🔢 OTP Code:', otpCode ? '[PROVIDED]' : '[MISSING]')
 
-      if (userError || !userData) {
-        throw new Error('User not found')
+      // Use Supabase's OTP verification for password reset
+      const { data, error } = await supabase.auth.verifyOtp({
+        email,
+        token: otpCode,
+        type: 'recovery'
+      })
+
+      console.log('🔍 Supabase OTP Verification Result:', {
+        success: !!data && !error,
+        error: error?.message,
+        hasUser: !!data?.user,
+        hasSession: !!data?.session
+      })
+
+      if (error) {
+        console.error('❌ Supabase OTP verification failed:', error)
+        throw error
       }
 
-      // Validate OTP
-      const { data: otpData, error: otpError } = await supabase
-        .from('tbl_OTP')
-        .select('*')
-        .eq('authID', userData.authID)
-        .eq('otpCode', otpCode)
-        .eq('purpose', 'forgot_password')
-        .eq('isUsed', false)
-        .gte('timeout', new Date().toISOString())
-        .single()
-
-      if (otpError || !otpData) {
-        throw new Error('Invalid or expired verification code')
+      if (!data || !data.user) {
+        throw new Error('OTP verification failed - no user data returned')
       }
 
-      // Mark OTP as used
-      await supabase
-        .from('tbl_OTP')
-        .update({ isUsed: true })
-        .eq('otpID', otpData.otpID)
-
-      // Return success with reset token (you can use the otpID as token)
+      console.log('✅ Password reset OTP verified successfully with Supabase!')
+      
+      // Return success
       return { 
         data: { 
-          resetToken: otpData.otpID,
-          userID: userData.userID,
-          authID: userData.authID 
+          ...data,
+          email, 
+          otpCode,
+          verified: true,
+          message: 'OTP verified successfully. You can now reset your password.' 
         }, 
         error: null 
       }
@@ -507,14 +574,18 @@ export function useCustomAuth() {
     try {
       setLoading(true)
 
-      // Get user data
+      console.log('🔄 Resending password reset OTP...')
+      console.log('📧 Email:', email)
+
+      // Verify user exists in our custom table
       const { data: userData, error: userError } = await supabase
         .from('tbl_users')
-        .select('userID, authID, isVerified')
+        .select('userID, isVerified')
         .eq('userEmail', email)
         .single()
 
       if (userError || !userData) {
+        console.error('❌ User not found:', userError)
         throw new Error('User not found')
       }
 
@@ -522,24 +593,29 @@ export function useCustomAuth() {
         throw new Error('Account not verified')
       }
 
-      // Mark existing password reset OTPs as used
-      await supabase
-        .from('tbl_OTP')
-        .update({ isUsed: true })
-        .eq('authID', userData.authID)
-        .eq('purpose', 'forgot_password')
+      console.log('📤 Sending password reset email via Supabase...')
 
-      // Generate new OTP
-      await generateAndStoreOTP(userData.authID, 'forgot_password')
-
-      // Resend via Supabase auth
+      // Send password reset email via Supabase auth
       const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: 'REcipe://reset-password'
       })
 
-      return { data, error }
+      if (error) {
+        console.error('❌ Failed to send password reset email:', error)
+        throw error
+      }
+
+      console.log('✅ Password reset email sent successfully!')
+
+      return { 
+        data: { 
+          ...data, 
+          message: 'Password reset email sent successfully' 
+        }, 
+        error: null 
+      }
     } catch (err) {
-      console.error('Resend password reset OTP error:', err)
+      console.error('❌ Resend password reset OTP error:', err)
       return { data: null, error: err }
     } finally {
       setLoading(false)
@@ -547,69 +623,71 @@ export function useCustomAuth() {
   }
 
   // Reset password with new password
-  const resetPassword = async (email, newPassword, resetToken) => {
+  const resetPassword = async (email, newPassword, verificationData) => {
     try {
       setLoading(true)
 
-      // Get user data
-      const { data: userData, error: userError } = await supabase
-        .from('tbl_users')
-        .select('userID, authID')
-        .eq('userEmail', email)
-        .single()
+      console.log('🔐 Resetting password...')
+      console.log('📧 Email:', email)
+      console.log('🔑 Has verification data:', !!verificationData)
 
-      if (userError || !userData) {
-        throw new Error('User not found')
-      }
-
-      // Verify reset token is valid (check if OTP with this ID exists and was used for forgot_password)
-      const { data: otpData, error: otpError } = await supabase
-        .from('tbl_OTP')
-        .select('*')
-        .eq('otpID', resetToken)
-        .eq('authID', userData.authID)
-        .eq('purpose', 'forgot_password')
-        .eq('isUsed', true)
-        .single()
-
-      if (otpError || !otpData) {
-        throw new Error('Invalid or expired reset session')
-      }
-
-      // Check if reset session is still valid (within reasonable time, e.g., 30 minutes)
-      const resetTime = new Date(otpData.timeout)
-      const now = new Date()
-      const timeDiff = now - resetTime
-      const thirtyMinutes = 30 * 60 * 1000
-
-      if (timeDiff > thirtyMinutes) {
-        throw new Error('Reset session has expired')
-      }
-
-      // Update password in custom table
-      const { error: updateError } = await supabase
-        .from('tbl_users')
-        .update({ userPassword: newPassword })
-        .eq('userID', userData.userID)
-
-      if (updateError) {
-        throw updateError
-      }
-
-      // Also update in Supabase Auth (this is important for sign-in to work)
-      const { data, error } = await supabase.auth.updateUser({
+      // First, try to update the password in Supabase Auth
+      // This should work if the user has a valid session from OTP verification
+      const { data: authData, error: authError } = await supabase.auth.updateUser({
         password: newPassword
       })
 
-      // Clean up all OTPs for this user
-      await supabase
-        .from('tbl_OTP')
-        .delete()
-        .eq('authID', userData.authID)
+      if (authError) {
+        console.error('❌ Failed to update password in Supabase Auth:', authError)
+        throw authError
+      }
 
-      return { data, error }
+      console.log('✅ Password updated in Supabase Auth successfully!')
+
+      // Now update the password in our custom table as well
+      try {
+        // Get user data from our custom table
+        const { data: userData, error: userError } = await supabase
+          .from('tbl_users')
+          .select('userID')
+          .eq('userEmail', email)
+          .single()
+
+        if (userData && !userError) {
+          // Hash the new password for our custom table
+          const hashedPassword = await simpleHash(newPassword)
+
+          // Update password in custom table
+          const { error: updateError } = await supabase
+            .from('tbl_users')
+            .update({ userPassword: hashedPassword })
+            .eq('userID', userData.userID)
+
+          if (updateError) {
+            console.error('❌ Failed to update password in custom table:', updateError)
+            // Don't throw error here - Supabase auth update succeeded
+          } else {
+            console.log('✅ Password updated in custom table successfully!')
+          }
+        } else {
+          console.log('⚠️ User not found in custom table, but Supabase auth update succeeded')
+        }
+      } catch (customTableError) {
+        console.error('❌ Error updating custom table:', customTableError)
+        // Don't throw error here - Supabase auth update succeeded
+      }
+
+      console.log('✅ Password reset completed successfully!')
+
+      return { 
+        data: { 
+          ...authData, 
+          message: 'Password has been reset successfully' 
+        }, 
+        error: null 
+      }
     } catch (err) {
-      console.error('Reset password error:', err)
+      console.error('❌ Reset password error:', err)
       return { data: null, error: err }
     } finally {
       setLoading(false)
@@ -645,7 +723,7 @@ export function useCustomAuth() {
       const { data: existingUser } = await supabase
         .from('tbl_users')
         .select('userID')
-        .eq('authID', user.id)
+        .eq('userEmail', user.email)
         .single()
 
       if (existingUser) {
@@ -654,13 +732,15 @@ export function useCustomAuth() {
       }
 
       // Create user record in custom table
+      // Hash the password for secure storage
+      const hashedPassword = await simpleHash(password)
+      
       const { data: newUser, error: insertError } = await supabase
         .from('tbl_users')
         .insert({
-          authID: user.id,
           userName: userData.name || user.user_metadata?.name || 'User',
           userEmail: user.email,
-          userPassword: password, // Note: In production, this should be hashed
+          userPassword: hashedPassword,
           userBday: userData.birthdate || user.user_metadata?.birthdate || '2000-01-01',
           isVerified: user.email_confirmed_at ? true : false
         })
@@ -692,6 +772,7 @@ export function useCustomAuth() {
     resendPasswordResetOTP,
     resetPassword,
     generateAndStoreOTP,
+    storeVerifiedOTP,
     cleanupExpiredOTPs,
     fetchCustomUserData,
     migrateExistingUser

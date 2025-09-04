@@ -9,12 +9,13 @@ import {
   ScrollView
 } from 'react-native';
 import { useCustomAuth } from '../hooks/useCustomAuth';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 
 const ForgotPassword = () => {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
-
+  
+  const { returnTo } = useLocalSearchParams();
   const { requestPasswordReset } = useCustomAuth();
 
   const validateEmail = (email) => {
@@ -56,7 +57,10 @@ const ForgotPassword = () => {
               onPress: () => {
                 router.push({
                   pathname: '/reset-password-otp',
-                  params: { email: email }
+                  params: { 
+                    email: email,
+                    returnTo: returnTo || '/signin'
+                  }
                 });
               }
             }
@@ -72,7 +76,7 @@ const ForgotPassword = () => {
   };
 
   const goToSignIn = () => {
-    router.push('/signin');
+    router.push(returnTo || '/signin');
   };
 
   return (

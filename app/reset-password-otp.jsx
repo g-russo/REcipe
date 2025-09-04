@@ -18,7 +18,7 @@ const ResetPasswordOTP = () => {
   const [canResend, setCanResend] = useState(false);
 
   const { verifyPasswordResetOTP, resendPasswordResetOTP } = useCustomAuth();
-  const { email } = useLocalSearchParams();
+  const { email, returnTo } = useLocalSearchParams();
 
   useEffect(() => {
     if (countdown > 0) {
@@ -89,7 +89,8 @@ const ResetPasswordOTP = () => {
           pathname: '/new-password',
           params: { 
             email: email,
-            resetToken: data.resetToken || 'verified' // Pass verification token
+            resetToken: data.resetToken || 'verified', // Pass verification token
+            returnTo: returnTo || '/signin'
           }
         });
       }
