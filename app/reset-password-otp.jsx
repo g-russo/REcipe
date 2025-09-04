@@ -10,14 +10,14 @@ import {
 import { useLocalSearchParams, router } from 'expo-router';
 import { useCustomAuth } from '../hooks/useCustomAuth';
 
-const OTPVerification = () => {
+const ResetPasswordOTP = () => {
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
   const [resendLoading, setResendLoading] = useState(false);
   const [countdown, setCountdown] = useState(60);
   const [canResend, setCanResend] = useState(false);
 
-  const { verifyOTP, resendOTP } = useCustomAuth();
+  const { verifyPasswordResetOTP, resendPasswordResetOTP } = useCustomAuth();
   const { email } = useLocalSearchParams();
 
   useEffect(() => {
@@ -31,30 +31,30 @@ const OTPVerification = () => {
 
   const handleVerifyOTP = async () => {
     if (!otp || otp.length !== 6) {
-      Alert.alert('Error', 'Please enter a valid 6-digit OTP');
+      Alert.alert('Error', 'Please enter a valid 6-digit verification code');
       return;
     }
 
     // Basic OTP format validation
     if (!/^\d{6}$/.test(otp)) {
-      Alert.alert('Error', 'OTP must contain only numbers');
+      Alert.alert('Error', 'Verification code must contain only numbers');
       return;
     }
 
     try {
       setLoading(true);
 
-      const { data, error } = await verifyOTP(email, otp, 'signup');
+      const { data, error } = await verifyPasswordResetOTP(email, otp);
 
       if (error) {
         // Handle different types of OTP errors
         if (error.message.includes('expired')) {
           Alert.alert(
-            'OTP Expired',
+            'Code Expired',
             'Your verification code has expired. Please request a new one.',
             [
               {
-                text: 'Resend OTP',
+                text: 'Send New Code',
                 onPress: handleResendOTP
               },
               {
@@ -64,14 +64,14 @@ const OTPVerification = () => {
             ]
           );
         } else if (error.message.includes('invalid') || error.message.includes('Invalid')) {
-          Alert.alert('Invalid OTP', 'The verification code you entered is incorrect. Please try again.');
+          Alert.alert('Invalid Code', 'The verification code you entered is incorrect. Please try again.');
         } else if (error.message.includes('too many')) {
           Alert.alert(
             'Too Many Attempts',
             'Too many failed attempts. Please wait before trying again or request a new code.',
             [
               {
-                text: 'Resend OTP',
+                text: 'Send New Code',
                 onPress: handleResendOTP
               },
               {
@@ -84,16 +84,14 @@ const OTPVerification = () => {
           Alert.alert('Verification Failed', error.message);
         }
       } else {
-        Alert.alert(
-          'Success!',
-          'Your email has been verified successfully! You can now sign in to your account.',
-          [
-            {
-              text: 'Sign In Now',
-              onPress: () => router.replace('/signin')
-            }
-          ]
-        );
+        // OTP verified successfully, navigate to new password screen
+        router.push({
+          pathname: '/new-password',
+          params: { 
+            email: email,
+            resetToken: data.resetToken || 'verified' // Pass verification token
+          }
+        });
       }
     } catch (err) {
       console.error('OTP Verification error:', err);
@@ -107,7 +105,7 @@ const OTPVerification = () => {
     try {
       setResendLoading(true);
 
-      const { error } = await resendOTP(email, 'signup');
+      const { error } = await resendPasswordResetOTP(email);
 
       if (error) {
         Alert.alert('Error', error.message);
@@ -118,7 +116,7 @@ const OTPVerification = () => {
         setOtp(''); // Clear current OTP input
       }
     } catch (err) {
-      Alert.alert('Error', 'Failed to resend OTP. Please try again.');
+      Alert.alert('Error', 'Failed to resend verification code. Please try again.');
     } finally {
       setResendLoading(false);
     }
@@ -132,10 +130,10 @@ const OTPVerification = () => {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Verify Your Email</Text>
+      <Text style={styles.title}>Reset Password</Text>
 
       <Text style={styles.subtitle}>
-        We've sent a 6-digit verification code to:
+        Enter the 6-digit verification code sent to:
       </Text>
 
       <Text style={styles.email}>{email}</Text>
@@ -154,15 +152,16 @@ const OTPVerification = () => {
         textAlign="center"
         fontSize={24}
         letterSpacing={5}
+        editable={!loading}
       />
 
       <TouchableOpacity
-        style={[styles.button, (!otp || otp.length !== 6) && styles.buttonDisabled]}
+        style={[styles.button, (!otp || otp.length !== 6 || loading) && styles.buttonDisabled]}
         onPress={handleVerifyOTP}
         disabled={loading || !otp || otp.length !== 6}
       >
         <Text style={styles.buttonText}>
-          {loading ? 'Verifying...' : 'Verify OTP'}
+          {loading ? 'Verifying...' : 'Verify Code'}
         </Text>
       </TouchableOpacity>
 
@@ -171,23 +170,34 @@ const OTPVerification = () => {
           <TouchableOpacity
             onPress={handleResendOTP}
             disabled={resendLoading}
+            style={styles.resendButton}
           >
             <Text style={styles.resendText}>
-              {resendLoading ? 'Sending...' : 'Resend OTP'}
+              {resendLoading ? 'Sending...' : 'Send New Code'}
             </Text>
           </TouchableOpacity>
         ) : (
           <Text style={styles.countdownText}>
-            Resend OTP in {countdown}s
+            Send new code in {countdown}s
           </Text>
         )}
+      </View>
+
+      <View style={styles.helpSection}>
+        <Text style={styles.helpTitle}>📧 Didn't receive the code?</Text>
+        <Text style={styles.helpText}>
+          • Check your spam/junk folder{'\n'}
+          • Make sure you entered the correct email{'\n'}
+          • Wait a few minutes and try resending{'\n'}
+          • Contact support if issues persist
+        </Text>
       </View>
 
       <TouchableOpacity
         style={styles.backButton}
         onPress={() => router.back()}
       >
-        <Text style={styles.backButtonText}>Back to Sign Up</Text>
+        <Text style={styles.backButtonText}>← Back to Email Entry</Text>
       </TouchableOpacity>
     </View>
   );
@@ -252,7 +262,10 @@ const styles = StyleSheet.create({
   },
   resendContainer: {
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 30,
+  },
+  resendButton: {
+    padding: 10,
   },
   resendText: {
     color: '#007AFF',
@@ -262,6 +275,25 @@ const styles = StyleSheet.create({
   countdownText: {
     color: '#666',
     fontSize: 16,
+  },
+  helpSection: {
+    backgroundColor: '#f0f8ff',
+    padding: 20,
+    borderRadius: 10,
+    marginBottom: 20,
+    borderLeftWidth: 4,
+    borderLeftColor: '#007AFF',
+  },
+  helpTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 10,
+  },
+  helpText: {
+    fontSize: 14,
+    color: '#666',
+    lineHeight: 20,
   },
   backButton: {
     alignItems: 'center',
@@ -273,4 +305,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default OTPVerification;
+export default ResetPasswordOTP;
