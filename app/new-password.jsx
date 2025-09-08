@@ -72,9 +72,15 @@ const NewPassword = () => {
       setLoading(true);
       console.log('🔄 Starting password reset...');
       console.log('📧 Email:', email);
-      console.log('🔙 Return to:', returnTo);
       
-      const { data, error } = await resetPassword(email, password, resetToken);
+      // Add a timeout to prevent hanging (increased to 30 seconds for background operations)
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Password reset timed out')), 30000)
+      );
+      
+      const resetPromise = resetPassword(email, password, resetToken);
+      
+      const { data, error } = await Promise.race([resetPromise, timeoutPromise]);
       
       console.log('🔍 Reset password result:', { data: !!data, error: !!error });
       
@@ -87,38 +93,88 @@ const NewPassword = () => {
             [
               {
                 text: 'Start Over',
-                onPress: () => router.replace({
-                  pathname: '/forgot-password',
-                  params: { returnTo: returnTo || '/signin' }
-                })
+                onPress: () => router.replace('/forgot-password')
+              }
+            ]
+          );
+        } else if (error.message.includes('No active session')) {
+          Alert.alert(
+            'Session Expired',
+            'Your verification session has expired. Please start the password reset process again.',
+            [
+              {
+                text: 'Start Over',
+                onPress: () => router.replace('/forgot-password')
+              }
+            ]
+          );
+        } else if (error.message.includes('timed out')) {
+          Alert.alert(
+            'Request Timed Out',
+            'The password reset is taking too long. Please try again.',
+            [
+              {
+                text: 'Try Again',
+                onPress: () => setLoading(false)
+              },
+              {
+                text: 'Start Over',
+                onPress: () => router.replace('/forgot-password')
               }
             ]
           );
         } else {
-          Alert.alert('Error', error.message);
+          Alert.alert('Error', error.message || 'Failed to reset password. Please try again.');
         }
       } else {
         console.log('✅ Password reset successful!');
-        const redirectPath = returnTo || '/signin';
-        console.log('🎯 Redirecting to:', redirectPath);
         
-        const redirectMessage = returnTo && returnTo !== '/signin' 
-          ? 'You can now continue where you left off.' 
-          : 'You can now sign in with your new password.';
-          
-        Alert.alert(
-          'Password Reset Successful! 🎉',
-          `Your password has been changed successfully. ${redirectMessage}`,
-          [
-            {
-              text: returnTo && returnTo !== '/signin' ? 'Continue' : 'Sign In Now',
-              onPress: () => {
-                console.log('🚀 User clicked button, redirecting to:', redirectPath);
-                router.replace(redirectPath);
+        if (data.autoSignedIn) {
+          // User is automatically signed in, redirect to home
+          Alert.alert(
+            'Password Reset Successful! 🎉',
+            'Your password has been changed and you are now signed in. Welcome back!',
+            [
+              {
+                text: 'Continue to Home',
+                onPress: () => {
+                  console.log('🚀 User clicked button, redirecting to home');
+                  router.replace('/home');
+                }
               }
-            }
-          ]
-        );
+            ]
+          );
+        } else if (data.requiresManualSignIn) {
+          // Auto sign-in failed, redirect to sign-in page
+          Alert.alert(
+            'Password Reset Successful! 🎉',
+            'Your password has been changed successfully. Please sign in with your new password.',
+            [
+              {
+                text: 'Sign In Now',
+                onPress: () => {
+                  console.log('🚀 User clicked button, redirecting to sign in');
+                  router.replace('/signin');
+                }
+              }
+            ]
+          );
+        } else {
+          // Fallback to sign-in redirect
+          Alert.alert(
+            'Password Reset Successful! 🎉',
+            'Your password has been changed successfully. You can now sign in with your new password.',
+            [
+              {
+                text: 'Sign In Now',
+                onPress: () => {
+                  console.log('🚀 User clicked button, redirecting to sign in');
+                  router.replace('/signin');
+                }
+              }
+            ]
+          );
+        }
       }
     } catch (err) {
       Alert.alert('Error', 'Something went wrong. Please try again.');
@@ -229,11 +285,9 @@ const NewPassword = () => {
 
       <TouchableOpacity
         style={styles.cancelButton}
-        onPress={() => router.replace(returnTo || '/signin')}
+        onPress={() => router.replace('/signin')}
       >
-        <Text style={styles.cancelButtonText}>
-          {returnTo && returnTo !== '/signin' ? 'Cancel and Go Back' : 'Cancel and Sign In'}
-        </Text>
+        <Text style={styles.cancelButtonText}>Cancel and Sign In</Text>
       </TouchableOpacity>
     </ScrollView>
   );

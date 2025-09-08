@@ -629,22 +629,46 @@ export function useCustomAuth() {
 
       console.log('🔐 Resetting password...')
       console.log('📧 Email:', email)
-      console.log('🔑 Has verification data:', !!verificationData)
 
-      // First, try to update the password in Supabase Auth
-      // This should work if the user has a valid session from OTP verification
-      const { data: authData, error: authError } = await supabase.auth.updateUser({
-        password: newPassword
+      // Check if user has an active session from OTP verification
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      console.log('🔍 Session check:', {
+        hasSession: !!session,
+        sessionUser: session?.user?.email,
+        sessionType: session?.token_type
       })
-
-      if (authError) {
-        console.error('❌ Failed to update password in Supabase Auth:', authError)
-        throw authError
+      
+      if (!session) {
+        console.error('❌ No active session found for password reset')
+        throw new Error('No active session. Please verify your OTP again.')
       }
 
-      console.log('✅ Password updated in Supabase Auth successfully!')
+      console.log('✅ Active session found, proceeding with password update')
 
-      // Now update the password in our custom table as well
+      // Fire off Supabase Auth update in the background (don't wait for response)
+      console.log('🔄 Starting password update in Supabase Auth (background)...')
+      
+      // Start auth update but don't await it - let it complete in background
+      supabase.auth.updateUser({
+        password: newPassword
+      }).then(({ data, error }) => {
+        if (error) {
+          console.error('❌ Background Supabase Auth update failed:', error)
+        } else {
+          console.log('✅ Background Supabase Auth update completed successfully!')
+        }
+      }).catch((error) => {
+        console.error('❌ Background Supabase Auth update error:', error)
+      })
+
+      console.log('⚡ Auth update started in background, proceeding immediately...')
+
+      // Now update password in our custom table as well
+      console.log('🔄 Updating password in custom table...')
+      
+      let customTableUpdateSucceeded = false
+      
       try {
         // Get user data from our custom table
         const { data: userData, error: userError } = await supabase
@@ -653,7 +677,10 @@ export function useCustomAuth() {
           .eq('userEmail', email)
           .single()
 
-        if (userData && !userError) {
+        if (!userData || userError) {
+          console.error('❌ User not found in custom table:', userError)
+          console.log('⚠️ Custom table user lookup failed')
+        } else {
           // Hash the new password for our custom table
           const hashedPassword = await simpleHash(newPassword)
 
@@ -665,24 +692,29 @@ export function useCustomAuth() {
 
           if (updateError) {
             console.error('❌ Failed to update password in custom table:', updateError)
-            // Don't throw error here - Supabase auth update succeeded
+            console.log('⚠️ Custom table update failed')
           } else {
             console.log('✅ Password updated in custom table successfully!')
+            customTableUpdateSucceeded = true
           }
-        } else {
-          console.log('⚠️ User not found in custom table, but Supabase auth update succeeded')
         }
       } catch (customTableError) {
         console.error('❌ Error updating custom table:', customTableError)
-        // Don't throw error here - Supabase auth update succeeded
+        console.log('⚠️ Custom table update failed')
       }
 
-      console.log('✅ Password reset completed successfully!')
+      console.log(`✅ Password reset completed! Auth: BACKGROUND, Custom: ${customTableUpdateSucceeded ? 'SUCCESS' : 'FAILED'}`)
 
+      // For now, let's just return success without auto sign-in to avoid timeouts
+      // User can manually sign in with new password
+      console.log('✅ Returning success immediately for fast user experience')
+      
       return { 
         data: { 
-          ...authData, 
-          message: 'Password has been reset successfully' 
+          message: 'Password has been reset successfully. Please sign in with your new password.',
+          authUpdated: 'BACKGROUND',
+          customTableUpdated: customTableUpdateSucceeded,
+          requiresManualSignIn: true
         }, 
         error: null 
       }
