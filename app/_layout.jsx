@@ -25,14 +25,6 @@ export default function RootLayout() {
         }} 
       />
       <Stack.Screen 
-        name="otp-verification" 
-        options={{ 
-          title: 'Verify Email',
-          headerShown: true,
-          headerBackVisible: false
-        }} 
-      />
-      <Stack.Screen 
         name="forgot-password" 
         options={{ 
           title: 'Forgot Password',
@@ -48,9 +40,9 @@ export default function RootLayout() {
         }} 
       />
       <Stack.Screen 
-        name="new-password" 
+        name="home" 
         options={{ 
-          title: 'New Password',
+          title: 'Home',
           headerShown: true,
           headerBackVisible: false
         }} 

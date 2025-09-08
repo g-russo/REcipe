@@ -64,7 +64,7 @@ const SignIn = () => {
         ]);
       } else {
         Alert.alert('Success', 'Signed in successfully!');
-        router.push('/'); // Navigate to home screen
+        router.push('/home'); // Navigate to home screen
       }
     } catch (err) {
       Alert.alert('Error', 'Something went wrong. Please try again.');

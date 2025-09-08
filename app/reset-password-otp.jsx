@@ -84,15 +84,37 @@ const ResetPasswordOTP = () => {
           Alert.alert('Verification Failed', error.message);
         }
       } else {
-        // OTP verified successfully, navigate to new password screen
-        router.push({
-          pathname: '/new-password',
-          params: { 
-            email: email,
-            resetToken: data.resetToken || 'verified', // Pass verification token
-            returnTo: returnTo || '/signin'
-          }
-        });
+        // OTP verified successfully
+        if (data.autoSignedIn && data.mustChangePassword) {
+          // User is automatically signed in but must change password
+          Alert.alert(
+            'Welcome Back! 🎉',
+            'Your identity has been verified and you are now signed in. For security, please set a new password.',
+            [
+              {
+                text: 'Set New Password',
+                onPress: () => {
+                  router.push({
+                    pathname: '/force-password-change',
+                    params: { 
+                      email: email,
+                      autoSignedIn: 'true'
+                    }
+                  });
+                }
+              }
+            ]
+          );
+        } else {
+          // Fallback to force password change flow
+          router.push({
+            pathname: '/force-password-change',
+            params: { 
+              email: email,
+              autoSignedIn: 'true'
+            }
+          });
+        }
       }
     } catch (err) {
       console.error('OTP Verification error:', err);

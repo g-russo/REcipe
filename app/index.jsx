@@ -129,14 +129,6 @@ const Home = () => {
           {loading ? 'Testing Connection...' : 'Test Supabase Connection'}
         </Text>
       </TouchableOpacity>
-
-      {/* Database Test Button */}
-      <TouchableOpacity 
-        style={[styles.button, styles.diagnosticButton]} 
-        onPress={() => router.push('/database-test')}
-      >
-        <Text style={styles.buttonText}>🔍 Database Diagnostic</Text>
-      </TouchableOpacity>
       
       {error && (
         <Text style={styles.errorText}>Error: {error}</Text>

@@ -11,20 +11,79 @@ import {
 } from 'react-native';
 import { useCustomAuth } from '../hooks/useCustomAuth';
 import { router } from 'expo-router';
+import { supabase } from '../lib/supabase';
 
 const Home = () => {
-  const { user, customUser, signOut, loading } = useCustomAuth();
+  const { user, customUserData, signOut, loading } = useCustomAuth();
   const [userName, setUserName] = useState('');
+  const [timeoutTriggered, setTimeoutTriggered] = useState(false);
 
   useEffect(() => {
     // Set user name from custom user data or email
-    if (customUser?.userName) {
-      setUserName(customUser.userName);
+    if (customUserData?.userName) {
+      setUserName(customUserData.userName);
     } else if (user?.email) {
       // Extract name from email before @ symbol
       setUserName(user.email.split('@')[0]);
     }
-  }, [user, customUser]);
+  }, [user, customUserData]);
+
+  useEffect(() => {
+    // Set up 5-second timeout for loading state
+    let timeoutId;
+    
+    if (loading && !timeoutTriggered) {
+      console.log('⏰ Starting 5-second timeout for home loading...');
+      
+      timeoutId = setTimeout(async () => {
+        console.log('⏰ 5-second timeout reached, checking session and reloading app...');
+        setTimeoutTriggered(true);
+        
+        try {
+          // Reload app by checking session directly
+          console.log('🔄 Reloading app - checking for active session...');
+          const { data: { session }, error } = await supabase.auth.getSession();
+          
+          if (error) {
+            console.error('❌ Error checking session:', error);
+            console.log('🏠 Redirecting to index due to session error');
+            router.replace('/');
+            return;
+          }
+          
+          if (session?.user) {
+            console.log('✅ Active session found after timeout, staying on home page');
+            console.log('👤 User found:', session.user.email);
+            // Session exists, force a re-render by clearing timeout flag after a brief moment
+            setTimeout(() => {
+              setTimeoutTriggered(false);
+            }, 100);
+          } else {
+            console.log('❌ No active session found after timeout');
+            console.log('🏠 Redirecting to index page');
+            router.replace('/');
+          }
+        } catch (sessionError) {
+          console.error('❌ Session check failed:', sessionError);
+          console.log('🏠 Redirecting to index due to session check failure');
+          router.replace('/');
+        }
+      }, 5000); // 5 seconds
+    }
+    
+    // Clear timeout if loading completes before timeout
+    if (!loading && timeoutId) {
+      console.log('✅ Loading completed before timeout, clearing timeout');
+      clearTimeout(timeoutId);
+    }
+    
+    // Cleanup timeout on unmount
+    return () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
+  }, [loading, timeoutTriggered]);
 
   const handleSignOut = async () => {
     Alert.alert(
@@ -60,11 +119,28 @@ const Home = () => {
     { title: 'Profile', subtitle: 'Manage your account', action: () => console.log('Profile') },
   ];
 
-  if (loading) {
+  if (loading && !timeoutTriggered) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
           <Text style={styles.loadingText}>Loading...</Text>
+          <Text style={styles.timeoutHintText}>
+            Checking your session... (timeout in 5 seconds)
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // If timeout was triggered but we're still here, show a message while session check completes
+  if (timeoutTriggered && loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>Reloading app...</Text>
+          <Text style={styles.timeoutHintText}>
+            Checking session and redirecting...
+          </Text>
         </View>
       </SafeAreaView>
     );
@@ -150,6 +226,13 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 18,
     color: '#666',
+  },
+  timeoutHintText: {
+    fontSize: 14,
+    color: '#999',
+    marginTop: 10,
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
   header: {
     flexDirection: 'row',
