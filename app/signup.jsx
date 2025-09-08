@@ -180,11 +180,8 @@ const SignUp = () => {
             {
               text: 'OK',
               onPress: () => {
-                // Navigate to OTP verification page
-                router.push({
-                  pathname: '/otp-verification',
-                  params: { email: email }
-                });
+                // Navigate back to sign in since Supabase handles email verification
+                router.push('/signin');
               }
             }
           ]
