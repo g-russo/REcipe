@@ -47,6 +47,28 @@ export default function RootLayout() {
           headerBackVisible: false
         }} 
       />
+      <Stack.Screen 
+        name="recipe-search" 
+        options={{ 
+          title: 'Recipe Search',
+          headerShown: true
+        }} 
+      />
+      <Stack.Screen 
+        name="force-password-change" 
+        options={{ 
+          title: 'Update Password',
+          headerShown: true,
+          headerBackVisible: false
+        }} 
+      />
+      <Stack.Screen 
+        name="api-test" 
+        options={{ 
+          title: 'API Test',
+          headerShown: true
+        }} 
+      />
     </Stack>
   );
 }
