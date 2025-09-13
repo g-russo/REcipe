@@ -111,8 +111,6 @@ const Home = () => {
   };
 
   const menuItems = [
-    { title: 'Recipe Search', subtitle: 'Search for recipes with Edamam', action: () => router.push('/recipe-search') },
-    { title: 'API Test', subtitle: 'Test Edamam API connection', action: () => router.push('/api-test') },
     { title: 'My Recipes', subtitle: 'View your saved recipes', action: () => console.log('My Recipes') },
     { title: 'Discover', subtitle: 'Find new recipes', action: () => console.log('Discover') },
     { title: 'Favorites', subtitle: 'Your favorite recipes', action: () => console.log('Favorites') },
