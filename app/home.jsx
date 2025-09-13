@@ -112,7 +112,7 @@ const Home = () => {
 
   const menuItems = [
     { title: 'My Recipes', subtitle: 'View your saved recipes', action: () => console.log('My Recipes') },
-    { title: 'Discover', subtitle: 'Find new recipes', action: () => console.log('Discover') },
+    { title: 'Discover', subtitle: 'Find new recipes', action: () => router.push('/recipe-search') },
     { title: 'Favorites', subtitle: 'Your favorite recipes', action: () => console.log('Favorites') },
     { title: 'Shopping List', subtitle: 'Manage ingredients', action: () => console.log('Shopping List') },
     { title: 'Categories', subtitle: 'Browse by category', action: () => console.log('Categories') },
