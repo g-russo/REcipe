@@ -1,8 +1,53 @@
 import { Stack } from 'expo-router';
+import React, { useEffect } from 'react';
+import { StatusBar } from 'expo-status-bar';
+import * as SplashScreen from 'expo-splash-screen';
+import * as Font from 'expo-font';
+import { SupabaseProvider } from '../contexts/SupabaseContext';
+
+// Keep the splash screen visible while we initialize
+SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
+  useEffect(() => {
+    async function initializeApp() {
+      try {
+        console.log('🚀 RootLayout: Background initialization starting...');
+        
+        // Background font loading
+        await Font.loadAsync({
+          // Add custom fonts here if needed
+        });
+        
+        console.log('✅ RootLayout: Background initialization complete');
+        
+        // Hide splash screen after initialization
+        setTimeout(async () => {
+          await SplashScreen.hideAsync();
+        }, 100);
+        
+      } catch (error) {
+        console.error('❌ RootLayout: Background initialization failed:', error);
+        // Still hide splash screen even if initialization fails
+        await SplashScreen.hideAsync();
+      }
+    }
+
+    initializeApp();
+  }, []);
+
   return (
-    <Stack>
+    <SupabaseProvider>
+      <StatusBar style="auto" />
+      <Stack screenOptions={{
+      headerStyle: {
+        backgroundColor: '#4CAF50',
+      },
+      headerTintColor: '#fff',
+      headerTitleStyle: {
+        fontWeight: 'bold',
+      },
+    }}>
       <Stack.Screen 
         name="index" 
         options={{ 
@@ -47,6 +92,29 @@ export default function RootLayout() {
           headerBackVisible: false
         }} 
       />
+      <Stack.Screen 
+        name="recipe-search" 
+        options={{ 
+          title: 'Recipe Search',
+          headerShown: false 
+        }} 
+      />
+      <Stack.Screen 
+        name="api-test" 
+        options={{ 
+          title: 'API Test',
+          headerShown: true 
+        }} 
+      />
+      <Stack.Screen 
+        name="recipe-detail" 
+        options={{ 
+          title: 'Recipe Details',
+          headerShown: true,
+          headerBackTitle: 'Back'
+        }} 
+      />
     </Stack>
+    </SupabaseProvider>
   );
 }
