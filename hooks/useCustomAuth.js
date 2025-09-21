@@ -457,6 +457,63 @@ export function useCustomAuth() {
     }
   }
 
+  // Verify OTP for signup/other flows
+  const verifyOTP = async (email, otpCode, type = 'signup') => {
+    try {
+      setLoading(true)
+
+      console.log('🔐 Verifying OTP with Supabase...')
+
+      const { data, error } = await supabase.auth.verifyOtp({
+        email,
+        token: otpCode,
+        type
+      })
+
+      if (error) {
+        return { data: null, error }
+      }
+
+      // If signup verification succeeded, mark as verified in custom table
+      if (type === 'signup' && data?.user?.email_confirmed_at) {
+        try {
+          await supabase
+            .from('tbl_users')
+            .update({ isVerified: true })
+            .eq('userEmail', email)
+        } catch (e) {
+          console.log('⚠️ Could not update custom table verification status:', e?.message)
+        }
+      }
+
+      return { data, error: null }
+    } catch (err) {
+      console.error('OTP verification error:', err)
+      return { data: null, error: err }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Resend OTP for signup/other flows
+  const resendOTP = async (email, type = 'signup') => {
+    try {
+      setLoading(true)
+
+      const { data, error } = await supabase.auth.resend({
+        type,
+        email
+      })
+
+      return { data, error }
+    } catch (err) {
+      console.error('Resend OTP error:', err)
+      return { data: null, error: err }
+    } finally {
+      setLoading(false)
+    }
+  }
+
   // Resend password reset OTP
   const resendPasswordResetOTP = async (email) => {
     try {
@@ -794,6 +851,8 @@ export function useCustomAuth() {
     storeVerifiedOTP,
     cleanupExpiredOTPs,
     fetchCustomUserData,
-    migrateExistingUser
+    migrateExistingUser,
+    verifyOTP,
+    resendOTP
   }
 }
