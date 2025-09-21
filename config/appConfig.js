@@ -27,7 +27,7 @@ export const AppConfig = {
   // UI Settings
   UI: {
     THEME: {
-      PRIMARY_COLOR: '#4CAF50',
+      PRIMARY_COLOR: '#81A969',
       SECONDARY_COLOR: '#81C784',
       ERROR_COLOR: '#e74c3c',
       WARNING_COLOR: '#f39c12',
