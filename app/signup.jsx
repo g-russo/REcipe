@@ -10,7 +10,7 @@ import {
   Picker
 } from 'react-native';
 import Modal from 'react-native-modal';
-import { useCustomAuth } from '../hooks/useCustomAuth';
+import { useCustomAuth } from '../hooks/use-custom-auth';
 import { router } from 'expo-router';
 
 const SignUp = () => {

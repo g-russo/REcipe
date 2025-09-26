@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Font from 'expo-font';
-import { SupabaseProvider } from './contexts/SupabaseContext';
+import { SupabaseProvider } from './contexts/supabase-context';
 import RootLayout from './app/_layout';
 
 // Keep the splash screen visible while we fetch resources

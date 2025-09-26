@@ -1,4 +1,4 @@
-import RecipeCacheService from '../services/recipeCacheService';
+import RecipeCacheService from '../services/recipe-cache-service';
 import PerformanceMonitor from './performanceMonitor';
 
 /**
