@@ -9,7 +9,7 @@ import {
   ScrollView
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
-import { useCustomAuth } from '../hooks/useCustomAuth';
+import { useCustomAuth } from '../hooks/use-custom-auth';
 
 const NewPassword = () => {
   const [password, setPassword] = useState('');

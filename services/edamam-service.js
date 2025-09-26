@@ -11,7 +11,7 @@ const CACHE_EXPIRY_HOURS = 24; // Instructions cache for 24 hours
 
 class EdamamService {
   /**
-   * Search for recipes using the Edamam API
+   * Search for recipes using the Edamam API with intelligent caching
    * @param {string} query - Search query (e.g., "chicken", "pasta")
    * @param {Object} options - Additional search options
    * @param {string} options.type - Recipe type (any, main-course, side-dish, dessert, etc.)
@@ -25,10 +25,25 @@ class EdamamService {
    * @param {Array} options.health - Health labels (e.g., ["vegetarian", "vegan"])
    * @param {Array} options.diet - Diet labels (e.g., ["low-carb", "high-protein"])
    * @param {boolean} options.curatedOnly - Limit to Edamam curated recipes only (default: true)
+   * @param {boolean} options.skipCache - Skip cache lookup (default: false)
    * @returns {Promise<Object>} Recipe search results
    */
   static async searchRecipes(query, options = {}) {
     try {
+      // Import RecipeCacheService dynamically to avoid circular dependency
+      const RecipeCacheService = (await import('./recipe-cache-service.js')).default;
+      
+      // Check cache first (unless explicitly skipped)
+      if (!options.skipCache) {
+        const cachedResults = RecipeCacheService.getCachedSearchResults(query, options);
+        if (cachedResults) {
+          return {
+            success: true,
+            data: cachedResults,
+            cached: true
+          };
+        }
+      }
       // Build URL parameters
       const params = new URLSearchParams({
         type: 'public',
@@ -86,15 +101,26 @@ class EdamamService {
       console.log('✅ Recipe search successful!');
       console.log(`📊 Found ${data.count} recipes, showing ${data.hits?.length || 0} results`);
 
+      const searchResults = {
+        count: data.count,
+        from: data.from,
+        to: data.to,
+        more: data.more,
+        recipes: data.hits?.map(hit => this.formatRecipe(hit.recipe)) || []
+      };
+
+      // Cache the results for future use (skip if this is for cache service itself)
+      if (!options.skipCache) {
+        try {
+          await RecipeCacheService.cacheSearchResults(query, options, searchResults);
+        } catch (cacheError) {
+          console.warn('⚠️ Failed to cache search results:', cacheError.message);
+        }
+      }
+
       return {
         success: true,
-        data: {
-          count: data.count,
-          from: data.from,
-          to: data.to,
-          more: data.more,
-          recipes: data.hits?.map(hit => this.formatRecipe(hit.recipe)) || []
-        }
+        data: searchResults
       };
 
     } catch (error) {
@@ -1694,191 +1720,423 @@ class EdamamService {
   }
 
   /**
-   * Get recipes similar to the provided recipe
+   * Get recipes similar to the provided recipe with smart ingredient and protein analysis
    * @param {Object} currentRecipe - The reference recipe object
    * @param {number} count - Number of similar recipes to fetch (default: 15)
+   * @param {Object} options - Additional options for similarity matching
    * @returns {Promise<Object>} Similar recipes result
    */
-  static async getSimilarRecipes(currentRecipe, count = 15) {
+  static async getSimilarRecipes(currentRecipe, count = 15, options = {}) {
     try {
-      console.log('🔍 Fetching similar recipes for:', currentRecipe.label);
-      console.log('📝 Recipe details:', {
-        dishType: currentRecipe.dishType,
-        cuisineType: currentRecipe.cuisineType,
-        mealType: currentRecipe.mealType
-      });
+      console.log('🔍 Fetching SMART similar recipes for:', currentRecipe.label);
       
-      // Extract meaningful search terms from the recipe title
-      const recipeTitle = currentRecipe.label.toLowerCase();
-      console.log('📋 Recipe title:', recipeTitle);
+      // Check cache first for similar recipes
+      const cacheKey = this.generateSimilarRecipesCacheKey(currentRecipe, count);
+      let cachedSimilarRecipes = null;
       
-      // Extract key ingredients and cooking methods from title
-      const meaningfulWords = recipeTitle
-        .split(' ')
-        .filter(word => 
-          word.length > 3 && 
-          !['with', 'and', 'the', 'recipe', 'easy', 'quick', 'simple', 'best', 'perfect', 'homemade', 'delicious'].includes(word)
-        )
-        .slice(0, 3); // Take first 3 meaningful words
-      
-      console.log('🎯 Meaningful words found:', meaningfulWords);
-      
-      // Create multiple search strategies
-      const searchStrategies = [];
-      
-      // Strategy 1: Use dish type if available
-      if (currentRecipe.dishType && currentRecipe.dishType.length > 0) {
-        searchStrategies.push({
-          query: currentRecipe.dishType[0],
-          options: {
-            dishType: currentRecipe.dishType[0],
-            cuisineType: currentRecipe.cuisineType?.[0],
-            from: 0,
-            to: Math.min(count * 2, 20)
-          }
-        });
-      }
-      
-      // Strategy 2: Use meaningful words from title
-      if (meaningfulWords.length > 0) {
-        searchStrategies.push({
-          query: meaningfulWords[0],
-          options: {
-            cuisineType: currentRecipe.cuisineType?.[0],
-            mealType: currentRecipe.mealType?.[0],
-            from: 0,
-            to: Math.min(count * 2, 20)
-          }
-        });
+      try {
+        const RecipeCacheService = (await import('./recipe-cache-service.js')).default;
+        cachedSimilarRecipes = await RecipeCacheService.getCachedSimilarRecipes(cacheKey);
         
-        // Strategy 3: Combine first two meaningful words
-        if (meaningfulWords.length >= 2) {
-          searchStrategies.push({
-            query: `${meaningfulWords[0]} ${meaningfulWords[1]}`,
-            options: {
-              from: 0,
-              to: Math.min(count * 2, 20)
+        if (cachedSimilarRecipes && cachedSimilarRecipes.length > 0) {
+          console.log(`✅ Using cached similar recipes (${cachedSimilarRecipes.length} recipes)`);
+          return {
+            success: true,
+            data: {
+              recipes: cachedSimilarRecipes,
+              total: cachedSimilarRecipes.length,
+              cached: true
             }
-          });
+          };
         }
+      } catch (cacheError) {
+        console.log('⚠️ Cache check failed, proceeding with fresh search:', cacheError.message);
       }
+
+      // Analyze the current recipe for intelligent matching
+      const recipeAnalysis = this.analyzeRecipeForSimilarity(currentRecipe);
+      console.log('🧬 Recipe analysis:', recipeAnalysis);
       
-      // Strategy 4: Use cuisine type if available
-      if (currentRecipe.cuisineType && currentRecipe.cuisineType.length > 0) {
-        searchStrategies.push({
-          query: 'popular',
-          options: {
-            cuisineType: currentRecipe.cuisineType[0],
-            mealType: currentRecipe.mealType?.[0],
-            from: 0,
-            to: Math.min(count * 2, 20)
-          }
-        });
-      }
-      
-      // Strategy 5: Fallback searches
-      searchStrategies.push(
-        { query: 'chicken', options: { from: 0, to: 20 } },
-        { query: 'pasta', options: { from: 0, to: 20 } },
-        { query: 'healthy', options: { from: 0, to: 20 } }
-      );
-      
-      console.log(`🔎 Using ${searchStrategies.length} search strategies`);
+      // Create intelligent search strategies based on analysis
+      const searchStrategies = this.buildIntelligentSearchStrategies(currentRecipe, recipeAnalysis, count);
+      console.log(`🎯 Using ${searchStrategies.length} intelligent search strategies`);
       
       const allRecipes = [];
-      const seenUris = new Set([currentRecipe.id, currentRecipe.uri]); // Exclude original recipe
+      const seenUris = new Set([currentRecipe.id, currentRecipe.uri]);
       
-      // Try each search strategy until we have enough recipes
-      for (let i = 0; i < searchStrategies.length && allRecipes.length < count * 2; i++) {
+      // Execute search strategies with intelligent scoring
+      for (let i = 0; i < searchStrategies.length && allRecipes.length < count * 3; i++) {
         const strategy = searchStrategies[i];
         
         try {
-          console.log(`🔍 Strategy ${i + 1}: Searching for "${strategy.query}" with options:`, strategy.options);
+          console.log(`🔍 Strategy ${i + 1} (${strategy.type}): "${strategy.query}"`);
           
           const result = await this.searchRecipes(strategy.query, {
             ...strategy.options,
-            curatedOnly: false // Allow more sources for variety
+            skipCache: options.skipCache || false
           });
           
           if (result.success && result.data.recipes) {
             console.log(`✅ Strategy ${i + 1} found ${result.data.recipes.length} recipes`);
             
             result.data.recipes.forEach(foundRecipe => {
-              // Avoid duplicates and ensure we don't include the original recipe
               if (!seenUris.has(foundRecipe.id) && 
                   !seenUris.has(foundRecipe.uri) && 
-                  allRecipes.length < count * 2) {
+                  allRecipes.length < count * 3) {
+                
+                // Calculate similarity score
+                const similarityScore = this.calculateSimilarityScore(currentRecipe, foundRecipe, recipeAnalysis);
+                foundRecipe._similarityScore = similarityScore;
+                foundRecipe._strategy = strategy.type;
+                
                 allRecipes.push(foundRecipe);
                 seenUris.add(foundRecipe.id);
                 seenUris.add(foundRecipe.uri);
               }
             });
-            
-            console.log(`📊 Total unique recipes collected: ${allRecipes.length}`);
-          } else {
-            console.log(`❌ Strategy ${i + 1} failed:`, result.error);
           }
         } catch (searchError) {
           console.log(`⚠️ Strategy ${i + 1} error:`, searchError.message);
         }
       }
       
-      // Shuffle and limit results for variety
-      const shuffledRecipes = allRecipes
-        .sort(() => 0.5 - Math.random())
+      // Sort by similarity score and select best matches
+      const rankedRecipes = allRecipes
+        .sort((a, b) => (b._similarityScore || 0) - (a._similarityScore || 0))
         .slice(0, count);
       
-      console.log(`🎉 Final result: ${shuffledRecipes.length} similar recipes selected`);
+      // Clean up scoring data before returning
+      rankedRecipes.forEach(recipe => {
+        delete recipe._similarityScore;
+        delete recipe._strategy;
+      });
+      
+      console.log(`🎉 Smart similar recipes: ${rankedRecipes.length} selected from ${allRecipes.length} candidates`);
+      
+      // Cache the results for future use
+      try {
+        const RecipeCacheService = (await import('./recipe-cache-service.js')).default;
+        await RecipeCacheService.cacheSimilarRecipes(cacheKey, rankedRecipes);
+      } catch (cacheError) {
+        console.warn('⚠️ Failed to cache similar recipes:', cacheError.message);
+      }
       
       return {
         success: true,
         data: {
-          recipes: shuffledRecipes,
-          total: shuffledRecipes.length,
-          searchTerms: meaningfulWords,
+          recipes: rankedRecipes,
+          total: rankedRecipes.length,
+          analysis: recipeAnalysis,
           strategiesUsed: searchStrategies.length
         }
       };
 
     } catch (error) {
-      console.error('❌ Error fetching similar recipes:', error);
+      console.error('❌ Error fetching smart similar recipes:', error);
       
-      // Fallback: try a simple search
-      try {
-        console.log('🔄 Trying fallback search for similar recipes...');
-        const fallbackResult = await this.searchRecipes('popular', { 
-          from: 0, 
-          to: count,
-          curatedOnly: false 
-        });
-        
-        if (fallbackResult.success && fallbackResult.data.recipes) {
-          const fallbackRecipes = fallbackResult.data.recipes
-            .filter(r => r.id !== currentRecipe.id && r.uri !== currentRecipe.uri)
-            .slice(0, count);
-            
-          return {
-            success: true,
-            data: {
-              recipes: fallbackRecipes,
-              total: fallbackRecipes.length,
-              fallback: true
-            }
-          };
-        }
-      } catch (fallbackError) {
-        console.error('❌ Fallback search also failed:', fallbackError);
-      }
-      
-      return {
-        success: false,
-        error: error.message || 'Failed to fetch similar recipes',
-        data: {
-          recipes: [],
-          total: 0
-        }
-      };
+      // Fallback to basic similarity search
+      return this.getFallbackSimilarRecipes(currentRecipe, count);
     }
+  }
+
+  /**
+   * Analyze recipe for intelligent similarity matching
+   * @param {Object} recipe - Recipe to analyze
+   * @returns {Object} Analysis results
+   */
+  static analyzeRecipeForSimilarity(recipe) {
+    const analysis = {
+      mainProteins: [],
+      cookingMethods: [],
+      keyIngredients: [],
+      cuisineStyle: recipe.cuisineType?.[0] || 'unknown',
+      mealType: recipe.mealType?.[0] || 'unknown',
+      dishType: recipe.dishType?.[0] || 'unknown',
+      dietaryRestrictions: recipe.healthLabels || [],
+      difficulty: 'medium' // Could be enhanced based on recipe complexity
+    };
+
+    const title = recipe.label.toLowerCase();
+    const ingredients = (recipe.ingredientLines || []).join(' ').toLowerCase();
+    const allText = `${title} ${ingredients}`;
+
+    // Identify main proteins
+    const proteinKeywords = {
+      chicken: ['chicken', 'poultry'],
+      beef: ['beef', 'steak', 'ground beef', 'chuck', 'sirloin'],
+      pork: ['pork', 'bacon', 'ham', 'sausage'],
+      fish: ['fish', 'salmon', 'tuna', 'cod', 'tilapia', 'trout'],
+      seafood: ['shrimp', 'crab', 'lobster', 'scallops', 'mussels', 'clams'],
+      turkey: ['turkey'],
+      lamb: ['lamb'],
+      tofu: ['tofu', 'tempeh'],
+      beans: ['beans', 'lentils', 'chickpeas', 'legumes'],
+      eggs: ['egg', 'eggs']
+    };
+
+    for (const [protein, keywords] of Object.entries(proteinKeywords)) {
+      if (keywords.some(keyword => allText.includes(keyword))) {
+        analysis.mainProteins.push(protein);
+      }
+    }
+
+    // Identify cooking methods
+    const cookingMethods = {
+      baked: ['baked', 'baking', 'oven'],
+      grilled: ['grilled', 'grilling', 'grill'],
+      fried: ['fried', 'frying', 'pan-fried'],
+      roasted: ['roasted', 'roasting'],
+      steamed: ['steamed', 'steaming'],
+      sauteed: ['sauteed', 'sauté', 'sautéed'],
+      braised: ['braised', 'braising'],
+      stewed: ['stewed', 'stew'],
+      slow_cooked: ['slow cook', 'crockpot', 'slow cooker']
+    };
+
+    for (const [method, keywords] of Object.entries(cookingMethods)) {
+      if (keywords.some(keyword => allText.includes(keyword))) {
+        analysis.cookingMethods.push(method);
+      }
+    }
+
+    // Extract key ingredients from ingredient lines
+    const commonIngredients = [
+      'onion', 'garlic', 'tomato', 'cheese', 'rice', 'pasta', 'potato',
+      'mushroom', 'bell pepper', 'carrot', 'celery', 'herbs', 'spices',
+      'olive oil', 'butter', 'cream', 'milk', 'wine', 'broth', 'stock'
+    ];
+
+    analysis.keyIngredients = commonIngredients.filter(ingredient => 
+      allText.includes(ingredient)
+    );
+
+    return analysis;
+  }
+
+  /**
+   * Build intelligent search strategies based on recipe analysis
+   * @param {Object} recipe - Current recipe
+   * @param {Object} analysis - Recipe analysis
+   * @param {number} count - Target recipe count
+   * @returns {Array} Search strategies
+   */
+  static buildIntelligentSearchStrategies(recipe, analysis, count) {
+    const strategies = [];
+    const maxResultsPerStrategy = Math.min(count * 2, 20);
+
+    // Strategy 1: Protein-based similarity (highest priority)
+    if (analysis.mainProteins.length > 0) {
+      analysis.mainProteins.forEach(protein => {
+        strategies.push({
+          type: 'protein',
+          query: protein,
+          options: {
+            cuisineType: analysis.cuisineStyle !== 'unknown' ? analysis.cuisineStyle : undefined,
+            mealType: analysis.mealType !== 'unknown' ? analysis.mealType : undefined,
+            from: 0,
+            to: maxResultsPerStrategy
+          },
+          priority: 10
+        });
+      });
+    }
+
+    // Strategy 2: Key ingredient combinations
+    if (analysis.keyIngredients.length >= 2) {
+      const ingredientPairs = analysis.keyIngredients.slice(0, 3);
+      strategies.push({
+        type: 'ingredients',
+        query: ingredientPairs.join(' '),
+        options: {
+          dishType: analysis.dishType !== 'unknown' ? analysis.dishType : undefined,
+          from: 0,
+          to: maxResultsPerStrategy
+        },
+        priority: 9
+      });
+    }
+
+    // Strategy 3: Cooking method + protein combination
+    if (analysis.cookingMethods.length > 0 && analysis.mainProteins.length > 0) {
+      strategies.push({
+        type: 'method-protein',
+        query: `${analysis.cookingMethods[0]} ${analysis.mainProteins[0]}`,
+        options: {
+          from: 0,
+          to: maxResultsPerStrategy
+        },
+        priority: 8
+      });
+    }
+
+    // Strategy 4: Dish type similarity
+    if (analysis.dishType !== 'unknown') {
+      strategies.push({
+        type: 'dish-type',
+        query: analysis.dishType,
+        options: {
+          dishType: analysis.dishType,
+          cuisineType: analysis.cuisineStyle !== 'unknown' ? analysis.cuisineStyle : undefined,
+          from: 0,
+          to: maxResultsPerStrategy
+        },
+        priority: 7
+      });
+    }
+
+    // Strategy 5: Cuisine-specific searches
+    if (analysis.cuisineStyle !== 'unknown') {
+      strategies.push({
+        type: 'cuisine',
+        query: 'popular',
+        options: {
+          cuisineType: analysis.cuisineStyle,
+          mealType: analysis.mealType !== 'unknown' ? analysis.mealType : undefined,
+          from: 0,
+          to: maxResultsPerStrategy
+        },
+        priority: 6
+      });
+    }
+
+    // Strategy 6: Dietary restriction compatibility
+    if (analysis.dietaryRestrictions.length > 0) {
+      const mainDietLabel = analysis.dietaryRestrictions.find(label => 
+        ['vegetarian', 'vegan', 'gluten-free', 'dairy-free', 'keto-friendly'].includes(label.toLowerCase())
+      );
+      
+      if (mainDietLabel && analysis.mainProteins.length > 0) {
+        strategies.push({
+          type: 'dietary',
+          query: analysis.mainProteins[0],
+          options: {
+            health: mainDietLabel.toLowerCase(),
+            from: 0,
+            to: maxResultsPerStrategy
+          },
+          priority: 5
+        });
+      }
+    }
+
+    // Sort by priority and return
+    return strategies.sort((a, b) => (b.priority || 0) - (a.priority || 0));
+  }
+
+  /**
+   * Calculate similarity score between two recipes
+   * @param {Object} currentRecipe - Reference recipe
+   * @param {Object} candidateRecipe - Recipe to score
+   * @param {Object} analysis - Current recipe analysis
+   * @returns {number} Similarity score (0-100)
+   */
+  static calculateSimilarityScore(currentRecipe, candidateRecipe, analysis) {
+    let score = 0;
+    const candidateAnalysis = this.analyzeRecipeForSimilarity(candidateRecipe);
+
+    // Protein similarity (30% weight)
+    const proteinMatch = analysis.mainProteins.some(protein => 
+      candidateAnalysis.mainProteins.includes(protein)
+    );
+    if (proteinMatch) score += 30;
+
+    // Cooking method similarity (20% weight)
+    const methodMatch = analysis.cookingMethods.some(method => 
+      candidateAnalysis.cookingMethods.includes(method)
+    );
+    if (methodMatch) score += 20;
+
+    // Cuisine type similarity (15% weight)
+    if (analysis.cuisineStyle === candidateAnalysis.cuisineStyle && 
+        analysis.cuisineStyle !== 'unknown') {
+      score += 15;
+    }
+
+    // Dish type similarity (15% weight)
+    if (analysis.dishType === candidateAnalysis.dishType && 
+        analysis.dishType !== 'unknown') {
+      score += 15;
+    }
+
+    // Ingredient overlap (15% weight)
+    const ingredientOverlap = analysis.keyIngredients.filter(ingredient => 
+      candidateAnalysis.keyIngredients.includes(ingredient)
+    ).length;
+    
+    if (ingredientOverlap > 0) {
+      score += Math.min(15, (ingredientOverlap / Math.max(analysis.keyIngredients.length, 1)) * 15);
+    }
+
+    // Meal type similarity (5% weight)
+    if (analysis.mealType === candidateAnalysis.mealType && 
+        analysis.mealType !== 'unknown') {
+      score += 5;
+    }
+
+    return Math.round(score);
+  }
+
+  /**
+   * Generate cache key for similar recipes
+   * @param {Object} recipe - Recipe object
+   * @param {number} count - Number of recipes requested
+   * @returns {string} Cache key
+   */
+  static generateSimilarRecipesCacheKey(recipe, count) {
+    const key = `similar_${recipe.id || recipe.uri}_${count}`;
+    return key.replace(/[^a-zA-Z0-9_]/g, '_');
+  }
+
+  /**
+   * Fallback similar recipe search when main method fails
+   * @param {Object} currentRecipe - Reference recipe
+   * @param {number} count - Number of recipes to return
+   * @returns {Promise<Object>} Similar recipes result
+   */
+  static async getFallbackSimilarRecipes(currentRecipe, count) {
+    try {
+      console.log('🔄 Using fallback similar recipe search...');
+      
+      // Simple title-based search
+      const titleWords = currentRecipe.label.toLowerCase()
+        .split(' ')
+        .filter(word => word.length > 3)
+        .slice(0, 2);
+      
+      const query = titleWords.length > 0 ? titleWords[0] : 'popular';
+      
+      const result = await this.searchRecipes(query, { 
+        from: 0, 
+        to: count + 5,
+        skipCache: true
+      });
+      
+      if (result.success && result.data.recipes) {
+        const fallbackRecipes = result.data.recipes
+          .filter(r => r.id !== currentRecipe.id && r.uri !== currentRecipe.uri)
+          .slice(0, count);
+          
+        return {
+          success: true,
+          data: {
+            recipes: fallbackRecipes,
+            total: fallbackRecipes.length,
+            fallback: true
+          }
+        };
+      }
+    } catch (fallbackError) {
+      console.error('❌ Fallback search also failed:', fallbackError);
+    }
+    
+    return {
+      success: false,
+      error: 'Failed to fetch similar recipes',
+      data: {
+        recipes: [],
+        total: 0
+      }
+    };
   }
 
   /**

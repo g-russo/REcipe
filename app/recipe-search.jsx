@@ -15,8 +15,9 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import EdamamService from '../services/edamamService';
-import RecipeCacheService from '../services/recipeCacheService';
+import EdamamService from '../services/edamam-service';
+import RecipeCacheService from '../services/recipe-cache-service';
+import ApiUsageStats from '../components/ApiUsageStats';
 
 const RecipeSearch = () => {
   const router = useRouter();
@@ -50,19 +51,101 @@ const RecipeSearch = () => {
   const loadPopularRecipesFromCache = async () => {
     setLoadingPopular(true);
     try {
-      // Try to get cached recipes first (instant if available)
-      const cached = await RecipeCacheService.getPopularRecipes(5);
+      console.log('📱 Loading popular recipes from cache...');
+      
+      // Get cached recipes (will fetch if cache is empty/expired)
+      const cached = await RecipeCacheService.getPopularRecipes(8);
+      
       if (cached.length > 0) {
-        setPopularRecipes(cached);
-        setLoadingPopular(false);
+        console.log(`✅ Loaded ${cached.length} popular recipes from cache`);
+        const formattedRecipes = cached.map(recipe => ({
+          id: recipe.id,
+          title: recipe.title,
+          image: recipe.image,
+          fullData: recipe.fullData,
+          category: recipe.category,
+          calories: recipe.calories,
+          time: recipe.time,
+          difficulty: recipe.difficulty,
+          rating: recipe.rating
+        }));
+        
+        setPopularRecipes(formattedRecipes);
       } else {
-        // Fallback to direct API call if cache is empty
-        await fetchPopularRecipes();
+        console.log('⚠️ No cached recipes available, will fetch fresh');
+        await handleRefreshPopularRecipes();
       }
     } catch (error) {
-      console.error('Error loading popular recipes from cache:', error);
-      // Fallback to original method
+      console.error('❌ Error loading popular recipes from cache:', error);
+      // Fallback to direct API call if cache fails
       await fetchPopularRecipes();
+    } finally {
+      setLoadingPopular(false);
+    }
+  };
+
+  const handleRefreshPopularRecipes = async () => {
+    setLoadingPopular(true);
+    try {
+      console.log('🔄 Refreshing popular recipes...');
+      
+      // Get API usage stats first
+      const apiStats = RecipeCacheService.getApiUsageStats();
+      console.log('📊 API Stats:', apiStats);
+      
+      // Force refresh the cache
+      const freshRecipes = await RecipeCacheService.forceRefreshPopularRecipes();
+      
+      if (freshRecipes && freshRecipes.length > 0) {
+        console.log(`✅ Refreshed with ${freshRecipes.length} recipes`);
+        
+        // Get a random selection for display
+        const displayRecipes = RecipeCacheService.shuffleArray([...freshRecipes])
+          .slice(0, 8)
+          .map(recipe => ({
+            id: recipe.id,
+            title: recipe.title,
+            image: recipe.image,
+            fullData: recipe.fullData,
+            category: recipe.category,
+            calories: recipe.calories,
+            time: recipe.time,
+            difficulty: recipe.difficulty,
+            rating: recipe.rating
+          }));
+        
+        setPopularRecipes(displayRecipes);
+        
+        // Show success message with API info
+        if (apiStats.apiCallsThisMinute > 0) {
+          console.log(`ℹ️ Used ${apiStats.apiCallsThisMinute}/${apiStats.rateLimit} API calls`);
+        }
+        
+      } else {
+        throw new Error('No recipes received from refresh');
+      }
+    } catch (error) {
+      console.error('❌ Error refreshing popular recipes:', error);
+      
+      // Show more specific error messages
+      if (error.message.includes('rate limit')) {
+        Alert.alert(
+          'Rate Limit Reached', 
+          error.message + '\n\nTip: Popular recipes are cached for 7 days to conserve API calls.',
+          [{ text: 'OK' }]
+        );
+      } else if (error.message.includes('Cache is only')) {
+        // This is actually a success case - we shuffled existing recipes
+        console.log('ℹ️ Shuffled existing recipes for variety');
+      } else {
+        Alert.alert(
+          'Refresh Error', 
+          error.message || 'Failed to refresh popular recipes. Please try again later.',
+          [{ text: 'OK' }]
+        );
+      }
+    } finally {
+      setLoadingPopular(false);
     }
   };
 
@@ -89,61 +172,46 @@ const RecipeSearch = () => {
   };
 
   const fetchPopularRecipes = async () => {
+    // Fallback function for emergency use
     setLoadingPopular(true);
     try {
-      // Fetch popular recipes using different trending search terms - PARALLEL calls
-      const popularQueries = ['chicken', 'pasta', 'salad', 'dessert', 'soup'];
+      console.log('⚠️ Using fallback popular recipes method');
       
-      // Make all API calls in parallel instead of sequential
-      const promises = popularQueries.map(query => 
-        EdamamService.searchRecipes(query, {
-          from: 0,
-          to: 3 // Get 3 recipes per query to have variety/fallbacks
-        })
-      );
-
-      const results = await Promise.all(promises);
-      const recipes = [];
-
-      results.forEach((result, index) => {
-        if (result.success && result.data.recipes.length > 0) {
-          // Pick the first recipe from each category
-          const recipe = result.data.recipes[0];
-          recipes.push({
-            id: recipe.id,
-            title: recipe.label.length > 12 ? recipe.label.substring(0, 12) + '...' : recipe.label,
-            image: recipe.image,
-            fullData: recipe // Store full recipe data for later use
-          });
+      // Use basic fallback data
+      const fallbackRecipes = [
+        {
+          id: 'fallback_1',
+          title: 'Chicken Dish',
+          image: 'https://images.unsplash.com/photo-1532550907401-a500c9a57435?w=200&h=200&fit=crop',
+          category: 'protein',
+          time: 30
+        },
+        {
+          id: 'fallback_2',
+          title: 'Pasta Recipe',
+          image: 'https://images.unsplash.com/photo-1621996346565-e3dbc353d946?w=200&h=200&fit=crop',
+          category: 'pasta',
+          time: 25
+        },
+        {
+          id: 'fallback_3',
+          title: 'Fresh Salad',
+          image: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200&h=200&fit=crop',
+          category: 'salad',
+          time: 10
+        },
+        {
+          id: 'fallback_4',
+          title: 'Sweet Dessert',
+          image: 'https://images.unsplash.com/photo-1525351484163-7529414344d8?w=200&h=200&fit=crop',
+          category: 'dessert',
+          time: 45
         }
-      });
+      ];
 
-      setPopularRecipes(recipes);
+      setPopularRecipes(fallbackRecipes);
     } catch (error) {
-      console.error('Error fetching popular recipes:', error);
-      // Fallback to mock data if API fails
-      setPopularRecipes([
-        {
-          id: '1',
-          title: 'Egg & Avo...',
-          image: 'https://images.unsplash.com/photo-1525351484163-7529414344d8?w=200&h=200&fit=crop'
-        },
-        {
-          id: '2',
-          title: 'Bowl of r...',
-          image: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200&h=200&fit=crop'
-        },
-        {
-          id: '3',
-          title: 'Chicken S...',
-          image: 'https://images.unsplash.com/photo-1532550907401-a500c9a57435?w=200&h=200&fit=crop'
-        },
-        {
-          id: '4',
-          title: 'Pasta D...',
-          image: 'https://images.unsplash.com/photo-1621996346565-e3dbc353d946?w=200&h=200&fit=crop'
-        }
-      ]);
+      console.error('❌ Even fallback failed:', error);
     } finally {
       setLoadingPopular(false);
     }
@@ -179,6 +247,18 @@ const RecipeSearch = () => {
     try {
       console.log('🔍 Searching for recipes:', query);
       
+      // Check API limits before searching
+      const apiStats = RecipeCacheService.getApiUsageStats();
+      if (!apiStats.canMakeApiCall) {
+        Alert.alert(
+          'Search Limit Reached', 
+          `Please wait ${apiStats.secondsUntilReset} seconds before searching again.\n\nAPI Limit: ${apiStats.rateLimit} searches per minute.`,
+          [{ text: 'OK' }]
+        );
+        setLoading(false);
+        return;
+      }
+      
       const searchOptions = {
         from: 0,
         to: 20,
@@ -186,10 +266,19 @@ const RecipeSearch = () => {
       };
 
       const result = await EdamamService.searchRecipes(query, searchOptions);
+      
+      // Track the API call
+      await RecipeCacheService.trackApiCall();
 
       if (result.success) {
         setRecipes(result.data.recipes);
         console.log(`✅ Found ${result.data.recipes.length} recipes`);
+        
+        if (result.cached) {
+          console.log(`💾 Results loaded from cache (no API call used)`);
+        } else {
+          console.log(`📊 API calls used: ${apiStats.apiCallsThisMinute + 1}/${apiStats.rateLimit} this minute`);
+        }
       } else {
         Alert.alert('Search Error', result.error || 'Failed to search recipes. Please try again.');
         setRecipes([]);
@@ -288,6 +377,9 @@ const RecipeSearch = () => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+      
+      {/* API Usage Stats - Only show in development */}
+      <ApiUsageStats visible={__DEV__} />
       
       {/* Search Header */}
       <View style={styles.searchHeader}>
@@ -392,15 +484,22 @@ const RecipeSearch = () => {
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Popular Recipes</Text>
-              <TouchableOpacity onPress={loadPopularRecipesFromCache}>
-                <Text style={styles.viewAllText}>Refresh</Text>
+              <TouchableOpacity 
+                onPress={handleRefreshPopularRecipes}
+                disabled={loadingPopular}
+              >
+                <Text style={[styles.viewAllText, loadingPopular && styles.disabledText]}>
+                  {loadingPopular ? 'Refreshing...' : 'Refresh'}
+                </Text>
               </TouchableOpacity>
             </View>
             
             {loadingPopular ? (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color="#4CAF50" />
-                <Text style={styles.loadingText}>Loading popular recipes...</Text>
+                <Text style={styles.loadingText}>
+                  {popularRecipes.length > 0 ? 'Refreshing recipes...' : 'Loading popular recipes...'}
+                </Text>
               </View>
             ) : (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.popularRecipesContainer}>
@@ -410,8 +509,18 @@ const RecipeSearch = () => {
                     style={[styles.popularRecipeCard, index === 0 && styles.firstCard]}
                     onPress={() => handlePopularRecipePress(recipe)}
                   >
-                    <Image source={{ uri: recipe.image }} style={styles.popularRecipeImage} />
+                    <Image 
+                      source={{ uri: recipe.image }} 
+                      style={styles.popularRecipeImage}
+                      onError={() => console.log('Image load error for:', recipe.title)}
+                    />
                     <Text style={styles.popularRecipeTitle}>{recipe.title}</Text>
+                    {recipe.category && (
+                      <Text style={styles.recipeCategory}>{recipe.category}</Text>
+                    )}
+                    {recipe.time && (
+                      <Text style={styles.recipeTime}>⏱️ {recipe.time}min</Text>
+                    )}
                   </TouchableOpacity>
                 ))}
               </ScrollView>
@@ -648,9 +757,26 @@ const styles = StyleSheet.create({
   },
   popularRecipeTitle: {
     fontSize: 12,
+    color: '#333',
+    textAlign: 'center',
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  recipeCategory: {
+    fontSize: 10,
     color: '#666',
     textAlign: 'center',
+    textTransform: 'capitalize',
+    marginBottom: 2,
+  },
+  recipeTime: {
+    fontSize: 10,
+    color: '#4CAF50',
+    textAlign: 'center',
     fontWeight: '500',
+  },
+  disabledText: {
+    opacity: 0.5,
   },
   loadingContainer: {
     alignItems: 'center',

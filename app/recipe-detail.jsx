@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import EdamamService from '../services/edamamService';
+import EdamamService from '../services/edamam-service';
 
 const { width } = Dimensions.get('window');
 
@@ -58,28 +58,39 @@ const RecipeDetail = () => {
   const fetchSimilarRecipes = async (currentRecipe) => {
     setLoadingSimilar(true);
     try {
-      console.log('🎯 Starting similar recipe search for:', currentRecipe.label);
+      console.log('🎯 Starting SMART similar recipe search for:', currentRecipe.label);
       console.log('📋 Recipe data:', {
         dishType: currentRecipe.dishType,
         cuisineType: currentRecipe.cuisineType,
-        mealType: currentRecipe.mealType
+        mealType: currentRecipe.mealType,
+        ingredients: currentRecipe.ingredientLines?.length || 0
       });
       
-      // Fetch more recipes for better variety and relevance
-      const result = await EdamamService.getSimilarRecipes(currentRecipe, 15);
+      // Use enhanced similar recipes with ingredient and protein analysis
+      const result = await EdamamService.getSimilarRecipes(currentRecipe, 12);
       
-      console.log('📊 Similar recipes result:', result);
+      console.log('📊 SMART similar recipes result:', result);
       
       if (result.success) {
         setSimilarRecipes(result.data.recipes);
         console.log(`✅ Successfully set ${result.data.recipes.length} similar recipes`);
+        
+        if (result.data.analysis) {
+          console.log('🧬 Recipe analysis:', result.data.analysis);
+        }
+        
+        if (result.data.cached) {
+          console.log('💾 Similar recipes loaded from cache');
+        } else {
+          console.log(`🔍 Similar recipes found using ${result.data.strategiesUsed} search strategies`);
+        }
       } else {
         console.log('❌ Failed to get similar recipes:', result.error);
-        setSimilarRecipes([]); // Set empty array on failure
+        setSimilarRecipes([]);
       }
     } catch (error) {
       console.error('💥 Error in fetchSimilarRecipes:', error);
-      setSimilarRecipes([]); // Set empty array on error
+      setSimilarRecipes([]);
     } finally {
       setLoadingSimilar(false);
     }

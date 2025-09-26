@@ -26,9 +26,9 @@ export default function Home() {
     
     try {
       // Lazy load heavy dependencies only when needed
-      const { useSupabase } = await import('../hooks/useSupabase');
-      const { useCustomAuth } = await import('../hooks/useCustomAuth');
-      const { DatabaseSetup } = await import('../lib/databaseSetup');
+      const { useSupabase } = await import('../hooks/use-supabase');
+      const { useCustomAuth } = await import('../hooks/use-custom-auth');
+      const { DatabaseSetup } = await import('../lib/database-setup');
       
       console.log('🚀 Background: Starting service initialization...');
       
