@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,14 +9,18 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useCustomAuth } from '../hooks/useCustomAuth';
+import { globalStyles } from '../assets/css/globalStyles';
+import { otpVerificationStyles } from '../assets/css/otpVerificationStyles';
+import TopographicBackground from '../components/TopographicBackground';
 
 const OTPVerification = () => {
-  const [otp, setOtp] = useState('');
+  const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [loading, setLoading] = useState(false);
   const [resendLoading, setResendLoading] = useState(false);
   const [countdown, setCountdown] = useState(60);
   const [canResend, setCanResend] = useState(false);
 
+  const inputRefs = useRef([]);
   const { verifyOTP, resendOTP } = useCustomAuth();
   const { email } = useLocalSearchParams();
 
@@ -29,32 +33,46 @@ const OTPVerification = () => {
     }
   }, [countdown]);
 
-  const handleVerifyOTP = async () => {
-    if (!otp || otp.length !== 6) {
-      Alert.alert('Error', 'Please enter a valid 6-digit OTP');
-      return;
-    }
+  const handleOtpChange = (index, value) => {
+    // Only allow numbers
+    if (!/^\d*$/.test(value)) return;
+    
+    const newOtp = [...otp];
+    newOtp[index] = value;
+    setOtp(newOtp);
 
-    // Basic OTP format validation
-    if (!/^\d{6}$/.test(otp)) {
-      Alert.alert('Error', 'OTP must contain only numbers');
+    // Move to next input if value is entered
+    if (value && index < 5) {
+      inputRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handleKeyPress = (index, key) => {
+    if (key === 'Backspace' && !otp[index] && index > 0) {
+      inputRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const handleVerifyOTP = async () => {
+    const otpString = otp.join('');
+    
+    if (otpString.length !== 6) {
+      Alert.alert('Error', 'Please enter a valid 6-digit verification code');
       return;
     }
 
     try {
       setLoading(true);
-
-      const { data, error } = await verifyOTP(email, otp, 'signup');
+      const { data, error } = await verifyOTP(email, otpString, 'signup');
 
       if (error) {
-        // Handle different types of OTP errors
         if (error.message.includes('expired')) {
           Alert.alert(
-            'OTP Expired',
+            'Code Expired',
             'Your verification code has expired. Please request a new one.',
             [
               {
-                text: 'Resend OTP',
+                text: 'Resend Code',
                 onPress: handleResendOTP
               },
               {
@@ -64,22 +82,7 @@ const OTPVerification = () => {
             ]
           );
         } else if (error.message.includes('invalid') || error.message.includes('Invalid')) {
-          Alert.alert('Invalid OTP', 'The verification code you entered is incorrect. Please try again.');
-        } else if (error.message.includes('too many')) {
-          Alert.alert(
-            'Too Many Attempts',
-            'Too many failed attempts. Please wait before trying again or request a new code.',
-            [
-              {
-                text: 'Resend OTP',
-                onPress: handleResendOTP
-              },
-              {
-                text: 'OK',
-                style: 'cancel'
-              }
-            ]
-          );
+          Alert.alert('Invalid Code', 'The verification code you entered is incorrect. Please try again.');
         } else {
           Alert.alert('Verification Failed', error.message);
         }
@@ -106,7 +109,6 @@ const OTPVerification = () => {
   const handleResendOTP = async () => {
     try {
       setResendLoading(true);
-
       const { error } = await resendOTP(email, 'signup');
 
       if (error) {
@@ -115,162 +117,86 @@ const OTPVerification = () => {
         Alert.alert('Success', 'A new verification code has been sent to your email');
         setCountdown(60);
         setCanResend(false);
-        setOtp(''); // Clear current OTP input
+        setOtp(['', '', '', '', '', '']); // Clear current OTP input
       }
     } catch (err) {
-      Alert.alert('Error', 'Failed to resend OTP. Please try again.');
+      Alert.alert('Error', 'Failed to resend code. Please try again.');
     } finally {
       setResendLoading(false);
     }
   };
 
-  const formatOTP = (text) => {
-    // Only allow numbers and limit to 6 digits
-    const numbers = text.replace(/[^0-9]/g, '');
-    return numbers.slice(0, 6);
+  const goBack = () => {
+    router.back();
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Verify Your Email</Text>
-
-      <Text style={styles.subtitle}>
-        We've sent a 6-digit verification code to:
-      </Text>
-
-      <Text style={styles.email}>{email}</Text>
-
-      <Text style={styles.instruction}>
-        Enter the verification code below:
-      </Text>
-
-      <TextInput
-        style={styles.otpInput}
-        placeholder="000000"
-        value={otp}
-        onChangeText={(text) => setOtp(formatOTP(text))}
-        keyboardType="numeric"
-        maxLength={6}
-        textAlign="center"
-        fontSize={24}
-        letterSpacing={5}
-      />
-
-      <TouchableOpacity
-        style={[styles.button, (!otp || otp.length !== 6) && styles.buttonDisabled]}
-        onPress={handleVerifyOTP}
-        disabled={loading || !otp || otp.length !== 6}
-      >
-        <Text style={styles.buttonText}>
-          {loading ? 'Verifying...' : 'Verify OTP'}
-        </Text>
+    <TopographicBackground>
+      {/* Back button */}
+      <TouchableOpacity style={globalStyles.backButton} onPress={goBack}>
+        <Text style={otpVerificationStyles.backArrow}>←</Text>
       </TouchableOpacity>
-
-      <View style={styles.resendContainer}>
-        {canResend ? (
+      
+      <View style={globalStyles.card}>
+        <View style={globalStyles.formContent}>
+          <Text style={globalStyles.title}>Email Verification</Text>
+          
+          <Text style={globalStyles.subtitle}>
+            Enter the verification code we just sent to your email address.
+          </Text>
+          
+          {/* OTP Input Boxes */}
+          <View style={globalStyles.otpContainer}>
+            {otp.map((digit, index) => (
+              <TextInput
+                key={index}
+                ref={(ref) => inputRefs.current[index] = ref}
+                style={[
+                  globalStyles.otpBox,
+                  digit && globalStyles.otpBoxFilled
+                ]}
+                value={digit}
+                onChangeText={(value) => handleOtpChange(index, value)}
+                onKeyPress={({ nativeEvent }) => handleKeyPress(index, nativeEvent.key)}
+                keyboardType="numeric"
+                maxLength={1}
+                textAlign="center"
+              />
+            ))}
+          </View>
+        </View>
+        
+        <View style={globalStyles.formActions}>
           <TouchableOpacity
-            onPress={handleResendOTP}
-            disabled={resendLoading}
+            style={globalStyles.primaryButton}
+            onPress={handleVerifyOTP}
+            disabled={loading || otp.join('').length !== 6}
           >
-            <Text style={styles.resendText}>
-              {resendLoading ? 'Sending...' : 'Resend OTP'}
+            <Text style={globalStyles.primaryButtonText}>
+              {loading ? 'Verifying...' : 'Verify'}
             </Text>
           </TouchableOpacity>
-        ) : (
-          <Text style={styles.countdownText}>
-            Resend OTP in {countdown}s
-          </Text>
-        )}
+          
+          <View style={otpVerificationStyles.resendContainer}>
+            {canResend ? (
+              <TouchableOpacity
+                onPress={handleResendOTP}
+                disabled={resendLoading}
+              >
+                <Text style={globalStyles.linkText}>
+                  {resendLoading ? 'Sending...' : 'Resend'}
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <Text style={globalStyles.grayText}>
+                Didn't receive email? Resend
+              </Text>
+            )}
+          </View>
+        </View>
       </View>
-
-      <TouchableOpacity
-        style={styles.backButton}
-        onPress={() => router.back()}
-      >
-        <Text style={styles.backButtonText}>Back to Sign Up</Text>
-      </TouchableOpacity>
-    </View>
+    </TopographicBackground>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: 20,
-    backgroundColor: '#fff',
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 20,
-    color: '#333',
-  },
-  subtitle: {
-    fontSize: 16,
-    textAlign: 'center',
-    color: '#666',
-    marginBottom: 10,
-  },
-  email: {
-    fontSize: 16,
-    fontWeight: '600',
-    textAlign: 'center',
-    color: '#007AFF',
-    marginBottom: 30,
-  },
-  instruction: {
-    fontSize: 16,
-    textAlign: 'center',
-    color: '#333',
-    marginBottom: 30,
-  },
-  otpInput: {
-    borderWidth: 2,
-    borderColor: '#007AFF',
-    borderRadius: 10,
-    padding: 20,
-    marginBottom: 30,
-    backgroundColor: '#f8f9fa',
-    fontWeight: 'bold',
-  },
-  button: {
-    backgroundColor: '#007AFF',
-    padding: 18,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  buttonDisabled: {
-    backgroundColor: '#ccc',
-  },
-  buttonText: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  resendContainer: {
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  resendText: {
-    color: '#007AFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  countdownText: {
-    color: '#666',
-    fontSize: 16,
-  },
-  backButton: {
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  backButtonText: {
-    color: '#666',
-    fontSize: 16,
-  },
-});
 
 export default OTPVerification;
