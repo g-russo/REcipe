@@ -8,7 +8,7 @@ import {
   StyleSheet
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
-import { useCustomAuth } from '../hooks/useCustomAuth';
+import { useCustomAuth } from '../hooks/use-custom-auth';
 
 const ResetPasswordOTP = () => {
   const [otp, setOtp] = useState('');

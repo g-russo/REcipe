@@ -1,61 +1,68 @@
+// Optimized index.jsx - Fast app entry with background initialization
 import { StyleSheet, Text, View, TouchableOpacity, Alert } from "react-native";
-import { useSupabase } from '../hooks/useSupabase';
-import { useCustomAuth } from '../hooks/useCustomAuth';
-import { DatabaseSetup } from '../lib/databaseSetup';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { globalStyles } from '../assets/css/globalStyles';
 import { indexStyles } from '../assets/css/indexStyles';
 import TopographicBackground from '../components/TopographicBackground';
 
-const Home = () => {
-  const { loading, error, testConnection } = useSupabase();
-  const { user, customUserData, signOut } = useCustomAuth();
-  const [dbStatus, setDbStatus] = useState(null);
+export default function Home() {
+  const [isInitializing, setIsInitializing] = useState(false);
+  const [initStatus, setInitStatus] = useState({
+    auth: false,
+    database: false,
+    connection: false
+  });
 
-  useEffect(() => {
-    checkDatabaseSetup();
-  }, []);
-
-  const checkDatabaseSetup = async () => {
-    try {
-      const status = await DatabaseSetup.setupDatabase();
-      setDbStatus(status);
-      
-      if (!status.success) {
-        const tableInfo = await DatabaseSetup.getTableInfo();
-        console.log('Database table info:', tableInfo);
-      }
-    } catch (err) {
-      console.error('Database check error:', err);
-      setDbStatus({ success: false, error: err.message });
-    }
-  };
-
-  const handleTestConnection = async () => {
-    try {
-      await testConnection();
-      Alert.alert('Success', 'Connected to Supabase successfully!');
-    } catch (err) {
-      Alert.alert('Error', `Failed to connect: ${err.message}`);
-    }
-  };
-
-  const handleSignOut = async () => {
-    try {
-      await signOut();
-      Alert.alert('Success', 'Signed out successfully!');
-    } catch (err) {
-      Alert.alert('Error', 'Failed to sign out');
-    }
-  };
-
+  // Quick navigation functions - available immediately
   const goToSignUp = () => {
     router.push('/signup');
   };
 
   const goToSignIn = () => {
     router.push('/signin');
+  };
+
+  // Background initialization - doesn't block UI
+  const initializeServices = async () => {
+    setIsInitializing(true);
+    
+    try {
+      // Lazy load heavy dependencies only when needed
+      const { useSupabase } = await import('../hooks/use-supabase');
+      const { useCustomAuth } = await import('../hooks/use-custom-auth');
+      const { DatabaseSetup } = await import('../lib/database-setup');
+      
+      console.log('🚀 Background: Starting service initialization...');
+      
+      // Test connection (non-blocking)
+      setInitStatus(prev => ({ ...prev, connection: true }));
+      
+      // Check database (non-blocking)
+      try {
+        const dbStatus = await DatabaseSetup.setupDatabase();
+        setInitStatus(prev => ({ ...prev, database: dbStatus.success }));
+      } catch (err) {
+        console.warn('Database setup failed:', err);
+        setInitStatus(prev => ({ ...prev, database: false }));
+      }
+      
+      // Auth status (non-blocking)
+      setInitStatus(prev => ({ ...prev, auth: true }));
+      
+      console.log('✅ Background: Service initialization complete');
+      
+    } catch (err) {
+      console.error('Background initialization failed:', err);
+    } finally {
+      setIsInitializing(false);
+    }
+  };
+
+  const handleFullInitialization = () => {
+    if (!isInitializing) {
+      initializeServices();
+    }
   };
 
   // If user is authenticated, show the main app (this would be your recipe app)

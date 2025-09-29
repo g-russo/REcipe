@@ -8,7 +8,7 @@ import {
   StyleSheet
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
-import { useCustomAuth } from '../hooks/useCustomAuth';
+import { useCustomAuth } from '../hooks/use-custom-auth';
 import { globalStyles } from '../assets/css/globalStyles';
 import { otpVerificationStyles } from '../assets/css/otpVerificationStyles';
 import TopographicBackground from '../components/TopographicBackground';

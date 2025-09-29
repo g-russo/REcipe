@@ -9,7 +9,7 @@ import {
   StatusBar,
   Alert
 } from 'react-native';
-import { useCustomAuth } from '../hooks/useCustomAuth';
+import { useCustomAuth } from '../hooks/use-custom-auth';
 import { router } from 'expo-router';
 import { supabase } from '../lib/supabase';
 
