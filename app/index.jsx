@@ -2,9 +2,15 @@
 import { StyleSheet, Text, View, TouchableOpacity, Alert } from "react-native";
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
+import { globalStyles } from '../assets/css/globalStyles';
+import { indexStyles } from '../assets/css/indexStyles';
+import TopographicBackground from '../components/TopographicBackground';
+import { useCustomAuth } from '../hooks/use-custom-auth';
 
 export default function Home() {
   const [isInitializing, setIsInitializing] = useState(false);
+  const [user, setUser] = useState(null);
+  const [customUserData, setCustomUserData] = useState(null);
   const [initStatus, setInitStatus] = useState({
     auth: false,
     database: false,
@@ -45,7 +51,20 @@ export default function Home() {
       }
       
       // Auth status (non-blocking)
-      setInitStatus(prev => ({ ...prev, auth: true }));
+      try {
+        const { useCustomAuth } = await import('../hooks/use-custom-auth');
+        const authHook = useCustomAuth();
+        
+        if (authHook.user) {
+          setUser(authHook.user);
+          setCustomUserData(authHook.customUserData);
+        }
+        
+        setInitStatus(prev => ({ ...prev, auth: true }));
+      } catch (err) {
+        console.warn('Auth status check failed:', err);
+        setInitStatus(prev => ({ ...prev, auth: false }));
+      }
       
       console.log('✅ Background: Service initialization complete');
       
@@ -62,144 +81,58 @@ export default function Home() {
     }
   };
 
+  const handleSignOut = async () => {
+    try {
+      const { useCustomAuth } = await import('../hooks/use-custom-auth');
+      const { signOut } = useCustomAuth();
+      await signOut();
+      setUser(null);
+      setCustomUserData(null);
+    } catch (error) {
+      console.error('Sign out failed:', error);
+      Alert.alert('Error', 'Failed to sign out');
+    }
+  };
+
+  // Get auth data from custom hook
+  const { user: authUser, customUserData: authCustomData } = useCustomAuth() || {};
+  
+  // Sync auth data when available
+  useEffect(() => {
+    if (authUser && !user) {
+      setUser(authUser);
+    }
+    if (authCustomData && !customUserData) {
+      setCustomUserData(authCustomData);
+    }
+  }, [authUser, authCustomData, user, customUserData]);
+
+  // If user is authenticated, redirect to home page
+  useEffect(() => {
+    if (user) {
+      console.log('✅ User authenticated, redirecting to home...');
+      router.replace('/home');
+    }
+  }, [user]);
+
+  // Welcome screen for non-authenticated users
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Welcome to REcipe!</Text>
-      <Text style={styles.subtitle}>Your culinary companion</Text>
-      
-      {/* Primary actions - always available */}
-      <View style={styles.primaryActions}>
-        <TouchableOpacity style={styles.primaryButton} onPress={goToSignUp}>
-          <Text style={styles.primaryButtonText}>Get Started</Text>
-        </TouchableOpacity>
+    <TopographicBackground>
+      <View style={globalStyles.welcomeCard}>
+        <Text style={globalStyles.title}>Welcome</Text>
+        <Text style={globalStyles.subtitle}>
+          Just a few steps to start saving food and cooking smarter.
+        </Text>
         
-        <TouchableOpacity style={styles.secondaryButton} onPress={goToSignIn}>
-          <Text style={styles.secondaryButtonText}>Sign In</Text>
-        </TouchableOpacity>
+        <View style={globalStyles.formActions}>
+          <TouchableOpacity 
+            style={globalStyles.primaryButton} 
+            onPress={goToSignIn}
+          >
+            <Text style={globalStyles.primaryButtonText}>Continue</Text>
+          </TouchableOpacity>
+        </View>
       </View>
-      
-      {/* Optional: Initialize services */}
-      <View style={styles.serviceSection}>
-        <TouchableOpacity 
-          style={styles.serviceButton} 
-          onPress={handleFullInitialization}
-          disabled={isInitializing}
-        >
-          <Text style={styles.serviceButtonText}>
-            {isInitializing ? 'Initializing Services...' : 'Initialize Full Features'}
-          </Text>
-        </TouchableOpacity>
-        
-        {/* Service status indicators */}
-        {(initStatus.auth || initStatus.database || initStatus.connection) && (
-          <View style={styles.statusContainer}>
-            <Text style={styles.statusTitle}>Service Status:</Text>
-            <Text style={[styles.statusItem, initStatus.connection && styles.statusActive]}>
-              {initStatus.connection ? '✅' : '⏳'} Connection
-            </Text>
-            <Text style={[styles.statusItem, initStatus.auth && styles.statusActive]}>
-              {initStatus.auth ? '✅' : '⏳'} Authentication
-            </Text>
-            <Text style={[styles.statusItem, initStatus.database && styles.statusActive]}>
-              {initStatus.database ? '✅' : '⚠️'} Database
-            </Text>
-          </View>
-        )}
-      </View>
-    </View>
+    </TopographicBackground>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-    backgroundColor: '#f5f5f5',
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#4CAF50',
-    marginBottom: 10,
-    textAlign: 'center',
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#666',
-    marginBottom: 40,
-    textAlign: 'center',
-  },
-  primaryActions: {
-    width: '100%',
-    marginBottom: 30,
-  },
-  primaryButton: {
-    backgroundColor: '#4CAF50',
-    padding: 18,
-    borderRadius: 12,
-    marginBottom: 15,
-    alignItems: 'center',
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-  },
-  primaryButtonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  secondaryButton: {
-    backgroundColor: 'transparent',
-    borderWidth: 2,
-    borderColor: '#4CAF50',
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  secondaryButtonText: {
-    color: '#4CAF50',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  serviceSection: {
-    width: '100%',
-    marginTop: 20,
-  },
-  serviceButton: {
-    backgroundColor: '#2196F3',
-    padding: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginBottom: 15,
-  },
-  serviceButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  statusContainer: {
-    backgroundColor: '#fff',
-    padding: 15,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#ddd',
-  },
-  statusTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 10,
-    color: '#333',
-  },
-  statusItem: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 5,
-  },
-  statusActive: {
-    color: '#4CAF50',
-  },
-});

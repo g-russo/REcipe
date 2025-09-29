@@ -10,6 +10,9 @@ import {
 } from 'react-native';
 import { useCustomAuth } from '../hooks/use-custom-auth';
 import { router, useLocalSearchParams } from 'expo-router';
+import { globalStyles } from '../assets/css/globalStyles';
+import { forgotPasswordStyles } from '../assets/css/forgotPasswordStyles';
+import TopographicBackground from '../components/TopographicBackground';
 
 const ForgotPassword = () => {
   const [email, setEmail] = useState('');
@@ -75,132 +78,62 @@ const ForgotPassword = () => {
     }
   };
 
-  const goToSignIn = () => {
-    router.push(returnTo || '/signin');
+  const goBack = () => {
+    router.back();
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Forgot Password?</Text>
-      
-      <Text style={styles.subtitle}>
-        Don't worry! Enter your email address and we'll send you a verification code to reset your password.
-      </Text>
-      
-      <TextInput
-        style={styles.input}
-        placeholder="Enter your email address"
-        value={email}
-        onChangeText={setEmail}
-        keyboardType="email-address"
-        autoCapitalize="none"
-        autoCorrect={false}
-        editable={!loading}
-      />
-      
-      <TouchableOpacity 
-        style={[styles.button, loading && styles.buttonDisabled]} 
-        onPress={handleForgotPassword}
-        disabled={loading}
-      >
-        <Text style={styles.buttonText}>
-          {loading ? 'Sending Code...' : 'Send Reset Code'}
-        </Text>
+    <TopographicBackground>
+      {/* Back button */}
+      <TouchableOpacity style={globalStyles.backButton} onPress={goBack}>
+        <Text style={forgotPasswordStyles.backArrow}>←</Text>
       </TouchableOpacity>
       
-      <View style={styles.helpSection}>
-        <Text style={styles.helpTitle}>💡 What happens next?</Text>
-        <Text style={styles.helpText}>
-          1. We'll send a 6-digit code to your email{'\n'}
-          2. Enter the code on the verification screen{'\n'}
-          3. Create a new secure password{'\n'}
-          4. Sign in with your new password
-        </Text>
+      <View style={globalStyles.card}>
+        <View style={globalStyles.formContent}>
+          <Text style={globalStyles.title}>Forgot Password</Text>
+          
+          <Text style={globalStyles.subtitle}>
+            Enter the email address so we can send you your 6-digit OTP
+          </Text>
+          
+          <View style={globalStyles.inputContainer}>
+            <Text style={globalStyles.inputLabel}>Email</Text>
+            <TextInput
+              style={globalStyles.input}
+              placeholder="demo@email.com"
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!loading}
+              placeholderTextColor="#BDC3C7"
+            />
+          </View>
+        </View>
+        
+        <View style={globalStyles.formActions}>
+          <TouchableOpacity 
+            style={globalStyles.primaryButton} 
+            onPress={handleForgotPassword}
+            disabled={loading}
+          >
+            <Text style={globalStyles.primaryButtonText}>
+              {loading ? 'Sending...' : 'Send OTP'}
+            </Text>
+          </TouchableOpacity>
+          
+          <View style={forgotPasswordStyles.resendContainer}>
+            <Text style={globalStyles.grayText}>Didn't receive email? </Text>
+            <TouchableOpacity>
+              <Text style={globalStyles.linkText}>Resend</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </View>
-      
-      <TouchableOpacity onPress={goToSignIn} style={styles.backToSignIn}>
-        <Text style={styles.linkText}>
-          Remember your password? Sign In
-        </Text>
-      </TouchableOpacity>
-    </ScrollView>
+    </TopographicBackground>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    padding: 20,
-    backgroundColor: '#fff',
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 15,
-    color: '#333',
-  },
-  subtitle: {
-    fontSize: 16,
-    textAlign: 'center',
-    color: '#666',
-    marginBottom: 40,
-    lineHeight: 24,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    padding: 18,
-    marginBottom: 25,
-    borderRadius: 10,
-    fontSize: 16,
-    backgroundColor: '#f8f9fa',
-  },
-  button: {
-    backgroundColor: '#007AFF',
-    padding: 18,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginBottom: 30,
-  },
-  buttonDisabled: {
-    backgroundColor: '#ccc',
-  },
-  buttonText: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  helpSection: {
-    backgroundColor: '#f0f8ff',
-    padding: 20,
-    borderRadius: 10,
-    marginBottom: 30,
-    borderLeftWidth: 4,
-    borderLeftColor: '#007AFF',
-  },
-  helpTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 10,
-  },
-  helpText: {
-    fontSize: 14,
-    color: '#666',
-    lineHeight: 20,
-  },
-  backToSignIn: {
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  linkText: {
-    textAlign: 'center',
-    color: '#007AFF',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-});
 
 export default ForgotPassword;
