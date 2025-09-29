@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import EdamamService from '../services/edamamService';
+import EdamamService from '../services/edamam-service';
 
 export function useRecipes() {
   const [favorites, setFavorites] = useState([]);

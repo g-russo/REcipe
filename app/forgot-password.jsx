@@ -8,7 +8,7 @@ import {
   StyleSheet,
   ScrollView
 } from 'react-native';
-import { useCustomAuth } from '../hooks/useCustomAuth';
+import { useCustomAuth } from '../hooks/use-custom-auth';
 import { router, useLocalSearchParams } from 'expo-router';
 import { globalStyles } from '../assets/css/globalStyles';
 import { forgotPasswordStyles } from '../assets/css/forgotPasswordStyles';

@@ -1,24 +1,53 @@
 import { Stack } from 'expo-router';
-import { useEffect } from 'react';
+import React, { useEffect } from 'react';
+import { StatusBar } from 'expo-status-bar';
+import * as SplashScreen from 'expo-splash-screen';
+import * as Font from 'expo-font';
+import { SupabaseProvider } from '../contexts/supabase-context';
+
+// Keep the splash screen visible while we initialize
+SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   useEffect(() => {
-    // Ensure router is properly initialized
-    console.log('Router layout mounted');
+    async function initializeApp() {
+      try {
+        console.log('🚀 RootLayout: Background initialization starting...');
+        
+        // Background font loading
+        await Font.loadAsync({
+          // Add custom fonts here if needed
+        });
+        
+        console.log('✅ RootLayout: Background initialization complete');
+        
+        // Hide splash screen after initialization
+        setTimeout(async () => {
+          await SplashScreen.hideAsync();
+        }, 100);
+        
+      } catch (error) {
+        console.error('❌ RootLayout: Background initialization failed:', error);
+        // Still hide splash screen even if initialization fails
+        await SplashScreen.hideAsync();
+      }
+    }
+
+    initializeApp();
   }, []);
 
   return (
-    <Stack
-      screenOptions={{
-        headerStyle: {
-          backgroundColor: '#8DB896',
-        },
-        headerTintColor: '#fff',
-        headerTitleStyle: {
-          fontWeight: 'bold',
-        },
-      }}
-    >
+    <SupabaseProvider>
+      <StatusBar style="auto" />
+      <Stack screenOptions={{
+      headerStyle: {
+        backgroundColor: '#4CAF50',
+      },
+      headerTintColor: '#fff',
+      headerTitleStyle: {
+        fontWeight: 'bold',
+      },
+    }}>
       <Stack.Screen 
         name="index" 
         options={{ 
@@ -90,7 +119,7 @@ export default function RootLayout() {
         name="recipe-search" 
         options={{ 
           title: 'Recipe Search',
-          headerShown: true 
+          headerShown: false 
         }} 
       />
       <Stack.Screen 
@@ -101,12 +130,14 @@ export default function RootLayout() {
         }} 
       />
       <Stack.Screen 
-        name="database-test" 
+        name="recipe-detail" 
         options={{ 
-          title: 'Database Test',
-          headerShown: true 
+          title: 'Recipe Details',
+          headerShown: true,
+          headerBackTitle: 'Back'
         }} 
       />
     </Stack>
+    </SupabaseProvider>
   );
 }

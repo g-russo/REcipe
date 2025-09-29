@@ -9,7 +9,7 @@ import {
   ScrollView
 } from 'react-native';
 import Modal from 'react-native-modal';
-import { useCustomAuth } from '../hooks/useCustomAuth';
+import { useCustomAuth } from '../hooks/use-custom-auth';
 import { router } from 'expo-router';
 import { globalStyles } from '../assets/css/globalStyles';
 import { signupStyles } from '../assets/css/signupStyles';

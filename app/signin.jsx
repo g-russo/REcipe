@@ -7,7 +7,7 @@ import {
   Alert, 
   StyleSheet 
 } from 'react-native';
-import { useCustomAuth } from '../hooks/useCustomAuth';
+import { useCustomAuth } from '../hooks/use-custom-auth';
 import { Link, useRouter } from 'expo-router';
 import { globalStyles } from '../assets/css/globalStyles';
 import { signinStyles } from '../assets/css/signinStyles';
