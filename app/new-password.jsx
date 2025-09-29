@@ -8,7 +8,7 @@ import {
   StyleSheet
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useCustomAuth } from '../hooks/useCustomAuth';
+import { useCustomAuth } from '../hooks/use-custom-auth';
 import { newPasswordStyles } from '../assets/css/newPasswordStyles';
 
 const NewPassword = () => {
