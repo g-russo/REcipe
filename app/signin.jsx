@@ -8,14 +8,19 @@ import {
   StyleSheet 
 } from 'react-native';
 import { useCustomAuth } from '../hooks/use-custom-auth';
-import { router } from 'expo-router';
+import { Link, useRouter } from 'expo-router';
+import { globalStyles } from '../assets/css/globalStyles';
+import { signinStyles } from '../assets/css/signinStyles';
+import TopographicBackground from '../components/TopographicBackground';
 
 const SignIn = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
   
   const { signIn } = useCustomAuth();
+  const router = useRouter();
 
   const handleSignIn = async () => {
     if (!email || !password) {
@@ -64,7 +69,7 @@ const SignIn = () => {
         ]);
       } else {
         Alert.alert('Success', 'Signed in successfully!');
-        router.push('/home'); // Navigate to home screen
+        router.push('/'); // Navigate to home screen
       }
     } catch (err) {
       Alert.alert('Error', 'Something went wrong. Please try again.');
@@ -73,108 +78,87 @@ const SignIn = () => {
     }
   };
 
-  const goToSignUp = () => {
-    router.push('/signup');
+  const goToForgotPassword = () => {
+    console.log('Navigating to forgot-password...');
+    router.navigate('forgot-password');
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Sign In</Text>
-      
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        value={email}
-        onChangeText={setEmail}
-        keyboardType="email-address"
-        autoCapitalize="none"
-        autoCorrect={false}
-      />
-      
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-        autoCapitalize="none"
-      />
-      
-      <TouchableOpacity 
-        style={styles.button} 
-        onPress={handleSignIn}
-        disabled={loading}
-      >
-        <Text style={styles.buttonText}>
-          {loading ? 'Signing In...' : 'Sign In'}
-        </Text>
-      </TouchableOpacity>
-      
-      <TouchableOpacity onPress={goToSignUp}>
-        <Text style={styles.linkText}>
-          Don't have an account? Sign Up
-        </Text>
-      </TouchableOpacity>
-      
-      <TouchableOpacity onPress={() => router.push({
-        pathname: '/forgot-password',
-        params: { returnTo: '/signin' }
-      })} style={styles.forgotPasswordButton}>
-        <Text style={styles.forgotPasswordText}>
-          Forgot Password?
-        </Text>
-      </TouchableOpacity>
-    </View>
+    <TopographicBackground>
+      <View style={globalStyles.card}>
+        <View style={globalStyles.formContent}>
+          <Text style={globalStyles.title}>Sign in</Text>
+          
+          <View style={globalStyles.inputContainer}>
+            <Text style={globalStyles.inputLabel}>Email</Text>
+            <TextInput
+              style={globalStyles.input}
+              placeholder="demo@email.com"
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              placeholderTextColor="#BDC3C7"
+            />
+          </View>
+          
+          <View style={globalStyles.inputContainer}>
+            <Text style={globalStyles.inputLabel}>Password</Text>
+            <TextInput
+              style={globalStyles.input}
+              placeholder="enter your password"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              autoCapitalize="none"
+              placeholderTextColor="#BDC3C7"
+            />
+          </View>
+          
+          <View style={signinStyles.optionsContainer}>
+            <TouchableOpacity 
+              style={globalStyles.checkboxContainer}
+              onPress={() => setRememberMe(!rememberMe)}
+            >
+              <View style={[
+                globalStyles.checkbox, 
+                rememberMe && globalStyles.checkboxChecked
+              ]}>
+                {rememberMe && <Text style={signinStyles.checkmark}>✓</Text>}
+              </View>
+              <Text style={globalStyles.checkboxText}>Remember Me</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity onPress={goToForgotPassword}>
+              <Text style={globalStyles.linkText}>Forgot Password?</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+        
+        <View style={globalStyles.formActions}>
+          <TouchableOpacity 
+            style={globalStyles.primaryButton} 
+            onPress={handleSignIn}
+            disabled={loading}
+          >
+            <Text style={globalStyles.primaryButtonText}>
+              {loading ? 'Signing In...' : 'Login'}
+            </Text>
+          </TouchableOpacity>
+          
+          <View style={signinStyles.signupContainer}>
+            <Text style={globalStyles.grayText}>Don't have an Account? </Text>
+            <Link href="/signup" asChild>
+              <TouchableOpacity>
+                <Text style={globalStyles.linkText}>Sign up</Text>
+              </TouchableOpacity>
+            </Link>
+          </View>
+        </View>
+      </View>
+    </TopographicBackground>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: 20,
-    backgroundColor: '#fff',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 30,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    padding: 15,
-    marginBottom: 15,
-    borderRadius: 5,
-    fontSize: 16,
-  },
-  button: {
-    backgroundColor: '#007AFF',
-    padding: 15,
-    borderRadius: 5,
-    alignItems: 'center',
-    marginBottom: 15,
-  },
-  buttonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  linkText: {
-    textAlign: 'center',
-    color: '#007AFF',
-    fontSize: 16,
-  },
-  forgotPasswordButton: {
-    marginTop: 15,
-    alignItems: 'center',
-  },
-  forgotPasswordText: {
-    color: '#666',
-    fontSize: 16,
-    textDecorationLine: 'underline',
-  },
-});
 
 export default SignIn;

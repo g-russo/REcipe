@@ -85,6 +85,29 @@ export default function RootLayout() {
         }} 
       />
       <Stack.Screen 
+        name="otp-verification" 
+        options={{ 
+          title: 'Verify Email',
+          headerShown: true,
+          headerBackVisible: false
+        }} 
+      />
+      <Stack.Screen 
+        name="new-password" 
+        options={{ 
+          title: 'New Password',
+          headerShown: true 
+        }} 
+      />
+      <Stack.Screen 
+        name="force-password-change" 
+        options={{ 
+          title: 'Change Password',
+          headerShown: true,
+          headerBackVisible: false
+        }} 
+      />
+      <Stack.Screen 
         name="home" 
         options={{ 
           title: 'Home',
