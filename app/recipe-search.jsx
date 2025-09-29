@@ -17,7 +17,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import EdamamService from '../services/edamam-service';
 import RecipeCacheService from '../services/recipe-cache-service';
-import ApiUsageStats from '../components/ApiUsageStats';
 
 const RecipeSearch = () => {
   const router = useRouter();
@@ -379,7 +378,7 @@ const RecipeSearch = () => {
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
       
       {/* API Usage Stats - Only show in development */}
-      <ApiUsageStats visible={__DEV__} />
+
       
       {/* Search Header */}
       <View style={styles.searchHeader}>

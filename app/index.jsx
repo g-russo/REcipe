@@ -5,9 +5,12 @@ import { useEffect, useState } from 'react';
 import { globalStyles } from '../assets/css/globalStyles';
 import { indexStyles } from '../assets/css/indexStyles';
 import TopographicBackground from '../components/TopographicBackground';
+import { useCustomAuth } from '../hooks/use-custom-auth';
 
 export default function Home() {
   const [isInitializing, setIsInitializing] = useState(false);
+  const [user, setUser] = useState(null);
+  const [customUserData, setCustomUserData] = useState(null);
   const [initStatus, setInitStatus] = useState({
     auth: false,
     database: false,
@@ -48,7 +51,20 @@ export default function Home() {
       }
       
       // Auth status (non-blocking)
-      setInitStatus(prev => ({ ...prev, auth: true }));
+      try {
+        const { useCustomAuth } = await import('../hooks/use-custom-auth');
+        const authHook = useCustomAuth();
+        
+        if (authHook.user) {
+          setUser(authHook.user);
+          setCustomUserData(authHook.customUserData);
+        }
+        
+        setInitStatus(prev => ({ ...prev, auth: true }));
+      } catch (err) {
+        console.warn('Auth status check failed:', err);
+        setInitStatus(prev => ({ ...prev, auth: false }));
+      }
       
       console.log('✅ Background: Service initialization complete');
       
@@ -65,32 +81,39 @@ export default function Home() {
     }
   };
 
-  // If user is authenticated, show the main app (this would be your recipe app)
-  if (user) {
-    return (
-      <TopographicBackground>
-        <View style={globalStyles.card}>
-          <Text style={globalStyles.title}>Welcome back!</Text>
-          <Text style={indexStyles.userEmail}>{user.email}</Text>
-          
-          {customUserData && (
-            <View style={indexStyles.customDataSection}>
-              <Text style={indexStyles.customDataText}>Name: {customUserData.userName}</Text>
-              <Text style={indexStyles.customDataText}>
-                Status: {customUserData.isVerified ? '✅ Verified' : '⏳ Pending Verification'}
-              </Text>
-            </View>
-          )}
+  const handleSignOut = async () => {
+    try {
+      const { useCustomAuth } = await import('../hooks/use-custom-auth');
+      const { signOut } = useCustomAuth();
+      await signOut();
+      setUser(null);
+      setCustomUserData(null);
+    } catch (error) {
+      console.error('Sign out failed:', error);
+      Alert.alert('Error', 'Failed to sign out');
+    }
+  };
 
-          <View style={globalStyles.formActions}>
-            <TouchableOpacity style={globalStyles.primaryButton} onPress={handleSignOut}>
-              <Text style={globalStyles.primaryButtonText}>Sign Out</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </TopographicBackground>
-    );
-  }
+  // Get auth data from custom hook
+  const { user: authUser, customUserData: authCustomData } = useCustomAuth() || {};
+  
+  // Sync auth data when available
+  useEffect(() => {
+    if (authUser && !user) {
+      setUser(authUser);
+    }
+    if (authCustomData && !customUserData) {
+      setCustomUserData(authCustomData);
+    }
+  }, [authUser, authCustomData, user, customUserData]);
+
+  // If user is authenticated, redirect to home page
+  useEffect(() => {
+    if (user) {
+      console.log('✅ User authenticated, redirecting to home...');
+      router.replace('/home');
+    }
+  }, [user]);
 
   // Welcome screen for non-authenticated users
   return (
@@ -113,5 +136,3 @@ export default function Home() {
     </TopographicBackground>
   );
 }
-
-export default Home

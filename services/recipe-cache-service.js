@@ -50,6 +50,13 @@ class RecipeCacheService {
     this.cleanupInterval = null;
     this.preloadInProgress = false;
     
+    // Storage management
+    this.MAX_STORAGE_SIZE = 50 * 1024 * 1024; // 50MB limit
+    this.STORAGE_WARNING_THRESHOLD = 40 * 1024 * 1024; // 40MB warning
+    this.currentStorageSize = 0;
+    this.isStorageFull = false;
+    this.lastStorageCheck = 0;
+    
     this.STORAGE_KEYS = {
       POPULAR_RECIPES: 'cached_popular_recipes_v5',
       TRENDING_RECIPES: 'cached_trending_recipes_v5',
@@ -68,6 +75,9 @@ class RecipeCacheService {
   async initializeCache() {
     try {
       console.log('🚀 Initializing production-optimized cache system...');
+      
+      // Check storage health before initialization
+      await this.checkStorageHealth();
       
       // Load all cached data from persistent storage
       await this.loadFromStorage();
@@ -741,10 +751,10 @@ class RecipeCacheService {
     this.searchCache.clear();
     this.searchCacheAccess.clear();
     
-    // Keep only top 50 similar recipes
+    // Keep only top 20 similar recipes (reduced from 50)
     const sortedSimilar = Array.from(this.similarCacheAccess.entries())
       .sort(([,a], [,b]) => b.accessCount - a.accessCount)
-      .slice(0, 50);
+      .slice(0, 20);
     
     const keepKeys = new Set(sortedSimilar.map(([key]) => key));
     
@@ -755,15 +765,105 @@ class RecipeCacheService {
       }
     }
     
+    // Reduce popular recipes to essential only
+    if (this.popularRecipes && this.popularRecipes.length > 50) {
+      this.popularRecipes = this.popularRecipes.slice(0, 50);
+    }
+    
     // Force garbage collection if available
     if (global.gc) {
       global.gc();
     }
     
-    await this.saveToStorage();
+    this.isStorageFull = false;
+    await this.saveToStorageWithRetry();
     console.log('✅ Emergency cleanup completed');
     
     return this.getProductionStats();
+  }
+
+  /**
+   * Emergency storage cleanup when SQLite is full
+   */
+  async emergencyStorageCleanup() {
+    console.log('🆘 SQLITE_FULL detected - Emergency storage cleanup');
+    
+    try {
+      // Clear all volatile caches first
+      this.searchCache.clear();
+      this.searchCacheAccess.clear();
+      this.similarRecipesCache.clear();
+      this.similarCacheAccess.clear();
+      
+      // Remove all cache-related storage keys
+      const keysToRemove = [
+        this.STORAGE_KEYS.SEARCH_CACHE,
+        this.STORAGE_KEYS.SIMILAR_RECIPES_CACHE,
+        this.STORAGE_KEYS.CACHE_STATS
+      ];
+      
+      await Promise.all(keysToRemove.map(key => 
+        AsyncStorage.removeItem(key).catch(err => 
+          console.warn(`Failed to remove ${key}:`, err.message)
+        )
+      ));
+      
+      // Keep only essential popular recipes (top 20)
+      if (this.popularRecipes && this.popularRecipes.length > 20) {
+        this.popularRecipes = this.popularRecipes.slice(0, 20);
+      }
+      
+      // Save minimal essential data only
+      await AsyncStorage.setItem(
+        this.STORAGE_KEYS.POPULAR_RECIPES, 
+        JSON.stringify(this.popularRecipes || [])
+      );
+      
+      this.isStorageFull = false;
+      console.log('✅ Emergency storage cleanup completed');
+      
+    } catch (error) {
+      console.error('❌ Emergency storage cleanup failed:', error);
+      // Last resort - clear everything
+      try {
+        await AsyncStorage.clear();
+        console.log('⚠️ Performed complete storage clear');
+      } catch (clearError) {
+        console.error('❌ Complete storage clear failed:', clearError);
+      }
+    }
+  }
+
+  /**
+   * Check storage health and perform cleanup if needed
+   */
+  async checkStorageHealth() {
+    try {
+      // Try to get available storage info
+      const testKey = 'storage_health_test';
+      const testData = 'test';
+      
+      await AsyncStorage.setItem(testKey, testData);
+      await AsyncStorage.removeItem(testKey);
+      
+      // Estimate current storage usage
+      const currentSize = this.estimateStorageSize();
+      
+      if (currentSize > this.STORAGE_WARNING_THRESHOLD) {
+        console.warn(`⚠️ Storage usage high: ${Math.round(currentSize / 1024 / 1024)}MB`);
+        await this.performStorageOptimization();
+      }
+      
+      console.log(`📊 Storage health check passed: ${Math.round(currentSize / 1024 / 1024)}MB used`);
+      
+    } catch (error) {
+      console.error('❌ Storage health check failed:', error);
+      
+      if (error.message.includes('SQLITE_FULL') || error.code === 13) {
+        console.log('🆘 Storage full detected during health check');
+        await this.emergencyStorageCleanup();
+      }
+    }
   }
 
   /**
@@ -778,9 +878,14 @@ class RecipeCacheService {
       this.cleanupInterval = null;
     }
     
-    // Save final state
-    await this.updateCacheStats();
-    await this.saveToStorage();
+    // Save final state with error handling
+    try {
+      await this.updateCacheStats();
+      await this.saveToStorage();
+    } catch (error) {
+      console.error('⚠️ Error during shutdown save:', error);
+      // Don't throw during shutdown
+    }
     
     console.log('✅ Cache service shutdown completed');
   }
@@ -846,22 +951,156 @@ class RecipeCacheService {
   }
 
   /**
-   * Save cached recipes to AsyncStorage
+   * Save cached recipes to AsyncStorage with size management
    */
   async saveToStorage() {
     try {
-      // Convert Map to Array for JSON serialization
-      const searchCacheArray = Array.from(this.searchCache.entries());
-      
-      await Promise.all([
-        AsyncStorage.setItem(this.STORAGE_KEYS.POPULAR_RECIPES, JSON.stringify(this.popularRecipes)),
-        AsyncStorage.setItem(this.STORAGE_KEYS.TRENDING_RECIPES, JSON.stringify(this.trendingRecipes)),
-        AsyncStorage.setItem(this.STORAGE_KEYS.SEARCH_CACHE, JSON.stringify(searchCacheArray)),
-        AsyncStorage.setItem(this.STORAGE_KEYS.LAST_FETCH, this.lastFetchTime.toString())
-      ]);
+      await this.saveToStorageWithRetry();
     } catch (error) {
       console.error('Error saving to storage:', error);
+      
+      // Handle SQLite full error
+      if (error.message.includes('SQLITE_FULL') || error.code === 13) {
+        await this.emergencyStorageCleanup();
+      }
     }
+  }
+
+  /**
+   * Save to storage with retry logic and size management
+   */
+  async saveToStorageWithRetry(retryCount = 0) {
+    const maxRetries = 3;
+    
+    try {
+      // Check storage size before saving
+      const estimatedSize = this.estimateStorageSize();
+      
+      if (estimatedSize > this.STORAGE_WARNING_THRESHOLD) {
+        console.warn(`⚠️ Storage size warning: ${Math.round(estimatedSize / 1024 / 1024)}MB`);
+        await this.performStorageOptimization();
+      }
+      
+      if (estimatedSize > this.MAX_STORAGE_SIZE) {
+        console.error(`❌ Storage size limit exceeded: ${Math.round(estimatedSize / 1024 / 1024)}MB`);
+        await this.emergencyCleanup();
+      }
+      
+      // Convert Map to Array for JSON serialization
+      const searchCacheArray = Array.from(this.searchCache.entries());
+      const similarCacheArray = Array.from(this.similarRecipesCache.entries());
+      
+      // Save in smaller chunks to avoid hitting size limits
+      await this.saveInChunks({
+        [this.STORAGE_KEYS.POPULAR_RECIPES]: this.popularRecipes,
+        [this.STORAGE_KEYS.TRENDING_RECIPES]: this.trendingRecipes,
+        [this.STORAGE_KEYS.SEARCH_CACHE]: searchCacheArray,
+        [this.STORAGE_KEYS.SIMILAR_RECIPES_CACHE]: similarCacheArray,
+        [this.STORAGE_KEYS.LAST_FETCH]: this.lastFetchTime?.toString()
+      });
+      
+    } catch (error) {
+      console.error(`Storage save attempt ${retryCount + 1} failed:`, error);
+      
+      // Handle SQLite full error
+      if (error.message.includes('SQLITE_FULL') || error.code === 13) {
+        if (retryCount < maxRetries) {
+          console.log(`🔄 Retrying save after cleanup (attempt ${retryCount + 1}/${maxRetries})`);
+          await this.emergencyStorageCleanup();
+          return this.saveToStorageWithRetry(retryCount + 1);
+        } else {
+          console.error('❌ Max retries exceeded for storage save');
+          throw error;
+        }
+      }
+      
+      throw error;
+    }
+  }
+
+  /**
+   * Save data in smaller chunks to avoid size limits
+   */
+  async saveInChunks(dataMap) {
+    const promises = [];
+    
+    for (const [key, value] of Object.entries(dataMap)) {
+      if (value !== undefined && value !== null) {
+        promises.push(
+          AsyncStorage.setItem(key, JSON.stringify(value))
+            .catch(error => {
+              console.warn(`Failed to save ${key}:`, error.message);
+              // If individual save fails, try with reduced data
+              if (key === this.STORAGE_KEYS.POPULAR_RECIPES && Array.isArray(value)) {
+                return AsyncStorage.setItem(key, JSON.stringify(value.slice(0, 20)));
+              }
+              throw error;
+            })
+        );
+      }
+    }
+    
+    await Promise.all(promises);
+  }
+
+  /**
+   * Estimate total storage size
+   */
+  estimateStorageSize() {
+    let totalSize = 0;
+    
+    // Estimate popular recipes
+    if (this.popularRecipes) {
+      totalSize += JSON.stringify(this.popularRecipes).length * 2;
+    }
+    
+    // Estimate search cache
+    for (const [key, value] of this.searchCache.entries()) {
+      totalSize += (key.length + JSON.stringify(value).length) * 2;
+    }
+    
+    // Estimate similar recipes cache
+    for (const [key, value] of this.similarRecipesCache.entries()) {
+      totalSize += (key.length + JSON.stringify(value).length) * 2;
+    }
+    
+    this.currentStorageSize = totalSize;
+    return totalSize;
+  }
+
+  /**
+   * Perform storage optimization to free up space
+   */
+  async performStorageOptimization() {
+    console.log('🔧 Performing storage optimization...');
+    
+    // Reduce cache sizes by 30%
+    const searchReduction = Math.floor(this.searchCache.size * 0.3);
+    const similarReduction = Math.floor(this.similarRecipesCache.size * 0.3);
+    
+    // Remove oldest entries
+    if (searchReduction > 0) {
+      const oldestKeys = this.getLRUKeys(this.searchCacheAccess, searchReduction);
+      oldestKeys.forEach(key => {
+        this.searchCache.delete(key);
+        this.searchCacheAccess.delete(key);
+      });
+    }
+    
+    if (similarReduction > 0) {
+      const oldestKeys = this.getLRUKeys(this.similarCacheAccess, similarReduction);
+      oldestKeys.forEach(key => {
+        this.similarRecipesCache.delete(key);
+        this.similarCacheAccess.delete(key);
+      });
+    }
+    
+    // Reduce popular recipes if too many
+    if (this.popularRecipes && this.popularRecipes.length > 80) {
+      this.popularRecipes = this.popularRecipes.slice(0, 80);
+    }
+    
+    console.log(`✅ Storage optimization completed: removed ${searchReduction + similarReduction} cache entries`);
   }
 
   /**
@@ -1283,36 +1522,48 @@ class RecipeCacheService {
   }
 
   /**
-   * Cache search results
+   * Cache search results with storage management
    */
   async cacheSearchResults(query, options, results) {
-    const cacheKey = this.generateSearchCacheKey(query, options);
-    
-    this.searchCache.set(cacheKey, {
-      results: results,
-      timestamp: Date.now(),
-      query: query
-    });
-    
-    // Clean up old cache entries (keep only last 50 searches)
-    if (this.searchCache.size > 50) {
-      const entries = Array.from(this.searchCache.entries());
-      // Sort by timestamp and keep the newest 40
-      entries.sort((a, b) => b[1].timestamp - a[1].timestamp);
+    try {
+      const cacheKey = this.generateSearchCacheKey(query, options);
       
-      this.searchCache.clear();
-      entries.slice(0, 40).forEach(([key, value]) => {
-        this.searchCache.set(key, value);
+      this.searchCache.set(cacheKey, {
+        results: results,
+        timestamp: Date.now(),
+        query: query
       });
+      
+      // Reduced cache size to prevent storage issues (30 instead of 50)
+      if (this.searchCache.size > 30) {
+        const entries = Array.from(this.searchCache.entries());
+        // Sort by timestamp and keep the newest 25
+        entries.sort((a, b) => b[1].timestamp - a[1].timestamp);
+        
+        this.searchCache.clear();
+        entries.slice(0, 25).forEach(([key, value]) => {
+          this.searchCache.set(key, value);
+        });
+      }
+      
+      // Save to persistent storage with error handling
+      await this.saveToStorage();
+      console.log(`💾 Cached search results for: "${query}"`);
+      
+    } catch (error) {
+      console.error(`Error caching search results for "${query}":`, error);
+      
+      // If storage is full, clear search cache and retry
+      if (error.message.includes('SQLITE_FULL') || error.code === 13) {
+        console.log('🧹 Clearing search cache due to storage full');
+        this.searchCache.clear();
+        this.searchCacheAccess.clear();
+      }
     }
-    
-    // Save to persistent storage
-    await this.saveToStorage();
-    console.log(`💾 Cached search results for: "${query}"`);
   }
 
   /**
-   * Cache similar recipes for a specific recipe
+   * Cache similar recipes for a specific recipe with storage management
    * @param {string} cacheKey - Cache key for the similar recipes
    * @param {Array} recipes - Array of similar recipes to cache
    */
@@ -1325,17 +1576,44 @@ class RecipeCacheService {
       };
 
       this.similarRecipesCache.set(cacheKey, cacheEntry);
+      
+      // Enforce size limit to prevent storage issues
+      if (this.similarRecipesCache.size > this.MAX_SIMILAR_CACHE_SIZE) {
+        const oldestKeys = this.getLRUKeys(
+          this.similarCacheAccess, 
+          this.similarRecipesCache.size - this.MAX_SIMILAR_CACHE_SIZE
+        );
+        oldestKeys.forEach(key => {
+          this.similarRecipesCache.delete(key);
+          this.similarCacheAccess.delete(key);
+        });
+      }
 
-      // Save to persistent storage
-      const similarRecipesCacheArray = Array.from(this.similarRecipesCache.entries());
-      await AsyncStorage.setItem(
-        this.STORAGE_KEYS.SIMILAR_RECIPES_CACHE, 
-        JSON.stringify(similarRecipesCacheArray)
-      );
-
+      // Save to persistent storage with error handling
+      await this.saveToStorage();
       console.log(`✅ Cached ${recipes.length} similar recipes with key: ${cacheKey}`);
+      
     } catch (error) {
       console.error('Error caching similar recipes:', error);
+      
+      // If storage is full, clear similar recipes cache
+      if (error.message.includes('SQLITE_FULL') || error.code === 13) {
+        console.log('🧹 Clearing similar recipes cache due to storage full');
+        this.similarRecipesCache.clear();
+        this.similarCacheAccess.clear();
+        
+        // Try to save just the new entry
+        try {
+          this.similarRecipesCache.set(cacheKey, {
+            recipes: recipes.slice(0, 5), // Keep only 5 recipes
+            timestamp: Date.now(),
+            ttl: this.SIMILAR_RECIPES_CACHE_DURATION
+          });
+          await this.saveToStorage();
+        } catch (retryError) {
+          console.error('Failed to save even reduced similar recipes:', retryError);
+        }
+      }
     }
   }
 
