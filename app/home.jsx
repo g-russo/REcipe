@@ -115,6 +115,7 @@ const Home = () => {
     { title: 'Discover', subtitle: 'Find new recipes', action: () => router.push('/recipe-search') },
     { title: 'Favorites', subtitle: 'Your favorite recipes', action: () => console.log('Favorites') },
     { title: 'Shopping List', subtitle: 'Manage ingredients', action: () => console.log('Shopping List') },
+    { title: 'Pantry', subtitle: 'View your ingredients', action: () => router.push('/pantry') },
     { title: 'Categories', subtitle: 'Browse by category', action: () => console.log('Categories') },
     { title: 'Profile', subtitle: 'Manage your account', action: () => console.log('Profile') },
   ];
