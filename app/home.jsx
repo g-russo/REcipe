@@ -117,7 +117,7 @@ const Home = () => {
     { title: 'Shopping List', subtitle: 'Manage ingredients', action: () => console.log('Shopping List') },
     { title: 'Pantry', subtitle: 'View your ingredients', action: () => router.push('/pantry') },
     { title: 'Categories', subtitle: 'Browse by category', action: () => console.log('Categories') },
-    { title: 'Profile', subtitle: 'Manage your account', action: () => console.log('Profile') },
+    { title: 'Profile', subtitle: 'Manage your account', action: () => router.push('/profile') }, // Updated to navigate to profile page
   ];
 
   if (loading && !timeoutTriggered) {

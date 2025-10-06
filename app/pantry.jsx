@@ -17,7 +17,6 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
-import DateTimePicker from '@react-native-community/datetimepicker'; // Import DateTimePicker
 import styles from '../assets/css/pantryStyles';
 
 const Pantry = () => {
@@ -114,13 +113,14 @@ const Pantry = () => {
   // Request permissions when the component mounts
   useEffect(() => {
     (async () => {
-      // Fixed permissions request
+      // Fixed permissions request for newer expo-image-picker
       if (Platform.OS !== 'web') {
         try {
-          const cameraPermission = await ImagePicker.requestCameraPermissionsAsync();
-          const libraryPermission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+          // In newer versions, permissions might be requested differently
+          const { status: cameraStatus } = await ImagePicker.requestCameraPermissionsAsync();
+          const { status: libraryStatus } = await ImagePicker.requestMediaLibraryPermissionsAsync();
           
-          if (cameraPermission.status !== 'granted' || libraryPermission.status !== 'granted') {
+          if (cameraStatus !== 'granted' || libraryStatus !== 'granted') {
             Alert.alert('Permission Required', 'Camera and photo library permissions are needed to use this feature.');
           }
         } catch (error) {
@@ -187,7 +187,7 @@ const Pantry = () => {
     });
   };
   
-  // Handle image picking from camera or gallery
+  // Handle image picking from camera or gallery - updated for newer API
   const pickImage = async (useCamera = false) => {
     try {
       let result;
@@ -204,8 +204,8 @@ const Pantry = () => {
         result = await ImagePicker.launchImageLibraryAsync(options);
       }
       
-      if (!result.canceled) { // Note: newer versions use 'canceled' not 'cancelled'
-        // Check if assets array exists and has at least one item
+      // Handle result based on newer API structure
+      if (!result.canceled) {
         if (result.assets && result.assets.length > 0) {
           handleInputChange('image', result.assets[0].uri);
         }
@@ -650,6 +650,26 @@ const Pantry = () => {
   // Add new state for date picker visibility
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showEditDatePicker, setShowEditDatePicker] = useState(false);
+
+  // Add date picker handlers for new item
+  const onDateChange = (event, selectedDate) => {
+    const currentDate = selectedDate || new Date();
+    setShowDatePicker(Platform.OS === 'ios'); // Only iOS keeps the picker open
+    
+    if (event.type === 'set' || Platform.OS === 'android') { // Android doesn't have event.type
+      handleInputChange('expDate', formatDate(currentDate));
+    }
+  };
+
+  // Add date picker handlers for edit item
+  const onEditDateChange = (event, selectedDate) => {
+    const currentDate = selectedDate || new Date();
+    setShowEditDatePicker(Platform.OS === 'ios'); // Only iOS keeps the picker open
+    
+    if (event.type === 'set' || Platform.OS === 'android') { // Android doesn't have event.type
+      handleEditInputChange('expDate', formatDate(currentDate));
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
