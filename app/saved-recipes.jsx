@@ -59,14 +59,27 @@ export default function SavedRecipesScreen() {
 
   const handleRecipePress = (savedRecipe) => {
     const recipe = savedRecipe.recipe;
-    const recipeData = savedRecipe.isCustom
-      ? { ...recipe, isCustom: true }
-      : recipe;
+    
+    // Ensure recipe data has all necessary fields
+    let recipeData;
+    if (savedRecipe.isCustom) {
+      // AI recipe - add isCustom flag
+      recipeData = { ...recipe, isCustom: true };
+    } else {
+      // Edamam recipe - ensure it has uri field for favorites functionality
+      recipeData = { 
+        ...recipe,
+        uri: recipe.uri || savedRecipe.edamamRecipeURI, // Fallback to stored URI if missing
+        isCustom: false
+      };
+    }
 
     console.log('📖 Opening recipe detail:', { 
       isCustom: savedRecipe.isCustom,
       recipeSource: savedRecipe.recipeSource,
-      hasRecipe: !!recipe 
+      hasRecipe: !!recipe,
+      hasUri: !!recipeData.uri,
+      uri: recipeData.uri
     });
 
     router.push({

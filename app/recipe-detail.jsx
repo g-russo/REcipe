@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import cacheService from '../services/supabase-cache-service';
 import EdamamService from '../services/edamam-service';
 import RecipeMatcherService from '../services/recipe-matcher-service';
 import { useCustomAuth } from '../hooks/use-custom-auth';
@@ -55,19 +56,29 @@ const RecipeDetail = () => {
         setRecipe(parsedRecipe);
         setLoading(false);
         
-        // Check if recipe is already saved
-        checkIfSaved(parsedRecipe);
-        
-        // Track recipe view
-        if (user?.email) {
-          RecipeMatcherService.trackRecipeView(user.email, parsedRecipe);
-        }
-        
         // Fetch similar recipes
         fetchSimilarRecipes(parsedRecipe);
         
-        // Preload instructions in background for faster access
-        if (parsedRecipe?.url) {
+        // Handle instructions based on recipe source
+        const isAIRecipe = parsedRecipe.isCustom || parsedRecipe.source === 'SousChef AI' || !parsedRecipe.url;
+        
+        if (isAIRecipe && parsedRecipe.instructions) {
+          // AI-generated recipes have instructions stored directly
+          console.log('🤖 Loading AI recipe instructions:', parsedRecipe.instructions.length, 'steps');
+          
+          // Check if instructions are objects with 'instruction' property or plain strings
+          const formattedInstructions = Array.isArray(parsedRecipe.instructions)
+            ? parsedRecipe.instructions.map(step => 
+                typeof step === 'string' ? step : step.instruction
+              )
+            : [];
+          
+          setInstructions(formattedInstructions);
+          setInstructionsSource('ai');
+          console.log('✅ AI recipe instructions loaded:', formattedInstructions.length, 'steps');
+        } else if (parsedRecipe?.url) {
+          // Edamam recipes need to fetch instructions from URL
+          console.log('🔗 Preloading Edamam recipe instructions from URL');
           preloadInstructions(parsedRecipe.url);
         }
       } catch (error) {
@@ -77,26 +88,61 @@ const RecipeDetail = () => {
     }
   }, [recipeData]);
 
+  // Check if recipe is saved and track view when user or recipe changes
+  useEffect(() => {
+    if (recipe && user?.email) {
+      console.log('👀 Recipe and user ready, checking favorite status and tracking view');
+      checkIfSaved(recipe);
+      RecipeMatcherService.trackRecipeView(user.email, recipe);
+    }
+  }, [recipe, user]);
+
   const checkIfSaved = async (currentRecipe) => {
-    if (!user?.email) return;
+    if (!user?.email) {
+      console.log('⏳ No user email, skipping favorite check');
+      return;
+    }
     
     try {
+      console.log('🔍 Checking if recipe is saved:', {
+        isCustom: currentRecipe.isCustom,
+        recipeID: currentRecipe.recipeID,
+        uri: currentRecipe.uri,
+        source: currentRecipe.source
+      });
+
       const savedRecipes = await RecipeMatcherService.getSavedRecipes(user.email);
+      console.log('📚 Total saved recipes:', savedRecipes.length);
       
       // Check if this recipe is in saved recipes
       const isAIRecipe = currentRecipe.isCustom || currentRecipe.source === 'SousChef AI';
       
       const isSaved = savedRecipes.some(saved => {
         if (isAIRecipe) {
-          return saved.recipeID === currentRecipe.recipeID;
+          // For AI recipes, compare aiRecipeID
+          const match = saved.aiRecipeID === currentRecipe.recipeID;
+          console.log('🤖 AI recipe check:', { 
+            savedAiRecipeID: saved.aiRecipeID, 
+            currentRecipeID: currentRecipe.recipeID,
+            match 
+          });
+          return match;
         } else {
-          return saved.edamamRecipeURI === currentRecipe.uri;
+          // For Edamam recipes, compare URI
+          const match = saved.edamamRecipeURI === currentRecipe.uri;
+          console.log('🔗 Edamam recipe check:', { 
+            savedURI: saved.edamamRecipeURI, 
+            currentURI: currentRecipe.uri,
+            match 
+          });
+          return match;
         }
       });
       
+      console.log(isSaved ? '❤️ Recipe is already favorited' : '🤍 Recipe is not favorited');
       setIsFavorite(isSaved);
     } catch (error) {
-      console.error('Error checking if saved:', error);
+      console.error('❌ Error checking if saved:', error);
     }
   };
 
@@ -111,8 +157,9 @@ const RecipeDetail = () => {
         ingredients: currentRecipe.ingredientLines?.length || 0
       });
       
-      // Use enhanced similar recipes with ingredient and protein analysis
-      const result = await EdamamService.getSimilarRecipes(currentRecipe, 12);
+      // Use Supabase cache service for similar recipes (automatically cached)
+      const similarRecipesData = await cacheService.getSimilarRecipes(currentRecipe, 12);
+      const result = { success: true, data: { recipes: similarRecipesData } };
       
       console.log('📊 SMART similar recipes result:', result);
       
@@ -289,7 +336,33 @@ const RecipeDetail = () => {
   const getNutritionInfo = () => {
     if (!recipe) return null;
     
-    return EdamamService.extractNutritionInfo(recipe);
+    // Check if it's an AI-generated recipe with macronutrients
+    const isAIRecipe = recipe.isCustom || recipe.source === 'SousChef AI';
+    
+    if (isAIRecipe && (recipe.protein || recipe.carbs || recipe.fat || recipe.calories)) {
+      // AI recipe with macronutrients
+      console.log('🤖 AI Recipe Nutrition:', { 
+        protein: recipe.protein, 
+        carbs: recipe.carbs, 
+        fat: recipe.fat, 
+        calories: recipe.calories 
+      });
+      
+      return {
+        calories: Math.round(recipe.calories || 0),
+        nutrients: {
+          carbs: { amount: Math.round(recipe.carbs || 0) },
+          protein: { amount: Math.round(recipe.protein || 0) },
+          fat: { amount: Math.round(recipe.fat || 0) }
+        },
+        isAIEstimate: true
+      };
+    }
+    
+    // Edamam recipe - extract from totalNutrients
+    console.log('📊 Edamam Recipe - extracting nutrition info');
+    const edamamNutrition = EdamamService.extractNutritionInfo(recipe);
+    return edamamNutrition;
   };
 
   if (loading) {
@@ -359,40 +432,60 @@ const RecipeDetail = () => {
           </View>
 
           <Text style={styles.description}>
-            {recipe.label} is a delicious recipe perfect for any occasion... 
-            <Text style={styles.viewMore} onPress={openRecipeUrl}> View More</Text>
+            {recipe.recipeDescription || `${recipe.label} is a delicious recipe perfect for any occasion...`}
+            {recipe?.url && (
+              <Text style={styles.viewMore} onPress={openRecipeUrl}> View More</Text>
+            )}
           </Text>
 
           {/* Nutrition Grid */}
-          {nutrition && (
+          {nutrition && nutrition.nutrients && (
             <View style={styles.nutritionGrid}>
               <View style={styles.nutritionItem}>
                 <View style={[styles.nutritionIcon, { backgroundColor: '#e8f5e8' }]}>
                   <Ionicons name="leaf-outline" size={20} color="#4CAF50" />
                 </View>
-                <Text style={styles.nutritionValue}>{nutrition.nutrients.carbs.amount}g carbs</Text>
+                <Text style={styles.nutritionValue}>
+                  {nutrition.nutrients.carbs?.amount || 0}g carbs
+                </Text>
               </View>
               
               <View style={styles.nutritionItem}>
                 <View style={[styles.nutritionIcon, { backgroundColor: '#e3f2fd' }]}>
                   <Ionicons name="fitness-outline" size={20} color="#2196F3" />
                 </View>
-                <Text style={styles.nutritionValue}>{nutrition.nutrients.protein.amount}g proteins</Text>
+                <Text style={styles.nutritionValue}>
+                  {nutrition.nutrients.protein?.amount || 0}g proteins
+                </Text>
               </View>
               
               <View style={styles.nutritionItem}>
                 <View style={[styles.nutritionIcon, { backgroundColor: '#fff3e0' }]}>
                   <Ionicons name="flame-outline" size={20} color="#FF9800" />
                 </View>
-                <Text style={styles.nutritionValue}>{nutrition.calories} Kcal</Text>
+                <Text style={styles.nutritionValue}>
+                  {nutrition.calories || 0} Kcal
+                </Text>
               </View>
               
               <View style={styles.nutritionItem}>
                 <View style={[styles.nutritionIcon, { backgroundColor: '#f3e5f5' }]}>
                   <Ionicons name="water-outline" size={20} color="#9C27B0" />
                 </View>
-                <Text style={styles.nutritionValue}>{nutrition.nutrients.fat.amount}g fats</Text>
+                <Text style={styles.nutritionValue}>
+                  {nutrition.nutrients.fat?.amount || 0}g fats
+                </Text>
               </View>
+            </View>
+          )}
+
+          {/* AI Nutrition Disclaimer */}
+          {nutrition?.isAIEstimate && (
+            <View style={styles.aiDisclaimer}>
+              <Ionicons name="information-circle-outline" size={14} color="#666" />
+              <Text style={styles.aiDisclaimerText}>
+                Nutritional values are estimates by SousChef AI based on ingredients
+              </Text>
             </View>
           )}
 
@@ -455,6 +548,12 @@ const RecipeDetail = () => {
                 ) : (
                   <View style={styles.instructionsContainer}>
                     {/* Instructions Source Indicator */}
+                    {instructionsSource === 'ai' && (
+                      <View style={styles.sourceIndicator}>
+                        <Ionicons name="sparkles" size={16} color="#9C27B0" />
+                        <Text style={styles.sourceText}>AI-generated instructions by SousChef AI</Text>
+                      </View>
+                    )}
                     {instructionsSource === 'scraped' && (
                       <View style={styles.sourceIndicator}>
                         <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
@@ -485,10 +584,13 @@ const RecipeDetail = () => {
                   </View>
                 )}
 
-                <TouchableOpacity style={styles.viewRecipeButton} onPress={openRecipeUrl}>
-                  <Text style={styles.viewRecipeText}>View Original Recipe</Text>
-                  <Ionicons name="arrow-forward" size={16} color="#4CAF50" />
-                </TouchableOpacity>
+                {/* Only show View Original Recipe button for external recipes (not AI-generated) */}
+                {recipe?.url && (
+                  <TouchableOpacity style={styles.viewRecipeButton} onPress={openRecipeUrl}>
+                    <Text style={styles.viewRecipeText}>View Original Recipe</Text>
+                    <Ionicons name="arrow-forward" size={16} color="#4CAF50" />
+                  </TouchableOpacity>
+                )}
               </View>
             )}
           </View>
@@ -687,6 +789,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#333',
     fontWeight: '500',
+  },
+  aiDisclaimer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f9f9f9',
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 20,
+    borderLeftWidth: 3,
+    borderLeftColor: '#9C27B0',
+  },
+  aiDisclaimerText: {
+    fontSize: 11,
+    color: '#666',
+    fontStyle: 'italic',
+    marginLeft: 6,
+    flex: 1,
   },
   tabContainer: {
     flexDirection: 'row',

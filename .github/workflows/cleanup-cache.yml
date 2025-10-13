@@ -1,0 +1,19 @@
+name: Cleanup Recipe Cache
+
+on:
+  schedule:
+    # Runs every hour at minute 0 (e.g., 1:00, 2:00, 3:00)
+    - cron: '0 * * * *'
+  workflow_dispatch: # Allows manual trigger from GitHub UI
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call Supabase Edge Function
+        run: |
+          curl -X POST \
+            https://dymujerduwloeeurcqso.supabase.co/functions/v1/cleanup-cache \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/json" \
+            --fail-with-body

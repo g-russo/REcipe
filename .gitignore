@@ -36,3 +36,11 @@ yarn-error.*
 
 # typescript
 *.tsbuildinfo
+
+#google-services
+google-services.json
+
+#markdown and text files
+*.md
+*.mdx
+*.txt

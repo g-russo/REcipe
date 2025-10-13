@@ -15,6 +15,7 @@ import { supabase } from '../lib/supabase';
 import { useCustomAuth } from '../hooks/use-custom-auth';
 import styles from '../assets/css/profileStyles';
 import AuthGuard from '../components/AuthGuard';
+import CacheClearButton from '../components/cache-clear-button';
 
 const Profile = () => {
   const { user, customUserData, signOut } = useCustomAuth();
@@ -199,6 +200,9 @@ const Profile = () => {
         
         {/* Tab Content */}
         {renderTabContent()}
+        
+        {/* Cache Management (Emergency Fix for Storage Full Error) */}
+        <CacheClearButton />
         
         {/* Account Actions */}
         <View style={styles.actionsSection}>

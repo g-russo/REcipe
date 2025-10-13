@@ -9,7 +9,125 @@ const EDAMAM_BASE_URL = 'https://api.edamam.com/api/recipes/v2';
 const INSTRUCTION_CACHE_KEY = 'recipe_instructions_cache';
 const CACHE_EXPIRY_HOURS = 24; // Instructions cache for 24 hours
 
+// Valid Edamam API values (from official documentation)
+const VALID_CUISINE_TYPES = [
+  'American', 'Asian', 'British', 'Caribbean', 'Central Europe',
+  'Chinese', 'Eastern Europe', 'French', 'Indian', 'Italian', 
+  'Japanese', 'Kosher', 'Mediterranean', 'Mexican', 'Middle Eastern',
+  'Nordic', 'South American', 'South East Asian'
+];
+
+const VALID_MEAL_TYPES = ['Breakfast', 'Dinner', 'Lunch', 'Snack', 'Teatime'];
+
+const VALID_DISH_TYPES = [
+  'Biscuits and cookies', 'Bread', 'Cereals', 'Condiments and sauces',
+  'Desserts', 'Drinks', 'Main course', 'Pancake', 'Preps', 'Preserve',
+  'Salad', 'Sandwiches', 'Side dish', 'Soup', 'Starter', 'Sweets'
+];
+
 class EdamamService {
+  /**
+   * Sanitize and validate Edamam API parameters
+   */
+  static sanitizeEdamamParams(options) {
+    const sanitized = { ...options };
+
+    // Sanitize cuisineType
+    if (sanitized.cuisineType) {
+      // Map common variants to valid values
+      const cuisineMap = {
+        'filipino': 'Asian',
+        'fusion': 'Asian', // Default fusion to Asian
+        'filipino/fusion': 'Asian',
+        'western': 'American',
+        'spanish': 'Mediterranean',
+        'thai': 'South East Asian',
+        'vietnamese': 'South East Asian',
+        'korean': 'Asian',
+        'greek': 'Mediterranean',
+        'turkish': 'Middle Eastern'
+      };
+
+      const lowerCuisine = sanitized.cuisineType.toLowerCase();
+      const mapped = cuisineMap[lowerCuisine];
+      
+      if (mapped) {
+        sanitized.cuisineType = mapped;
+      } else {
+        // Check if it's a valid cuisine type (case-insensitive)
+        const validCuisine = VALID_CUISINE_TYPES.find(
+          c => c.toLowerCase() === lowerCuisine
+        );
+        if (validCuisine) {
+          sanitized.cuisineType = validCuisine;
+        } else {
+          // Invalid cuisine - remove it
+          console.warn(`⚠️ Invalid cuisineType: ${sanitized.cuisineType}, removing filter`);
+          delete sanitized.cuisineType;
+        }
+      }
+    }
+
+    // Sanitize mealType
+    if (sanitized.mealType) {
+      const mealMap = {
+        'breakfast': 'Breakfast',
+        'lunch': 'Lunch',
+        'dinner': 'Dinner',
+        'snack': 'Snack',
+        'teatime': 'Teatime'
+      };
+
+      const lowerMeal = sanitized.mealType.toLowerCase();
+      const mapped = mealMap[lowerMeal];
+      
+      if (mapped) {
+        sanitized.mealType = mapped;
+      } else {
+        console.warn(`⚠️ Invalid mealType: ${sanitized.mealType}, removing filter`);
+        delete sanitized.mealType;
+      }
+    }
+
+    // Sanitize dishType
+    if (sanitized.dishType) {
+      const dishMap = {
+        'main': 'Main course',
+        'main course': 'Main course',
+        'side': 'Side dish',
+        'side dish': 'Side dish',
+        'dessert': 'Desserts',
+        'appetizer': 'Starter',
+        'starter': 'Starter',
+        'soup': 'Soup',
+        'salad': 'Salad',
+        'bread': 'Bread',
+        'drink': 'Drinks',
+        'sandwich': 'Sandwiches'
+      };
+
+      const lowerDish = sanitized.dishType.toLowerCase();
+      const mapped = dishMap[lowerDish];
+      
+      if (mapped) {
+        sanitized.dishType = mapped;
+      } else {
+        // Check if it's already valid (case-insensitive)
+        const validDish = VALID_DISH_TYPES.find(
+          d => d.toLowerCase() === lowerDish
+        );
+        if (validDish) {
+          sanitized.dishType = validDish;
+        } else {
+          console.warn(`⚠️ Invalid dishType: ${sanitized.dishType}, removing filter`);
+          delete sanitized.dishType;
+        }
+      }
+    }
+
+    return sanitized;
+  }
+
   /**
    * Search for recipes using the Edamam API with intelligent caching
    * @param {string} query - Search query (e.g., "chicken", "pasta")
@@ -30,12 +148,15 @@ class EdamamService {
    */
   static async searchRecipes(query, options = {}) {
     try {
+      // Sanitize parameters before using them
+      const sanitizedOptions = this.sanitizeEdamamParams(options);
+
       // Import RecipeCacheService dynamically to avoid circular dependency
       const RecipeCacheService = (await import('./recipe-cache-service.js')).default;
       
       // Check cache first (unless explicitly skipped)
-      if (!options.skipCache) {
-        const cachedResults = RecipeCacheService.getCachedSearchResults(query, options);
+      if (!sanitizedOptions.skipCache) {
+        const cachedResults = RecipeCacheService.getCachedSearchResults(query, sanitizedOptions);
         if (cachedResults) {
           return {
             success: true,
@@ -50,8 +171,8 @@ class EdamamService {
         q: query,
         app_id: EDAMAM_APP_ID,
         app_key: EDAMAM_APP_KEY,
-        from: options.from || 0,
-        to: options.to || 20,
+        from: sanitizedOptions.from || 0,
+        to: sanitizedOptions.to || 20,
       });
 
       // Add curated filter (default to true for Edamam curated recipes only)
@@ -65,21 +186,21 @@ class EdamamService {
         params.append('source', 'Bon Appétit');
       }
 
-      // Add optional parameters
-      if (options.cuisineType) params.append('cuisineType', options.cuisineType);
-      if (options.mealType) params.append('mealType', options.mealType);
-      if (options.dishType) params.append('dishType', options.dishType);
-      if (options.calories) params.append('calories', options.calories);
-      if (options.time) params.append('time', options.time);
+      // Add optional parameters (using sanitized options)
+      if (sanitizedOptions.cuisineType) params.append('cuisineType', sanitizedOptions.cuisineType);
+      if (sanitizedOptions.mealType) params.append('mealType', sanitizedOptions.mealType);
+      if (sanitizedOptions.dishType) params.append('dishType', sanitizedOptions.dishType);
+      if (sanitizedOptions.calories) params.append('calories', sanitizedOptions.calories);
+      if (sanitizedOptions.time) params.append('time', sanitizedOptions.time);
       
       // Add health labels
-      if (options.health && Array.isArray(options.health)) {
-        options.health.forEach(label => params.append('health', label));
+      if (sanitizedOptions.health && Array.isArray(sanitizedOptions.health)) {
+        sanitizedOptions.health.forEach(label => params.append('health', label));
       }
       
       // Add diet labels
-      if (options.diet && Array.isArray(options.diet)) {
-        options.diet.forEach(label => params.append('diet', label));
+      if (sanitizedOptions.diet && Array.isArray(sanitizedOptions.diet)) {
+        sanitizedOptions.diet.forEach(label => params.append('diet', label));
       }
 
       const url = `${EDAMAM_BASE_URL}?${params.toString()}`;
@@ -160,16 +281,28 @@ class EdamamService {
       const data = await response.json();
       
       if (data.hits && data.hits.length > 0) {
+        const formattedRecipe = this.formatRecipe(data.hits[0].recipe);
+        console.log('✅ Recipe found and formatted');
         return {
           success: true,
-          data: this.formatRecipe(data.hits[0].recipe)
+          recipe: formattedRecipe // Changed from 'data' to 'recipe' for consistency
         };
       } else {
-        throw new Error('Recipe not found');
+        // Recipe not found in API - this is expected for some URIs (removed recipes, rate limits, etc.)
+        console.log('ℹ️ Recipe not found in API (will use cached data if available)');
+        return {
+          success: false,
+          error: 'Recipe not found'
+        };
       }
 
     } catch (error) {
-      console.error('❌ Get recipe error:', error);
+      // Log network/API errors differently than "not found" errors
+      if (error.message.includes('Recipe not found')) {
+        console.log('ℹ️ Recipe not available from API:', error.message);
+      } else {
+        console.error('❌ API error:', error.message);
+      }
       return {
         success: false,
         error: error.message || 'Failed to get recipe details'
@@ -1637,6 +1770,7 @@ class EdamamService {
   static formatRecipe(recipe) {
     return {
       id: recipe.uri,
+      uri: recipe.uri, // Include uri for favorites functionality
       label: recipe.label,
       image: recipe.image,
       images: recipe.images,

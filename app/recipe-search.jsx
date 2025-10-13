@@ -15,15 +15,21 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import EdamamService from '../services/edamam-service';
-import RecipeCacheService from '../services/recipe-cache-service';
+import cacheService from '../services/supabase-cache-service';
+import SousChefAIService from '../services/souschef-ai-service';
 import AuthGuard from '../components/AuthGuard';
+import { useCustomAuth } from '../hooks/use-custom-auth';
 
 const RecipeSearch = () => {
   const router = useRouter();
+  const { user } = useCustomAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [recipes, setRecipes] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [generatingAI, setGeneratingAI] = useState(false);
+  const [aiRecipeCount, setAiRecipeCount] = useState(0); // Track how many AI recipes generated
+  const [canGenerateMore, setCanGenerateMore] = useState(false); // Show "Generate Another" button
+  const [currentSearchQuery, setCurrentSearchQuery] = useState(''); // Store current search for "Generate Another"
   const [filters, setFilters] = useState({
     cuisineType: '',
     mealType: '',
@@ -84,23 +90,27 @@ const RecipeSearch = () => {
   const loadPopularRecipesFromCache = async () => {
     setLoadingPopular(true);
     try {
-      console.log('📱 Loading popular recipes from cache...');
+      console.log('📱 Loading popular recipes from Supabase cache...');
       
-      // Get cached recipes (will fetch if cache is empty/expired)
-      const cached = await RecipeCacheService.getPopularRecipes(8);
+      // Get cached recipes from Supabase (auto-fetches from API if cache is empty/expired)
+      const cached = await cacheService.getPopularRecipes();
       
-      if (cached.length > 0) {
+      if (cached && cached.length > 0) {
         console.log(`✅ Loaded ${cached.length} popular recipes from cache`);
-        const formattedRecipes = cached.map(recipe => ({
-          id: recipe.id,
-          title: recipe.title,
+        
+        // Take first 8 recipes
+        const limitedRecipes = cached.slice(0, 8);
+        
+        const formattedRecipes = limitedRecipes.map((recipe, index) => ({
+          id: recipe.uri || `recipe-${index}`,
+          title: recipe.label || recipe.title,
           image: recipe.image,
-          fullData: recipe.fullData,
-          category: recipe.category,
-          calories: recipe.calories,
-          time: recipe.time,
-          difficulty: recipe.difficulty,
-          rating: recipe.rating
+          fullData: recipe,
+          category: recipe.cuisineType?.[0] || recipe.category || 'General',
+          calories: Math.round(recipe.calories / recipe.yield) || recipe.calories || 0,
+          time: recipe.totalTime || recipe.time || 30,
+          difficulty: recipe.difficulty || 'Medium',
+          rating: recipe.rating || 4.5
         }));
         
         setPopularRecipes(formattedRecipes);
@@ -110,8 +120,8 @@ const RecipeSearch = () => {
       }
     } catch (error) {
       console.error('❌ Error loading popular recipes from cache:', error);
-      // Fallback to direct API call if cache fails
-      await fetchPopularRecipes();
+      // Fallback: fetch fresh popular recipes
+      await handleRefreshPopularRecipes();
     } finally {
       setLoadingPopular(false);
     }
@@ -120,63 +130,41 @@ const RecipeSearch = () => {
   const handleRefreshPopularRecipes = async () => {
     setLoadingPopular(true);
     try {
-      console.log('🔄 Refreshing popular recipes...');
+      console.log('🔄 Refreshing popular recipes from API...');
       
-      // Get API usage stats first
-      const apiStats = RecipeCacheService.getApiUsageStats();
-      console.log('📊 API Stats:', apiStats);
-      
-      // Force refresh the cache
-      const freshRecipes = await RecipeCacheService.forceRefreshPopularRecipes();
+      // Force refresh the cache (bypasses cache, fetches fresh from API)
+      const freshRecipes = await cacheService.getPopularRecipes(true); // true = forceRefresh
       
       if (freshRecipes && freshRecipes.length > 0) {
-        console.log(`✅ Refreshed with ${freshRecipes.length} recipes`);
+        console.log(`✅ Refreshed with ${freshRecipes.length} recipes from API`);
         
-        // Get a random selection for display
-        const displayRecipes = RecipeCacheService.shuffleArray([...freshRecipes])
-          .slice(0, 8)
-          .map(recipe => ({
-            id: recipe.id,
-            title: recipe.title,
-            image: recipe.image,
-            fullData: recipe.fullData,
-            category: recipe.category,
-            calories: recipe.calories,
-            time: recipe.time,
-            difficulty: recipe.difficulty,
-            rating: recipe.rating
-          }));
+        // Shuffle for variety and take first 8
+        const shuffled = [...freshRecipes].sort(() => Math.random() - 0.5);
+        const displayRecipes = shuffled.slice(0, 8).map((recipe, index) => ({
+          id: recipe.uri || `recipe-${index}`,
+          title: recipe.label || recipe.title,
+          image: recipe.image,
+          fullData: recipe,
+          category: recipe.cuisineType?.[0] || recipe.category || 'General',
+          calories: Math.round(recipe.calories / recipe.yield) || recipe.calories || 0,
+          time: recipe.totalTime || recipe.time || 30,
+          difficulty: recipe.difficulty || 'Medium',
+          rating: recipe.rating || 4.5
+        }));
         
         setPopularRecipes(displayRecipes);
-        
-        // Show success message with API info
-        if (apiStats.apiCallsThisMinute > 0) {
-          console.log(`ℹ️ Used ${apiStats.apiCallsThisMinute}/${apiStats.rateLimit} API calls`);
-        }
-        
+        console.log('✅ Popular recipes updated and cached in Supabase (expires in 6h)');
       } else {
-        throw new Error('No recipes received from refresh');
+        throw new Error('No recipes received from API');
       }
     } catch (error) {
       console.error('❌ Error refreshing popular recipes:', error);
       
-      // Show more specific error messages
-      if (error.message.includes('rate limit')) {
-        Alert.alert(
-          'Rate Limit Reached', 
-          error.message + '\n\nTip: Popular recipes are cached for 7 days to conserve API calls.',
-          [{ text: 'OK' }]
-        );
-      } else if (error.message.includes('Cache is only')) {
-        // This is actually a success case - we shuffled existing recipes
-        console.log('ℹ️ Shuffled existing recipes for variety');
-      } else {
-        Alert.alert(
-          'Refresh Error', 
-          error.message || 'Failed to refresh popular recipes. Please try again later.',
-          [{ text: 'OK' }]
-        );
-      }
+      Alert.alert(
+        'Refresh Error', 
+        'Failed to refresh popular recipes. Please try again later.',
+        [{ text: 'OK' }]
+      );
     } finally {
       setLoadingPopular(false);
     }
@@ -323,30 +311,263 @@ const RecipeSearch = () => {
         ...filters
       };
 
-      const result = await EdamamService.searchRecipes(query, searchOptions);
-      
-      // Track the API call
-      await RecipeCacheService.trackApiCall();
+      // Use Supabase cache service (automatically handles caching and API calls)
+      const recipes = await cacheService.getSearchResults(query, searchOptions);
+      const result = { success: true, data: { recipes } };
 
-      if (result.success) {
+      if (result.success && result.data.recipes.length > 0) {
+        // ✅ Step 1: Edamam API returned recipes
         setRecipes(result.data.recipes);
-        console.log(`✅ Found ${result.data.recipes.length} recipes`);
+        setCanGenerateMore(false); // No AI needed
+        setAiRecipeCount(0);
+        console.log(`✅ Found ${result.data.recipes.length} recipes from Edamam`);
         
         if (result.cached) {
           console.log(`💾 Results loaded from cache (no API call used)`);
         } else {
           console.log(`📊 API calls used: ${apiStats.apiCallsThisMinute + 1}/${apiStats.rateLimit} this minute`);
         }
+        setLoading(false);
+      } else if (result.success && result.data.recipes.length === 0) {
+        // ❌ Step 2: No results from Edamam - Check tbl_recipes
+        console.log('ℹ️ No results from Edamam API, checking tbl_recipes...');
+        
+        const dbResult = await SousChefAIService.checkExistingRecipes(query, filters);
+        
+        if (dbResult.found && dbResult.recipes.length > 0) {
+          // ✅ Found recipes in tbl_recipes!
+          console.log(`✅ Found ${dbResult.count} recipes in tbl_recipes`);
+          
+          // Format database recipes to match Edamam structure
+          const formattedDbRecipes = dbResult.recipes.map(recipe => ({
+            id: recipe.recipeID,
+            uri: `souschef://recipe/${recipe.recipeID}`,
+            label: recipe.recipeName,
+            image: recipe.recipeImage,
+            source: recipe.generatedBy || 'SousChef AI',
+            url: null,
+            yield: recipe.servings,
+            dietLabels: recipe.dietLabels || [],
+            healthLabels: recipe.healthLabels || [],
+            cautions: recipe.allergens || [],
+            ingredientLines: recipe.ingredients.map(ing => 
+              `${ing.quantity} ${ing.unit} ${ing.name}${ing.notes ? ` (${ing.notes})` : ''}`
+            ),
+            ingredients: recipe.ingredients,
+            calories: recipe.calories,
+            totalTime: recipe.cookingTime,
+            cuisineType: [recipe.cuisineType],
+            mealType: [recipe.mealType],
+            dishType: [recipe.dishType],
+            isCustom: true,
+            recipeID: recipe.recipeID,
+            instructions: recipe.instructions,
+            difficulty: recipe.difficulty
+          }));
+          
+          setRecipes(formattedDbRecipes);
+          setCanGenerateMore(formattedDbRecipes.length < 5); // Allow generating more if less than 5
+          setAiRecipeCount(0);
+          setCurrentSearchQuery(query);
+          setLoading(false);
+          
+          Alert.alert(
+            '📚 Found Existing Recipes',
+            `We found ${dbResult.count} ${dbResult.count === 1 ? 'recipe' : 'recipes'} from our database!${formattedDbRecipes.length < 5 ? '\n\nWant more? Tap "Generate Another" to create new recipes with AI.' : ''}`,
+            [{ text: 'Great!', style: 'default' }]
+          );
+        } else {
+          // ❌ Step 3: No results anywhere - Generate 1 AI recipe
+          console.log('ℹ️ No existing recipes found, generating 1 AI recipe...');
+          setLoading(false);
+          setGeneratingAI(true);
+          setCurrentSearchQuery(query);
+          
+          try {
+            // Get user's pantry items
+            let pantryItems = [];
+            if (user?.email) {
+              pantryItems = await SousChefAIService.getUserPantryItems(user.email);
+              console.log(`📦 Found ${pantryItems.length} pantry items`);
+            }
+            
+            // Generate 1 AI recipe (with duplicate detection)
+            const aiResult = await SousChefAIService.generateSingleRecipe(
+              query,
+              filters,
+              pantryItems,
+              0, // First recipe
+              [] // No existing recipes yet
+            );
+            
+            if (aiResult.success && aiResult.recipe) {
+              // Format AI recipe
+              const formattedRecipe = {
+                id: aiResult.recipe.recipeID,
+                uri: `souschef://recipe/${aiResult.recipe.recipeID}`,
+                label: aiResult.recipe.recipeName,
+                image: aiResult.recipe.recipeImage,
+                source: 'SousChef AI',
+                url: null,
+                yield: aiResult.recipe.servings,
+                dietLabels: aiResult.recipe.dietLabels || [],
+                healthLabels: aiResult.recipe.healthLabels || [],
+                cautions: aiResult.recipe.allergens || [],
+                ingredientLines: aiResult.recipe.ingredients.map(ing => 
+                  `${ing.quantity} ${ing.unit} ${ing.name}${ing.notes ? ` (${ing.notes})` : ''}`
+                ),
+                ingredients: aiResult.recipe.ingredients,
+                calories: aiResult.recipe.calories,
+                totalTime: aiResult.recipe.cookingTime,
+                cuisineType: [aiResult.recipe.cuisineType],
+                mealType: [aiResult.recipe.mealType],
+                dishType: [aiResult.recipe.dishType],
+                isCustom: true,
+                recipeID: aiResult.recipe.recipeID,
+                instructions: aiResult.recipe.instructions,
+                difficulty: aiResult.recipe.difficulty
+              };
+              
+              setRecipes([formattedRecipe]);
+              setAiRecipeCount(1);
+              setCanGenerateMore(true); // Enable "Generate Another"
+              console.log(`✅ Generated 1 AI recipe (1/5)`);
+              
+              Alert.alert(
+                '🤖 AI Recipe Created!',
+                `No existing recipes found, so SousChef AI created a custom recipe just for you!${pantryItems.length > 0 ? '\n\n✨ Personalized with your pantry items!' : ''}\n\nWant more options? Tap "Generate Another" (up to 5 total).`,
+                [{ text: 'Awesome!', style: 'default' }]
+              );
+            } else {
+              console.error('❌ AI generation failed:', aiResult.error);
+              Alert.alert(
+                'No Recipes Found',
+                'Sorry, we couldn\'t find or generate any recipes. Please try a different search term.',
+                [{ text: 'OK' }]
+              );
+              setRecipes([]);
+              setCanGenerateMore(false);
+            }
+          } catch (aiError) {
+            console.error('❌ AI generation error:', aiError);
+            Alert.alert(
+              'Generation Failed',
+              `Could not generate AI recipe: ${aiError.message}`,
+              [{ text: 'OK' }]
+            );
+            setRecipes([]);
+            setCanGenerateMore(false);
+          } finally {
+            setGeneratingAI(false);
+          }
+        }
       } else {
+        // API error
         Alert.alert('Search Error', result.error || 'Failed to search recipes. Please try again.');
         setRecipes([]);
+        setLoading(false);
       }
     } catch (error) {
       console.error('Search error:', error);
       Alert.alert('Error', 'Something went wrong while searching. Please try again.');
       setRecipes([]);
-    } finally {
       setLoading(false);
+      setGeneratingAI(false);
+    }
+  };
+
+  const handleGenerateAnother = async () => {
+    if (aiRecipeCount >= 5) {
+      Alert.alert(
+        'Limit Reached',
+        'You\'ve reached the maximum of 5 AI-generated recipes per search. Try a new search for more recipes!',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    setGeneratingAI(true);
+
+    try {
+      console.log(`🤖 Generating another recipe (${aiRecipeCount + 1}/5)...`);
+
+      // Get user's pantry items
+      let pantryItems = [];
+      if (user?.email) {
+        pantryItems = await SousChefAIService.getUserPantryItems(user.email);
+      }
+
+      // Generate 1 more AI recipe (pass existing recipes for duplicate detection)
+      const aiResult = await SousChefAIService.generateSingleRecipe(
+        currentSearchQuery,
+        filters,
+        pantryItems,
+        aiRecipeCount, // Pass current count
+        recipes // Pass existing recipes to avoid duplicates
+      );
+
+      if (aiResult.success && aiResult.recipe) {
+        // Format new recipe
+        const formattedRecipe = {
+          id: aiResult.recipe.recipeID,
+          uri: `souschef://recipe/${aiResult.recipe.recipeID}`,
+          label: aiResult.recipe.recipeName,
+          image: aiResult.recipe.recipeImage,
+          source: 'SousChef AI',
+          url: null,
+          yield: aiResult.recipe.servings,
+          dietLabels: aiResult.recipe.dietLabels || [],
+          healthLabels: aiResult.recipe.healthLabels || [],
+          cautions: aiResult.recipe.allergens || [],
+          ingredientLines: aiResult.recipe.ingredients.map(ing => 
+            `${ing.quantity} ${ing.unit} ${ing.name}${ing.notes ? ` (${ing.notes})` : ''}`
+          ),
+          ingredients: aiResult.recipe.ingredients,
+          calories: aiResult.recipe.calories,
+          totalTime: aiResult.recipe.cookingTime,
+          cuisineType: [aiResult.recipe.cuisineType],
+          mealType: [aiResult.recipe.mealType],
+          dishType: [aiResult.recipe.dishType],
+          isCustom: true,
+          recipeID: aiResult.recipe.recipeID,
+          instructions: aiResult.recipe.instructions,
+          difficulty: aiResult.recipe.difficulty
+        };
+
+        // Add to existing recipes
+        setRecipes(prevRecipes => [...prevRecipes, formattedRecipe]);
+        const newCount = aiRecipeCount + 1;
+        setAiRecipeCount(newCount);
+        
+        // Disable button if reached 5
+        if (newCount >= 5) {
+          setCanGenerateMore(false);
+        }
+
+        console.log(`✅ Generated another recipe (${newCount}/5)`);
+
+        Alert.alert(
+          '✨ New Recipe Added!',
+          `Recipe ${newCount} of 5 created!${newCount < 5 ? '\n\nWant more? Tap "Generate Another" again.' : '\n\nThat\'s the maximum! Try a new search for more recipes.'}`,
+          [{ text: 'Nice!', style: 'default' }]
+        );
+      } else {
+        console.error('❌ AI generation failed:', aiResult.error);
+        Alert.alert(
+          'Generation Failed',
+          'Could not generate another recipe. Please try again.',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error) {
+      console.error('❌ Generate another error:', error);
+      Alert.alert(
+        'Error',
+        `Failed to generate recipe: ${error.message}`,
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setGeneratingAI(false);
     }
   };
 
@@ -430,7 +651,17 @@ const RecipeSearch = () => {
     }
   };
 
-  const quickSearches = EdamamService.getPopularSearches();
+  // Quick search suggestions (static, no API call needed)
+  const quickSearches = [
+    { id: '1', icon: '🍕', label: 'Pizza', query: 'pizza' },
+    { id: '2', icon: '🍝', label: 'Pasta', query: 'pasta' },
+    { id: '3', icon: '🍔', label: 'Burger', query: 'burger' },
+    { id: '4', icon: '🥗', label: 'Salad', query: 'salad' },
+    { id: '5', icon: '🍛', label: 'Curry', query: 'curry' },
+    { id: '6', icon: '🌮', label: 'Tacos', query: 'tacos' },
+    { id: '7', icon: '🍜', label: 'Ramen', query: 'ramen' },
+    { id: '8', icon: '🥘', label: 'Stew', query: 'stew' }
+  ];
 
   return (
     <AuthGuard>
@@ -529,6 +760,28 @@ const RecipeSearch = () => {
               scrollEnabled={false} // Disable internal scrolling since we're in a ScrollView
               numColumns={1}
             />
+
+            {/* Generate Another Button */}
+            {canGenerateMore && !generatingAI && (
+              <TouchableOpacity 
+                style={styles.generateAnotherButton}
+                onPress={handleGenerateAnother}
+                activeOpacity={0.7}
+              >
+                <View style={styles.generateAnotherContent}>
+                  <Ionicons name="sparkles" size={24} color="#fff" />
+                  <View style={styles.generateAnotherTextContainer}>
+                    <Text style={styles.generateAnotherText}>
+                      Generate Another Recipe
+                    </Text>
+                    <Text style={styles.generateAnotherSubtext}>
+                      {aiRecipeCount}/5 AI recipes created
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={24} color="#fff" />
+                </View>
+              </TouchableOpacity>
+            )}
           </View>
         )}
 
@@ -548,6 +801,18 @@ const RecipeSearch = () => {
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="#4CAF50" />
               <Text style={styles.loadingText}>Searching for recipes...</Text>
+            </View>
+          </View>
+        )}
+
+        {/* AI Generation State */}
+        {generatingAI && (
+          <View style={styles.section}>
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#8A2BE2" />
+              <Text style={styles.loadingText}>🤖 SousChef AI is creating custom recipes...</Text>
+              <Text style={styles.loadingSubtext}>Generating images and cooking instructions</Text>
+              <Text style={styles.loadingSubtext}>This may take 30-60 seconds</Text>
             </View>
           </View>
         )}
@@ -958,6 +1223,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     marginTop: 10,
+    fontWeight: '600',
+  },
+  loadingSubtext: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 5,
+    fontStyle: 'italic',
   },
   bottomNav: {
     flexDirection: 'row',
@@ -1005,6 +1277,41 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 4.65,
     elevation: 8,
+  },
+  generateAnotherButton: {
+    backgroundColor: '#8A2BE2',
+    borderRadius: 12,
+    marginTop: 20,
+    marginBottom: 10,
+    shadowColor: '#8A2BE2',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 4.65,
+    elevation: 8,
+    overflow: 'hidden',
+  },
+  generateAnotherContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 18,
+  },
+  generateAnotherTextContainer: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  generateAnotherText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  generateAnotherSubtext: {
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 13,
+    marginTop: 2,
   },
 });
 

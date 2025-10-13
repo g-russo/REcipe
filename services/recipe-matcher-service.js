@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { OPENAI_API_KEY } from '@env';
+import EdamamService from './edamam-service';
 
 class RecipeMatcherService {
   /**
@@ -221,26 +222,37 @@ Return ONLY valid JSON:
           lastViewed: new Date().toISOString()
         };
       } else {
-        // Edamam recipe
+        // Edamam recipe - store comprehensive cache data
         recipeData = {
           userID: userData.userID,
           aiRecipeID: null,
           edamamRecipeURI: recipe.uri,
           recipeSource: 'edamam',
           recipeData: {
+            id: recipe.id || recipe.uri,
+            uri: recipe.uri, // ✅ CRITICAL: Include uri for favorites functionality
             label: recipe.label,
             image: recipe.image,
+            images: recipe.images,
             source: recipe.source,
             url: recipe.url,
+            shareAs: recipe.shareAs,
             yield: recipe.yield,
             ingredientLines: recipe.ingredientLines,
+            ingredients: recipe.ingredients,
             calories: recipe.calories,
             totalTime: recipe.totalTime,
+            totalCO2Emissions: recipe.totalCO2Emissions,
+            co2EmissionsClass: recipe.co2EmissionsClass,
             cuisineType: recipe.cuisineType,
             mealType: recipe.mealType,
             dishType: recipe.dishType,
             healthLabels: recipe.healthLabels,
-            dietLabels: recipe.dietLabels
+            dietLabels: recipe.dietLabels,
+            cautions: recipe.cautions,
+            totalNutrients: recipe.totalNutrients,
+            totalDaily: recipe.totalDaily,
+            digest: recipe.digest
           },
           isFavorited: true,
           notes: notes,
@@ -378,31 +390,67 @@ Return ONLY valid JSON:
 
   /**
    * Get saved recipes (both Edamam and AI)
+   * For Edamam recipes, always fetch fresh data from API
    */
   async getSavedRecipes(userEmail) {
     try {
+      console.log('📥 Getting saved recipes for:', userEmail);
+      
       const { data: userData } = await supabase
         .from('tbl_users')
         .select('userID')
         .eq('userEmail', userEmail)
         .single();
 
-      if (!userData) return [];
+      if (!userData) {
+        console.log('❌ User not found');
+        return [];
+      }
 
       const { data } = await supabase
         .from('tbl_favorites')
         .select('*')
         .eq('userID', userData.userID)
         .eq('isFavorited', true)
-        .order('lastViewed', { ascending: false });
+        .order('savedAt', { ascending: false });
 
-      if (!data) return [];
+      if (!data || data.length === 0) {
+        console.log('📭 No saved recipes found');
+        return [];
+      }
 
-      // Fetch AI recipe details for AI recipes
+      console.log(`📚 Found ${data.length} saved recipes in database`);
+
+      // Remove duplicates based on recipe source
+      const uniqueRecipes = data.reduce((acc, current) => {
+        const isDuplicate = acc.find(item => {
+          if (current.recipeSource === 'ai') {
+            return item.recipeSource === 'ai' && item.aiRecipeID === current.aiRecipeID;
+          } else {
+            return item.recipeSource === 'edamam' && item.edamamRecipeURI === current.edamamRecipeURI;
+          }
+        });
+
+        if (!isDuplicate) {
+          acc.push(current);
+        } else {
+          console.log('🔄 Removing duplicate:', {
+            source: current.recipeSource,
+            id: current.recipeSource === 'ai' ? current.aiRecipeID : current.edamamRecipeURI
+          });
+        }
+
+        return acc;
+      }, []);
+
+      console.log(`✨ After removing duplicates: ${uniqueRecipes.length} recipes`);
+
+      // Fetch full recipe details
       const formattedRecipes = await Promise.all(
-        data.map(async (userRecipe) => {
+        uniqueRecipes.map(async (userRecipe) => {
           if (userRecipe.recipeSource === 'ai') {
-            // Fetch full AI recipe
+            // Fetch full AI recipe from database
+            console.log('🤖 Fetching AI recipe:', userRecipe.aiRecipeID);
             const { data: aiRecipe } = await supabase
               .from('tbl_recipes')
               .select('*')
@@ -415,19 +463,55 @@ Return ONLY valid JSON:
               isCustom: true
             };
           } else {
-            // Edamam recipe - data already stored in recipeData field
-            return {
-              ...userRecipe,
-              recipe: userRecipe.recipeData,
-              isCustom: false
-            };
+            // For Edamam recipes, try to fetch fresh data from API
+            console.log('🔗 Attempting to fetch Edamam recipe from API:', userRecipe.edamamRecipeURI);
+            
+            // IMPORTANT: Always use cached data first, then try to fetch fresh in background
+            // This ensures UI loads quickly even if API is slow/fails
+            const cachedRecipe = userRecipe.recipeData;
+            
+            // Ensure cached recipe has uri field (critical for favorites)
+            if (cachedRecipe && !cachedRecipe.uri && userRecipe.edamamRecipeURI) {
+              cachedRecipe.uri = userRecipe.edamamRecipeURI;
+              console.log('✅ Added missing URI to cached recipe');
+            }
+            
+            try {
+              const recipeResult = await EdamamService.getRecipeByUri(userRecipe.edamamRecipeURI);
+              
+              if (recipeResult.success && recipeResult.recipe) {
+                console.log('✅ Successfully fetched fresh Edamam recipe from API');
+                return {
+                  ...userRecipe,
+                  recipe: recipeResult.recipe,
+                  isCustom: false
+                };
+              } else {
+                // Use cached data if API fails (expected behavior)
+                console.log('💾 Using cached recipe data (API unavailable or recipe not found)');
+                return {
+                  ...userRecipe,
+                  recipe: cachedRecipe,
+                  isCustom: false
+                };
+              }
+            } catch (error) {
+              // Unexpected error - still use cache but log it
+              console.log('💾 Using cached recipe data (unexpected error):', error.message);
+              return {
+                ...userRecipe,
+                recipe: cachedRecipe,
+                isCustom: false
+              };
+            }
           }
         })
       );
 
+      console.log(`✅ Successfully formatted ${formattedRecipes.length} recipes`);
       return formattedRecipes;
     } catch (error) {
-      console.error('Error fetching saved recipes:', error);
+      console.error('💥 Error fetching saved recipes:', error);
       return [];
     }
   }
