@@ -44,3 +44,8 @@ google-services.json
 *.md
 *.mdx
 *.txt
+
+#sql files
+*.sql
+*.sqlite
+*.sqlite3
