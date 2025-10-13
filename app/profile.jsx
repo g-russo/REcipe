@@ -14,6 +14,7 @@ import { router } from 'expo-router';
 import { supabase } from '../lib/supabase';
 import { useCustomAuth } from '../hooks/use-custom-auth';
 import styles from '../assets/css/profileStyles';
+import AuthGuard from '../components/AuthGuard';
 
 const Profile = () => {
   const { user, customUserData, signOut } = useCustomAuth();
@@ -79,13 +80,21 @@ const Profile = () => {
       case 'favorites':
         return (
           <View style={styles.tabContent}>
-            <View style={styles.emptyStateContainer}>
-              <Ionicons name="heart-outline" size={60} color="#ccc" />
-              <Text style={styles.emptyStateText}>No favorites yet</Text>
-              <Text style={styles.emptyStateSubText}>
-                Your favorite recipes will appear here
-              </Text>
-            </View>
+            <TouchableOpacity 
+              style={styles.savedRecipesButton}
+              onPress={() => router.push('/saved-recipes')}
+            >
+              <View style={styles.savedRecipesIconContainer}>
+                <Ionicons name="bookmark" size={24} color="#FF6B6B" />
+              </View>
+              <View style={styles.savedRecipesTextContainer}>
+                <Text style={styles.savedRecipesTitle}>View Saved Recipes</Text>
+                <Text style={styles.savedRecipesSubtitle}>
+                  See all your favorite recipes from Edamam and SousChef AI
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={24} color="#ccc" />
+            </TouchableOpacity>
           </View>
         );
       case 'history':
@@ -106,8 +115,9 @@ const Profile = () => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+    <AuthGuard>
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="dark-content" backgroundColor="#fff" />
       
       {/* Header */}
       <View style={styles.header}>
@@ -222,6 +232,7 @@ const Profile = () => {
         <Text style={styles.versionText}>Version 1.0.0 (Build 1)</Text>
       </ScrollView>
     </SafeAreaView>
+    </AuthGuard>
   );
 };
 

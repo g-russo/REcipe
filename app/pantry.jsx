@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import styles from '../assets/css/pantryStyles';
+import AuthGuard from '../components/AuthGuard';
 
 const Pantry = () => {
   // Regular modal state variables
@@ -672,8 +673,9 @@ const Pantry = () => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+    <AuthGuard>
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="dark-content" backgroundColor="#fff" />
       
       {/* Header - Remove add button, keep only search */}
       <View style={styles.header}>
@@ -1994,6 +1996,7 @@ const Pantry = () => {
 
       {/* ...existing modals... */}
     </SafeAreaView>
+    </AuthGuard>
   );
 };
 

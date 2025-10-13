@@ -895,27 +895,73 @@ class RecipeCacheService {
    */
   async loadFromStorage() {
     try {
-      const [popularData, trendingData, searchCacheData, similarRecipesCacheData, lastFetchData] = await Promise.all([
-        AsyncStorage.getItem(this.STORAGE_KEYS.POPULAR_RECIPES),
-        AsyncStorage.getItem(this.STORAGE_KEYS.TRENDING_RECIPES),
-        AsyncStorage.getItem(this.STORAGE_KEYS.SEARCH_CACHE),
-        AsyncStorage.getItem(this.STORAGE_KEYS.SIMILAR_RECIPES_CACHE),
-        AsyncStorage.getItem(this.STORAGE_KEYS.LAST_FETCH)
-      ]);
+      // Load items individually to handle CursorWindow errors gracefully
+      try {
+        const popularData = await AsyncStorage.getItem(this.STORAGE_KEYS.POPULAR_RECIPES);
+        if (popularData) this.popularRecipes = JSON.parse(popularData);
+      } catch (error) {
+        if (error.message.includes('CursorWindow') || error.message.includes('Row too big')) {
+          console.warn('⚠️ Popular recipes cache too large, clearing...');
+          await AsyncStorage.removeItem(this.STORAGE_KEYS.POPULAR_RECIPES);
+        } else {
+          throw error;
+        }
+      }
 
-      if (popularData) this.popularRecipes = JSON.parse(popularData);
-      if (trendingData) this.trendingRecipes = JSON.parse(trendingData);
-      if (searchCacheData) {
-        const searchCacheArray = JSON.parse(searchCacheData);
-        this.searchCache = new Map(searchCacheArray);
+      try {
+        const trendingData = await AsyncStorage.getItem(this.STORAGE_KEYS.TRENDING_RECIPES);
+        if (trendingData) this.trendingRecipes = JSON.parse(trendingData);
+      } catch (error) {
+        if (error.message.includes('CursorWindow') || error.message.includes('Row too big')) {
+          console.warn('⚠️ Trending recipes cache too large, clearing...');
+          await AsyncStorage.removeItem(this.STORAGE_KEYS.TRENDING_RECIPES);
+        } else {
+          throw error;
+        }
       }
-      if (similarRecipesCacheData) {
-        const similarRecipesCacheArray = JSON.parse(similarRecipesCacheData);
-        this.similarRecipesCache = new Map(similarRecipesCacheArray);
+
+      try {
+        const searchCacheData = await AsyncStorage.getItem(this.STORAGE_KEYS.SEARCH_CACHE);
+        if (searchCacheData) {
+          const searchCacheArray = JSON.parse(searchCacheData);
+          this.searchCache = new Map(searchCacheArray);
+        }
+      } catch (error) {
+        if (error.message.includes('CursorWindow') || error.message.includes('Row too big')) {
+          console.warn('⚠️ Search cache too large, clearing...');
+          await AsyncStorage.removeItem(this.STORAGE_KEYS.SEARCH_CACHE);
+        } else {
+          throw error;
+        }
       }
-      if (lastFetchData) this.lastFetchTime = parseInt(lastFetchData);
+
+      try {
+        const similarRecipesCacheData = await AsyncStorage.getItem(this.STORAGE_KEYS.SIMILAR_RECIPES_CACHE);
+        if (similarRecipesCacheData) {
+          const similarRecipesCacheArray = JSON.parse(similarRecipesCacheData);
+          this.similarRecipesCache = new Map(similarRecipesCacheArray);
+        }
+      } catch (error) {
+        if (error.message.includes('CursorWindow') || error.message.includes('Row too big')) {
+          console.warn('⚠️ Similar recipes cache too large, clearing...');
+          await AsyncStorage.removeItem(this.STORAGE_KEYS.SIMILAR_RECIPES_CACHE);
+        } else {
+          throw error;
+        }
+      }
+
+      try {
+        const lastFetchData = await AsyncStorage.getItem(this.STORAGE_KEYS.LAST_FETCH);
+        if (lastFetchData) this.lastFetchTime = parseInt(lastFetchData);
+      } catch (error) {
+        console.warn('⚠️ Could not load last fetch time:', error.message);
+      }
+
+      console.log('✅ Storage loaded successfully');
     } catch (error) {
       console.error('Error loading from storage:', error);
+      // Clear all cache if loading fails completely
+      await this.clearAllStorage();
     }
   }
 
@@ -1146,6 +1192,15 @@ class RecipeCacheService {
     this.apiCallCount++;
     this.lastApiCallTime = Date.now();
     await this.saveApiUsageTracking();
+  }
+
+  /**
+   * Check if cache is expired
+   */
+  isCacheExpired() {
+    if (!this.lastFetchTime) return true;
+    const age = Date.now() - this.lastFetchTime;
+    return age > this.CACHE_DURATION;
   }
 
   /**

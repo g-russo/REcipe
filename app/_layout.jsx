@@ -71,7 +71,6 @@ export default function RootLayout() {
         <Stack.Screen name="force-password-change" options={{ title: 'Update Password' }} />
         <Stack.Screen name="recipe-search" options={{ title: 'Search Recipes' }} />
         <Stack.Screen name="recipe-detail" options={{ title: 'Recipe Details' }} />
-        <Stack.Screen name="database-test" options={{ title: 'Database Test' }} />
       </Stack>
       <StatusBar style="auto" />
     </SupabaseProvider>

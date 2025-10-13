@@ -16,12 +16,16 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import EdamamService from '../services/edamam-service';
+import RecipeMatcherService from '../services/recipe-matcher-service';
+import { useCustomAuth } from '../hooks/use-custom-auth';
+import AuthGuard from '../components/AuthGuard';
 
 const { width } = Dimensions.get('window');
 
 const RecipeDetail = () => {
   const router = useRouter();
   const { recipeData } = useLocalSearchParams();
+  const { user } = useCustomAuth();
   
   const [recipe, setRecipe] = useState(null);
   const [similarRecipes, setSimilarRecipes] = useState([]);
@@ -33,6 +37,16 @@ const RecipeDetail = () => {
   const [activeTab, setActiveTab] = useState('ingredients');
   const [isFavorite, setIsFavorite] = useState(false);
   const [loadingSimilar, setLoadingSimilar] = useState(false);
+  const [savingFavorite, setSavingFavorite] = useState(false);
+
+  // Debug user state on component mount and when it changes
+  useEffect(() => {
+    console.log('👤 RecipeDetail - User state changed:', { 
+      hasUser: !!user, 
+      email: user?.email,
+      id: user?.id 
+    });
+  }, [user]);
 
   useEffect(() => {
     if (recipeData) {
@@ -40,6 +54,14 @@ const RecipeDetail = () => {
         const parsedRecipe = JSON.parse(recipeData);
         setRecipe(parsedRecipe);
         setLoading(false);
+        
+        // Check if recipe is already saved
+        checkIfSaved(parsedRecipe);
+        
+        // Track recipe view
+        if (user?.email) {
+          RecipeMatcherService.trackRecipeView(user.email, parsedRecipe);
+        }
         
         // Fetch similar recipes
         fetchSimilarRecipes(parsedRecipe);
@@ -54,6 +76,29 @@ const RecipeDetail = () => {
       }
     }
   }, [recipeData]);
+
+  const checkIfSaved = async (currentRecipe) => {
+    if (!user?.email) return;
+    
+    try {
+      const savedRecipes = await RecipeMatcherService.getSavedRecipes(user.email);
+      
+      // Check if this recipe is in saved recipes
+      const isAIRecipe = currentRecipe.isCustom || currentRecipe.source === 'SousChef AI';
+      
+      const isSaved = savedRecipes.some(saved => {
+        if (isAIRecipe) {
+          return saved.recipeID === currentRecipe.recipeID;
+        } else {
+          return saved.edamamRecipeURI === currentRecipe.uri;
+        }
+      });
+      
+      setIsFavorite(isSaved);
+    } catch (error) {
+      console.error('Error checking if saved:', error);
+    }
+  };
 
   const fetchSimilarRecipes = async (currentRecipe) => {
     setLoadingSimilar(true);
@@ -158,9 +203,70 @@ const RecipeDetail = () => {
     }
   };
 
-  const toggleFavorite = () => {
-    setIsFavorite(!isFavorite);
-    // TODO: Implement favorite functionality with Supabase
+  const toggleFavorite = async () => {
+    console.log('🔍 Toggle favorite - User state:', { 
+      hasUser: !!user, 
+      email: user?.email,
+      userObject: user 
+    });
+
+    if (!user?.email) {
+      console.log('❌ No user email found, showing sign in alert');
+      Alert.alert(
+        'Sign In Required',
+        'Please sign in to save recipes to your favorites.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Sign In', onPress: () => router.push('/signin') }
+        ]
+      );
+      return;
+    }
+
+    console.log('✅ User authenticated, proceeding with save');
+    setSavingFavorite(true);
+    
+    try {
+      if (isFavorite) {
+        // Unsave recipe
+        console.log('🗑️ Removing recipe from favorites...');
+        const result = await RecipeMatcherService.unsaveRecipe(user.email, recipe);
+        
+        if (result.success) {
+          setIsFavorite(false);
+          Alert.alert('Removed', 'Recipe removed from favorites');
+        } else {
+          Alert.alert('Error', 'Failed to remove recipe from favorites');
+        }
+      } else {
+        // Save recipe
+        console.log('💾 Saving recipe to favorites...');
+        console.log('📧 User email:', user.email);
+        console.log('📖 Recipe:', { label: recipe.label, uri: recipe.uri });
+        
+        const result = await RecipeMatcherService.saveRecipe(
+          user.email,
+          recipe,
+          null // No notes for now
+        );
+        
+        console.log('📊 Save result:', result);
+        
+        if (result.success) {
+          setIsFavorite(true);
+          Alert.alert('Saved!', 'Recipe added to your favorites');
+        } else {
+          const errorMsg = result.error || 'Failed to save recipe';
+          Alert.alert('Error', errorMsg);
+          console.error('❌ Failed to save:', errorMsg);
+        }
+      }
+    } catch (error) {
+      console.error('💥 Exception in toggleFavorite:', error);
+      Alert.alert('Error', error.message || 'Something went wrong. Please try again.');
+    } finally {
+      setSavingFavorite(false);
+    }
   };
 
   const openRecipeUrl = () => {
@@ -215,8 +321,9 @@ const RecipeDetail = () => {
   const nutrition = getNutritionInfo();
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+    <AuthGuard>
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
       
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {/* Hero Image */}
@@ -442,6 +549,7 @@ const RecipeDetail = () => {
         </View>
       </ScrollView>
     </SafeAreaView>
+    </AuthGuard>
   );
 };
 

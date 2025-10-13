@@ -166,6 +166,43 @@ const styles = StyleSheet.create({
     color: '#aaa',
     marginBottom: 30,
   },
+  savedRecipesButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    padding: 16,
+    marginHorizontal: 16,
+    marginTop: 8,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  savedRecipesIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#FFF5F5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  savedRecipesTextContainer: {
+    flex: 1,
+  },
+  savedRecipesTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 2,
+  },
+  savedRecipesSubtitle: {
+    fontSize: 13,
+    color: '#666',
+    lineHeight: 18,
+  },
 });
 
 export default styles;

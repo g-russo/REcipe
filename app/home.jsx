@@ -12,6 +12,7 @@ import {
 import { useCustomAuth } from '../hooks/use-custom-auth';
 import { router } from 'expo-router';
 import { supabase } from '../lib/supabase';
+import AuthGuard from '../components/AuthGuard';
 
 const Home = () => {
   const { user, customUserData, signOut, loading } = useCustomAuth();
@@ -113,11 +114,11 @@ const Home = () => {
   const menuItems = [
     { title: 'My Recipes', subtitle: 'View your saved recipes', action: () => console.log('My Recipes') },
     { title: 'Discover', subtitle: 'Find new recipes', action: () => router.push('/recipe-search') },
-    { title: 'Favorites', subtitle: 'Your favorite recipes', action: () => console.log('Favorites') },
+    { title: 'Favorites', subtitle: 'Your favorite recipes', action: () => router.push('/saved-recipes') },
     { title: 'Shopping List', subtitle: 'Manage ingredients', action: () => console.log('Shopping List') },
     { title: 'Pantry', subtitle: 'View your ingredients', action: () => router.push('/pantry') },
     { title: 'Categories', subtitle: 'Browse by category', action: () => console.log('Categories') },
-    { title: 'Profile', subtitle: 'Manage your account', action: () => router.push('/profile') }, // Updated to navigate to profile page
+    { title: 'Profile', subtitle: 'Manage your account', action: () => router.push('/profile') },
   ];
 
   if (loading && !timeoutTriggered) {
@@ -148,11 +149,12 @@ const Home = () => {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-      
-      {/* Header */}
-      <View style={styles.header}>
+    <AuthGuard>
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+        
+        {/* Header */}
+        <View style={styles.header}>
         <View>
           <Text style={styles.welcomeText}>Welcome back!</Text>
           <Text style={styles.userNameText}>{userName || 'Chef'}</Text>
@@ -211,6 +213,7 @@ const Home = () => {
         </View>
       </ScrollView>
     </SafeAreaView>
+    </AuthGuard>
   );
 };
 

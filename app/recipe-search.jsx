@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import EdamamService from '../services/edamam-service';
 import RecipeCacheService from '../services/recipe-cache-service';
+import AuthGuard from '../components/AuthGuard';
 
 const RecipeSearch = () => {
   const router = useRouter();
@@ -31,6 +32,39 @@ const RecipeSearch = () => {
     diet: []
   });
   const [showFilters, setShowFilters] = useState(false);
+  const [selectedFilters, setSelectedFilters] = useState([]);
+
+  // Edamam API Health Labels (diets + allergies combined)
+  const healthLabels = [
+    'Balanced',
+    'High-Fiber',
+    'High-Protein',
+    'Low-Carb',
+    'Low-Fat',
+    'Low-Sodium',
+    'Dairy-Free',
+    'Egg-Free',
+    'Fish-Free',
+    'Gluten-Free',
+    'Keto-Friendly',
+    'Kidney-Friendly',
+    'Kosher',
+    'Mediterranean',
+    'No-Oil-Added',
+    'Paleo',
+    'Peanut-Free',
+    'Pescatarian',
+    'Pork-Free',
+    'Red-Meat-Free',
+    'Sesame-Free',
+    'Shellfish-Free',
+    'Soy-Free',
+    'Sugar-Free',
+    'Tree-Nut-Free',
+    'Vegan',
+    'Vegetarian',
+    'Wheat-Free'
+  ];
   const [hasSearched, setHasSearched] = useState(false);
 
   // Dynamic recent searches - track user search history
@@ -154,6 +188,30 @@ const RecipeSearch = () => {
     // setRecentSearches(stored ? JSON.parse(stored) : []);
   };
 
+  const toggleFilters = () => {
+    setShowFilters(!showFilters);
+  };
+
+  const toggleFilter = (filter) => {
+    setSelectedFilters(prev => {
+      if (prev.includes(filter)) {
+        // Remove filter if already selected
+        return prev.filter(f => f !== filter);
+      } else {
+        // Add filter if not selected
+        return [...prev, filter];
+      }
+    });
+  };
+
+  const clearAllFilters = () => {
+    setSelectedFilters([]);
+  };
+
+  const getFilterCount = () => {
+    return selectedFilters.length;
+  };
+
   const addToRecentSearches = (query) => {
     if (!query.trim()) return;
     
@@ -261,6 +319,7 @@ const RecipeSearch = () => {
       const searchOptions = {
         from: 0,
         to: 20,
+        health: selectedFilters,
         ...filters
       };
 
@@ -374,8 +433,9 @@ const RecipeSearch = () => {
   const quickSearches = EdamamService.getPopularSearches();
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+    <AuthGuard>
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="dark-content" backgroundColor="#fff" />
       
       {/* API Usage Stats - Only show in development */}
 
@@ -389,7 +449,7 @@ const RecipeSearch = () => {
               onPress={clearSearchResults}
             >
               <Ionicons name="arrow-back" size={20} color="#666" />
-            </TouchableOpacity>
+            </TouchableOpacity> 
           )}
           <Ionicons name="search-outline" size={20} color="#666" style={styles.searchIcon} />
           <TextInput
@@ -400,14 +460,57 @@ const RecipeSearch = () => {
             onSubmitEditing={() => handleSearch()}
             returnKeyType="search"
           />
-          <TouchableOpacity style={styles.filterButton}>
+          <TouchableOpacity style={styles.filterButton} onPress={toggleFilters}>
             <Ionicons name="options-outline" size={20} color="#666" />
+            {getFilterCount() > 0 && (
+              <View style={styles.filterBadge}>
+                <Text style={styles.filterBadgeText}>{getFilterCount()}</Text>
+              </View>
+            )}
           </TouchableOpacity>
           <TouchableOpacity style={styles.cameraButton}>
             <Ionicons name="camera-outline" size={20} color="#666" />
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Expandable Filter Section */}
+      {showFilters && (
+        <View style={styles.filterSection}>
+          <View style={styles.filterHeader}>
+            <Text style={styles.filterTitle}>Filters</Text>
+            <TouchableOpacity onPress={toggleFilters}>
+              <Text style={styles.clearFiltersText}>Show Less</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView 
+            style={styles.filterScrollView}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.filterChipsContainer}>
+              {healthLabels.map((label) => (
+                <TouchableOpacity
+                  key={label}
+                  style={[
+                    styles.filterChip,
+                    selectedFilters.includes(label) && styles.filterChipActive
+                  ]}
+                  onPress={() => toggleFilter(label)}
+                >
+                  <Text
+                    style={[
+                      styles.filterChipText,
+                      selectedFilters.includes(label) && styles.filterChipTextActive
+                    ]}
+                  >
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </ScrollView>
+        </View>
+      )}
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Search Results - Show when user has searched */}
@@ -557,6 +660,7 @@ const RecipeSearch = () => {
         </TouchableOpacity>
       </View>
     </SafeAreaView>
+    </AuthGuard>
   );
 };
 
@@ -598,6 +702,75 @@ const styles = StyleSheet.create({
   cameraButton: {
     padding: 5,
     marginLeft: 5,
+  },
+  filterBadge: {
+    position: 'absolute',
+    top: -5,
+    right: -5,
+    backgroundColor: '#4CAF50',
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  filterBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  filterSection: {
+    backgroundColor: '#f8f9fa',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  filterHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  filterTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+  },
+  clearFiltersText: {
+    fontSize: 14,
+    color: '#4CAF50',
+    fontWeight: '500',
+  },
+  filterScrollView: {
+    maxHeight: 200,
+  },
+  filterChipsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  filterChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    marginBottom: 8,
+  },
+  filterChipActive: {
+    backgroundColor: '#4CAF50',
+    borderColor: '#4CAF50',
+  },
+  filterChipText: {
+    fontSize: 14,
+    color: '#333',
+    fontWeight: '500',
+  },
+  filterChipTextActive: {
+    color: '#fff',
   },
   content: {
     flex: 1,

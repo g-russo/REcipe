@@ -1,5 +1,5 @@
 import RecipeCacheService from '../services/recipe-cache-service';
-import PerformanceMonitor from './performanceMonitor';
+import PerformanceMonitor from './performance-monitor';
 
 /**
  * Initialize app-wide services and caches
