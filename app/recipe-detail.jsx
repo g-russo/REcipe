@@ -149,7 +149,9 @@ const RecipeDetail = () => {
   const fetchSimilarRecipes = async (currentRecipe) => {
     setLoadingSimilar(true);
     try {
-      console.log('🎯 Starting SMART similar recipe search for:', currentRecipe.label);
+      // Handle both Edamam (label) and AI (recipeName) recipe structures
+      const recipeTitle = currentRecipe.label || currentRecipe.recipeName || 'Unknown Recipe';
+      console.log('🎯 Starting SMART similar recipe search for:', recipeTitle);
       console.log('📋 Recipe data:', {
         dishType: currentRecipe.dishType,
         cuisineType: currentRecipe.cuisineType,
@@ -339,28 +341,36 @@ const RecipeDetail = () => {
     // Check if it's an AI-generated recipe with macronutrients
     const isAIRecipe = recipe.isCustom || recipe.source === 'SousChef AI';
     
-    if (isAIRecipe && (recipe.protein || recipe.carbs || recipe.fat || recipe.calories)) {
-      // AI recipe with macronutrients
-      console.log('🤖 AI Recipe Nutrition:', { 
-        protein: recipe.protein, 
-        carbs: recipe.carbs, 
-        fat: recipe.fat, 
-        calories: recipe.calories 
-      });
+    if (isAIRecipe) {
+      // ✅ AI Recipe: ONLY use direct properties (protein, carbs, fat, calories)
+      // Don't use Edamam's complex nutrient extraction for AI recipes
+      const protein = recipe.protein;
+      const carbs = recipe.carbs;
+      const fat = recipe.fat;
+      const calories = recipe.calories;
       
-      return {
-        calories: Math.round(recipe.calories || 0),
-        nutrients: {
-          carbs: { amount: Math.round(recipe.carbs || 0) },
-          protein: { amount: Math.round(recipe.protein || 0) },
-          fat: { amount: Math.round(recipe.fat || 0) }
-        },
-        isAIEstimate: true
-      };
+      console.log('🤖 AI Recipe Nutrition (direct properties):', { protein, carbs, fat, calories });
+      
+      // Only return nutrition if we have actual values (not undefined/null)
+      if (protein !== undefined || carbs !== undefined || fat !== undefined || calories !== undefined) {
+        return {
+          calories: Math.round(calories || 0),
+          nutrients: {
+            carbs: { amount: Math.round(carbs || 0) },
+            protein: { amount: Math.round(protein || 0) },
+            fat: { amount: Math.round(fat || 0) }
+          },
+          isAIEstimate: true
+        };
+      }
+      
+      // If no direct properties, return null (don't show nutrition section)
+      console.warn('⚠️ AI recipe missing nutrition data');
+      return null;
     }
     
-    // Edamam recipe - extract from totalNutrients
-    console.log('📊 Edamam Recipe - extracting nutrition info');
+    // Edamam recipe - use full nutrient extraction with all micronutrients
+    console.log('📊 Edamam Recipe - extracting full nutrition info');
     const edamamNutrition = EdamamService.extractNutritionInfo(recipe);
     return edamamNutrition;
   };

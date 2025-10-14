@@ -2,6 +2,7 @@ import { supabase } from '../lib/supabase';
 import { OPENAI_API_KEY } from '@env';
 import ImageResizer from 'react-native-image-resizer';
 import * as FileSystem from 'expo-file-system';
+import ImageConverter from '../utils/image-converter';
 
 const OPENAI_IMAGE_API = 'https://api.openai.com/v1/images/generations';
 
@@ -45,7 +46,7 @@ class ImageGenerationService {
    */
   async generateImageWithDALLE(prompt) {
     try {
-      const enhancedPrompt = `Professional food photography: ${prompt}. High quality, appetizing, natural lighting, top-down view, clean white background, 4k resolution, commercial style.`;
+      const enhancedPrompt = `Professional food photography of ${prompt} on a plate. High quality, appetizing, natural lighting, top-down view, clean background, commercial style. Focus on the food only, no text or labels.`;
 
       const response = await fetch(OPENAI_IMAGE_API, {
         method: 'POST',
@@ -124,7 +125,7 @@ class ImageGenerationService {
 
       console.log('📤 Converting to WebP and uploading:', filename);
 
-      // Step 1: Convert blob to base64 using FileReader (simple and reliable)
+      // Step 1: Convert blob to base64 data URL
       const reader = new FileReader();
       const base64Promise = new Promise((resolve, reject) => {
         reader.onloadend = () => resolve(reader.result);
@@ -133,55 +134,30 @@ class ImageGenerationService {
       });
 
       const base64DataUrl = await base64Promise;
-      const base64Image = base64DataUrl.split(',')[1]; // Remove "data:image/png;base64," prefix
+      console.log('📸 Original image size:', Math.round(base64DataUrl.length * 0.75 / 1024), 'KB (PNG)');
+
+      // Step 2: Convert to WebP using our image converter utility
+      let finalBase64;
+      let contentType = 'image/webp'; // Always WebP now
       
-      console.log('📸 Image size (base64):', Math.round(base64Image.length * 0.75 / 1024), 'KB (PNG)');
-
-      // Step 2: Try to convert to WebP using ImageResizer
-      let finalBase64 = base64Image;
-      let contentType = 'image/png';
-      let actualFilename = filename;
-
       try {
-        // Save as temp file first
-        const tempPngPath = `${FileSystem.cacheDirectory}temp_${Date.now()}.png`;
-        await FileSystem.writeAsStringAsync(tempPngPath, base64Image, {
-          encoding: 'base64' // Use string literal instead of EncodingType
-        });
-
-        console.log('🔄 Converting PNG to WebP...');
+        console.log('🔄 Converting to WebP with image-converter...');
         
-        // Convert to WebP
-        const webpResult = await ImageResizer.createResizedImage(
-          tempPngPath,
-          1024,
-          1024,
-          'WEBP',
-          75, // 75% quality - good balance
-          0,
-          null,
-          false,
-          { mode: 'contain', onlyScaleDown: true }
+        // Convert to WebP (optimized for AI-generated images)
+        const webpResult = await ImageConverter.convertBase64ToWebP(
+          base64DataUrl,
+          ImageConverter.ConversionPresets.AI_GENERATED
         );
 
-        // Read WebP file
-        const webpBase64 = await FileSystem.readAsStringAsync(webpResult.uri, {
-          encoding: 'base64' // Use string literal
-        });
-
-        finalBase64 = webpBase64;
+        finalBase64 = webpResult.base64;
         contentType = 'image/webp';
         
-        console.log('✅ WebP conversion successful:', Math.round(webpResult.size / 1024), 'KB (75% smaller!)');
-
-        // Cleanup temp files
-        await FileSystem.deleteAsync(tempPngPath, { idempotent: true });
-        await FileSystem.deleteAsync(webpResult.uri, { idempotent: true });
+        console.log('✅ WebP conversion successful!');
+        console.log(`📐 Dimensions: ${webpResult.width}x${webpResult.height}`);
+        console.log(`💾 Size: ${webpResult.sizeKB} KB (${Math.round((1 - webpResult.size / (base64DataUrl.length * 0.75)) * 100)}% smaller!)`);
       } catch (webpError) {
-        console.warn('⚠️ WebP conversion failed, using PNG:', webpError.message);
-        // Fallback to PNG if WebP conversion fails
-        contentType = 'image/png';
-        actualFilename = filename.replace('.webp', '.png');
+        console.error('❌ WebP conversion failed:', webpError);
+        throw new Error(`WebP conversion failed: ${webpError.message}`);
       }
 
       // Step 3: Convert base64 to Uint8Array for Supabase upload
@@ -193,11 +169,11 @@ class ImageGenerationService {
 
       console.log('📊 Final upload size:', Math.round(bytes.length / 1024), 'KB');
 
-      // Step 4: Upload to Supabase Storage
+      // Step 4: Upload to Supabase Storage as WebP
       const { data, error } = await supabase.storage
         .from('recipe-images')
-        .upload(actualFilename, bytes, {
-          contentType: contentType,
+        .upload(filename, bytes, {
+          contentType: 'image/webp', // Always WebP
           cacheControl: '31536000',
           upsert: false
         });
@@ -207,12 +183,13 @@ class ImageGenerationService {
         throw new Error(`Upload error: ${error.message}`);
       }
 
-      // Get public URL
+      // Get public URL (use filename, not actualFilename)
       const { data: urlData } = supabase.storage
         .from('recipe-images')
-        .getPublicUrl(actualFilename);
+        .getPublicUrl(filename);
 
-      console.log('✅ Image uploaded to Supabase successfully!');
+      console.log('✅ Image uploaded to Supabase successfully as WebP!');
+      console.log('🔗 Public URL:', urlData.publicUrl);
       return urlData.publicUrl;
     } catch (error) {
       console.error('Supabase upload error:', error);

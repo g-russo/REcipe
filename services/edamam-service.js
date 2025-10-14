@@ -151,20 +151,22 @@ class EdamamService {
       // Sanitize parameters before using them
       const sanitizedOptions = this.sanitizeEdamamParams(options);
 
+      // ⚠️ CACHING DISABLED - Now handled by supabase-cache-service.js
+      // Old AsyncStorage cache was filling device storage
       // Import RecipeCacheService dynamically to avoid circular dependency
-      const RecipeCacheService = (await import('./recipe-cache-service.js')).default;
+      // const RecipeCacheService = (await import('./recipe-cache-service.js')).default;
       
       // Check cache first (unless explicitly skipped)
-      if (!sanitizedOptions.skipCache) {
-        const cachedResults = RecipeCacheService.getCachedSearchResults(query, sanitizedOptions);
-        if (cachedResults) {
-          return {
-            success: true,
-            data: cachedResults,
-            cached: true
-          };
-        }
-      }
+      // if (!sanitizedOptions.skipCache) {
+      //   const cachedResults = RecipeCacheService.getCachedSearchResults(query, sanitizedOptions);
+      //   if (cachedResults) {
+      //     return {
+      //       success: true,
+      //       data: cachedResults,
+      //       cached: true
+      //     };
+      //   }
+      // }
       // Build URL parameters
       const params = new URLSearchParams({
         type: 'public',
@@ -230,14 +232,15 @@ class EdamamService {
         recipes: data.hits?.map(hit => this.formatRecipe(hit.recipe)) || []
       };
 
+      // ⚠️ CACHING DISABLED - Now handled by supabase-cache-service.js
       // Cache the results for future use (skip if this is for cache service itself)
-      if (!options.skipCache) {
-        try {
-          await RecipeCacheService.cacheSearchResults(query, options, searchResults);
-        } catch (cacheError) {
-          console.warn('⚠️ Failed to cache search results:', cacheError.message);
-        }
-      }
+      // if (!options.skipCache) {
+      //   try {
+      //     await RecipeCacheService.cacheSearchResults(query, options, searchResults);
+      //   } catch (cacheError) {
+      //     console.warn('⚠️ Failed to cache search results:', cacheError.message);
+      //   }
+      // }
 
       return {
         success: true,
@@ -1862,30 +1865,33 @@ class EdamamService {
    */
   static async getSimilarRecipes(currentRecipe, count = 15, options = {}) {
     try {
-      console.log('🔍 Fetching SMART similar recipes for:', currentRecipe.label);
+      // Handle both Edamam (label) and AI (recipeName) recipe structures
+      const recipeTitle = currentRecipe.label || currentRecipe.recipeName || 'Unknown Recipe';
+      console.log('🔍 Fetching SMART similar recipes for:', recipeTitle);
       
+      // ⚠️ CACHING DISABLED - Now handled by supabase-cache-service.js
       // Check cache first for similar recipes
-      const cacheKey = this.generateSimilarRecipesCacheKey(currentRecipe, count);
-      let cachedSimilarRecipes = null;
+      // const cacheKey = this.generateSimilarRecipesCacheKey(currentRecipe, count);
+      // let cachedSimilarRecipes = null;
       
-      try {
-        const RecipeCacheService = (await import('./recipe-cache-service.js')).default;
-        cachedSimilarRecipes = await RecipeCacheService.getCachedSimilarRecipes(cacheKey);
+      // try {
+      //   const RecipeCacheService = (await import('./recipe-cache-service.js')).default;
+      //   cachedSimilarRecipes = await RecipeCacheService.getCachedSimilarRecipes(cacheKey);
         
-        if (cachedSimilarRecipes && cachedSimilarRecipes.length > 0) {
-          console.log(`✅ Using cached similar recipes (${cachedSimilarRecipes.length} recipes)`);
-          return {
-            success: true,
-            data: {
-              recipes: cachedSimilarRecipes,
-              total: cachedSimilarRecipes.length,
-              cached: true
-            }
-          };
-        }
-      } catch (cacheError) {
-        console.log('⚠️ Cache check failed, proceeding with fresh search:', cacheError.message);
-      }
+      //   if (cachedSimilarRecipes && cachedSimilarRecipes.length > 0) {
+      //     console.log(`✅ Using cached similar recipes (${cachedSimilarRecipes.length} recipes)`);
+      //     return {
+      //       success: true,
+      //       data: {
+      //         recipes: cachedSimilarRecipes,
+      //         total: cachedSimilarRecipes.length,
+      //         cached: true
+      //       }
+      //     };
+      //   }
+      // } catch (cacheError) {
+      //   console.log('⚠️ Cache check failed, proceeding with fresh search:', cacheError.message);
+      // }
 
       // Analyze the current recipe for intelligent matching
       const recipeAnalysis = this.analyzeRecipeForSimilarity(currentRecipe);
@@ -1947,13 +1953,14 @@ class EdamamService {
       
       console.log(`🎉 Smart similar recipes: ${rankedRecipes.length} selected from ${allRecipes.length} candidates`);
       
+      // ⚠️ CACHING DISABLED - Now handled by supabase-cache-service.js
       // Cache the results for future use
-      try {
-        const RecipeCacheService = (await import('./recipe-cache-service.js')).default;
-        await RecipeCacheService.cacheSimilarRecipes(cacheKey, rankedRecipes);
-      } catch (cacheError) {
-        console.warn('⚠️ Failed to cache similar recipes:', cacheError.message);
-      }
+      // try {
+      //   const RecipeCacheService = (await import('./recipe-cache-service.js')).default;
+      //   await RecipeCacheService.cacheSimilarRecipes(cacheKey, rankedRecipes);
+      // } catch (cacheError) {
+      //   console.warn('⚠️ Failed to cache similar recipes:', cacheError.message);
+      // }
       
       return {
         success: true,
@@ -1990,7 +1997,9 @@ class EdamamService {
       difficulty: 'medium' // Could be enhanced based on recipe complexity
     };
 
-    const title = recipe.label.toLowerCase();
+    // Handle both Edamam (label) and AI (recipeName) recipe structures
+    const recipeTitle = recipe.label || recipe.recipeName || '';
+    const title = recipeTitle.toLowerCase();
     const ingredients = (recipe.ingredientLines || []).join(' ').toLowerCase();
     const allText = `${title} ${ingredients}`;
 
@@ -2231,8 +2240,11 @@ class EdamamService {
     try {
       console.log('🔄 Using fallback similar recipe search...');
       
+      // Handle both Edamam (label) and AI (recipeName) recipe structures
+      const recipeTitle = currentRecipe.label || currentRecipe.recipeName || 'popular';
+      
       // Simple title-based search
-      const titleWords = currentRecipe.label.toLowerCase()
+      const titleWords = recipeTitle.toLowerCase()
         .split(' ')
         .filter(word => word.length > 3)
         .slice(0, 2);

@@ -70,7 +70,7 @@ class SupabaseCacheService {
         { query: 'pasta', cuisineType: 'Italian' },
         { query: 'salad', dishType: 'Salad' },
         { query: 'soup', mealType: 'Lunch' },
-        { query: 'vegetarian', health: 'vegetarian' },
+        { query: 'vegetarian', health: ['vegetarian'] },
         { query: 'beef', mealType: 'Dinner' },
         { query: 'fish', dishType: 'Main course' },
         { query: 'dessert', dishType: 'Desserts' }
@@ -166,16 +166,33 @@ class SupabaseCacheService {
       this.stats.misses++;
       console.log('⏳ Cache MISS - Fetching search results from API...');
       
-      const recipes = await EdamamService.searchRecipes(query, filters);
-
-      // Save to cache
-      await this.saveSearchResults(cacheKey, query, filters, recipes);
-
-      return recipes;
+      const result = await EdamamService.searchRecipes(query, filters);
+      
+      // EdamamService returns { success, data: { recipes, count, ... } } or { success, error }
+      if (result.success && result.data && result.data.recipes) {
+        const recipes = result.data.recipes;
+        console.log(`✅ Fetched ${recipes.length} recipes from Edamam API`);
+        
+        // Save to cache
+        await this.saveSearchResults(cacheKey, query, filters, recipes);
+        
+        return recipes;
+      } else {
+        console.error('❌ Edamam API error:', result.error || 'Unknown error');
+        return [];
+      }
     } catch (error) {
       this.stats.errors++;
       console.error('Cache error (search):', error);
-      return EdamamService.searchRecipes(query, filters);
+      
+      // Fallback: try direct API call
+      try {
+        const result = await EdamamService.searchRecipes(query, filters);
+        return result.success && result.data ? result.data.recipes : [];
+      } catch (fallbackError) {
+        console.error('Fallback API call also failed:', fallbackError);
+        return [];
+      }
     }
   }
 
