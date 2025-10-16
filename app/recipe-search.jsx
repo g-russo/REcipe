@@ -15,22 +15,73 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import EdamamService from '../services/edamam-service';
-import RecipeCacheService from '../services/recipe-cache-service';
+import cacheService from '../services/supabase-cache-service';
+import SousChefAIService from '../services/souschef-ai-service';
+import SpellCorrector from '../utils/spell-corrector';
+import AuthGuard from '../components/AuthGuard';
+import { useCustomAuth } from '../hooks/use-custom-auth';
 
 const RecipeSearch = () => {
   const router = useRouter();
+  const { user } = useCustomAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [recipes, setRecipes] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [generatingAI, setGeneratingAI] = useState(false);
+  const [aiRecipeCount, setAiRecipeCount] = useState(0); // Track how many AI recipes generated
+  const [canGenerateMore, setCanGenerateMore] = useState(false); // Show "Generate Another" button
+  const [currentSearchQuery, setCurrentSearchQuery] = useState(''); // Store current search for "Generate Another"
   const [filters, setFilters] = useState({
-    cuisineType: '',
-    mealType: '',
-    dishType: '',
-    health: [],
-    diet: []
+    allergy: [],   // 14 allergen-free options (health labels)
+    dietary: [],   // 13 lifestyle/restriction options (health labels)
+    diet: []       // 6 nutritional profile options (diet labels)
   });
   const [showFilters, setShowFilters] = useState(false);
+
+  // Allergies (14 allergen-free options)
+  const allergyLabels = [
+    'celery-free',
+    'crustacean-free',
+    'dairy-free',
+    'egg-free',
+    'fish-free',
+    'gluten-free',
+    'lupine-free',
+    'mustard-free',
+    'peanut-free',
+    'sesame-free',
+    'shellfish-free',
+    'soy-free',
+    'tree-nut-free',
+    'wheat-free'
+  ];
+
+  // Dietary Preferences (14 lifestyle/restriction options) - these are Edamam HEALTH labels
+  const dietaryLabels = [
+    'alcohol-free',
+    'keto-friendly',
+    'kidney-friendly',
+    'kosher',
+    'low-potassium',
+    'no-oil-added',
+    'sugar-conscious',
+    'paleo',
+    'pescatarian',
+    'pork-free',
+    'red-meat-free',
+    'vegan',
+    'vegetarian'
+  ];
+
+  // Diets (6 Edamam diet labels)
+  const dietLabels = [
+    'balanced',
+    'high-fiber',
+    'high-protein',
+    'low-carb',
+    'low-fat',
+    'low-sodium'
+  ];
   const [hasSearched, setHasSearched] = useState(false);
 
   // Dynamic recent searches - track user search history
@@ -50,23 +101,27 @@ const RecipeSearch = () => {
   const loadPopularRecipesFromCache = async () => {
     setLoadingPopular(true);
     try {
-      console.log('📱 Loading popular recipes from cache...');
+      console.log('📱 Loading popular recipes from Supabase cache...');
       
-      // Get cached recipes (will fetch if cache is empty/expired)
-      const cached = await RecipeCacheService.getPopularRecipes(8);
+      // Get cached recipes from Supabase (auto-fetches from API if cache is empty/expired)
+      const cached = await cacheService.getPopularRecipes();
       
-      if (cached.length > 0) {
+      if (cached && cached.length > 0) {
         console.log(`✅ Loaded ${cached.length} popular recipes from cache`);
-        const formattedRecipes = cached.map(recipe => ({
-          id: recipe.id,
-          title: recipe.title,
+        
+        // Take first 8 recipes
+        const limitedRecipes = cached.slice(0, 8);
+        
+        const formattedRecipes = limitedRecipes.map((recipe, index) => ({
+          id: recipe.uri || `recipe-${index}`,
+          title: recipe.label || recipe.title,
           image: recipe.image,
-          fullData: recipe.fullData,
-          category: recipe.category,
-          calories: recipe.calories,
-          time: recipe.time,
-          difficulty: recipe.difficulty,
-          rating: recipe.rating
+          fullData: recipe,
+          category: recipe.cuisineType?.[0] || recipe.category || 'General',
+          calories: Math.round(recipe.calories / recipe.yield) || recipe.calories || 0,
+          time: recipe.totalTime || recipe.time || 30,
+          difficulty: recipe.difficulty || 'Medium',
+          rating: recipe.rating || 4.5
         }));
         
         setPopularRecipes(formattedRecipes);
@@ -76,8 +131,8 @@ const RecipeSearch = () => {
       }
     } catch (error) {
       console.error('❌ Error loading popular recipes from cache:', error);
-      // Fallback to direct API call if cache fails
-      await fetchPopularRecipes();
+      // Fallback: fetch fresh popular recipes
+      await handleRefreshPopularRecipes();
     } finally {
       setLoadingPopular(false);
     }
@@ -86,63 +141,41 @@ const RecipeSearch = () => {
   const handleRefreshPopularRecipes = async () => {
     setLoadingPopular(true);
     try {
-      console.log('🔄 Refreshing popular recipes...');
+      console.log('🔄 Refreshing popular recipes from API...');
       
-      // Get API usage stats first
-      const apiStats = RecipeCacheService.getApiUsageStats();
-      console.log('📊 API Stats:', apiStats);
-      
-      // Force refresh the cache
-      const freshRecipes = await RecipeCacheService.forceRefreshPopularRecipes();
+      // Force refresh the cache (bypasses cache, fetches fresh from API)
+      const freshRecipes = await cacheService.getPopularRecipes(true); // true = forceRefresh
       
       if (freshRecipes && freshRecipes.length > 0) {
-        console.log(`✅ Refreshed with ${freshRecipes.length} recipes`);
+        console.log(`✅ Refreshed with ${freshRecipes.length} recipes from API`);
         
-        // Get a random selection for display
-        const displayRecipes = RecipeCacheService.shuffleArray([...freshRecipes])
-          .slice(0, 8)
-          .map(recipe => ({
-            id: recipe.id,
-            title: recipe.title,
-            image: recipe.image,
-            fullData: recipe.fullData,
-            category: recipe.category,
-            calories: recipe.calories,
-            time: recipe.time,
-            difficulty: recipe.difficulty,
-            rating: recipe.rating
-          }));
+        // Shuffle for variety and take first 8
+        const shuffled = [...freshRecipes].sort(() => Math.random() - 0.5);
+        const displayRecipes = shuffled.slice(0, 8).map((recipe, index) => ({
+          id: recipe.uri || `recipe-${index}`,
+          title: recipe.label || recipe.title,
+          image: recipe.image,
+          fullData: recipe,
+          category: recipe.cuisineType?.[0] || recipe.category || 'General',
+          calories: Math.round(recipe.calories / recipe.yield) || recipe.calories || 0,
+          time: recipe.totalTime || recipe.time || 30,
+          difficulty: recipe.difficulty || 'Medium',
+          rating: recipe.rating || 4.5
+        }));
         
         setPopularRecipes(displayRecipes);
-        
-        // Show success message with API info
-        if (apiStats.apiCallsThisMinute > 0) {
-          console.log(`ℹ️ Used ${apiStats.apiCallsThisMinute}/${apiStats.rateLimit} API calls`);
-        }
-        
+        console.log('✅ Popular recipes updated and cached in Supabase (expires in 6h)');
       } else {
-        throw new Error('No recipes received from refresh');
+        throw new Error('No recipes received from API');
       }
     } catch (error) {
       console.error('❌ Error refreshing popular recipes:', error);
       
-      // Show more specific error messages
-      if (error.message.includes('rate limit')) {
-        Alert.alert(
-          'Rate Limit Reached', 
-          error.message + '\n\nTip: Popular recipes are cached for 7 days to conserve API calls.',
-          [{ text: 'OK' }]
-        );
-      } else if (error.message.includes('Cache is only')) {
-        // This is actually a success case - we shuffled existing recipes
-        console.log('ℹ️ Shuffled existing recipes for variety');
-      } else {
-        Alert.alert(
-          'Refresh Error', 
-          error.message || 'Failed to refresh popular recipes. Please try again later.',
-          [{ text: 'OK' }]
-        );
-      }
+      Alert.alert(
+        'Refresh Error', 
+        'Failed to refresh popular recipes. Please try again later.',
+        [{ text: 'OK' }]
+      );
     } finally {
       setLoadingPopular(false);
     }
@@ -152,6 +185,55 @@ const RecipeSearch = () => {
     // For now, we'll use local state. In a real app, you'd use AsyncStorage
     // Example: const stored = await AsyncStorage.getItem('recentSearches');
     // setRecentSearches(stored ? JSON.parse(stored) : []);
+  };
+
+  const toggleFilters = () => {
+    setShowFilters(!showFilters);
+  };
+
+  const toggleAllergyFilter = (label) => {
+    setFilters(prev => {
+      const allergy = prev.allergy || [];
+      if (allergy.includes(label)) {
+        return { ...prev, allergy: allergy.filter(a => a !== label) };
+      } else {
+        return { ...prev, allergy: [...allergy, label] };
+      }
+    });
+  };
+
+  const toggleDietaryFilter = (label) => {
+    setFilters(prev => {
+      const dietary = prev.dietary || [];
+      if (dietary.includes(label)) {
+        return { ...prev, dietary: dietary.filter(d => d !== label) };
+      } else {
+        return { ...prev, dietary: [...dietary, label] };
+      }
+    });
+  };
+
+  const toggleDietFilter = (label) => {
+    setFilters(prev => {
+      const diet = prev.diet || [];
+      if (diet.includes(label)) {
+        return { ...prev, diet: diet.filter(d => d !== label) };
+      } else {
+        return { ...prev, diet: [...diet, label] };
+      }
+    });
+  };
+
+  const clearAllFilters = () => {
+    setFilters({
+      allergy: [],
+      dietary: [],
+      diet: []
+    });
+  };
+
+  const getFilterCount = () => {
+    return (filters.allergy?.length || 0) + (filters.dietary?.length || 0) + (filters.diet?.length || 0);
   };
 
   const addToRecentSearches = (query) => {
@@ -237,57 +319,400 @@ const RecipeSearch = () => {
       return;
     }
 
+    // ✅ Add spell correction
+    const spellCheck = SpellCorrector.correctSpelling(query.trim());
+    
+    if (spellCheck.hasCorrections && spellCheck.confidence > 0.7) {
+      // Show correction confirmation
+      Alert.alert(
+        '🔤 Did you mean?',
+        `"${spellCheck.corrected}"\n\nOriginal: "${query}"\nCorrected: "${spellCheck.corrected}"`,
+        [
+          {
+            text: 'No, keep original',
+            style: 'cancel',
+            onPress: () => performSearch(query.trim())
+          },
+          {
+            text: 'Yes, use correction',
+            style: 'default',
+            onPress: () => {
+              setSearchQuery(spellCheck.corrected);
+              performSearch(spellCheck.corrected);
+            }
+          }
+        ]
+      );
+      return;
+    }
+    
+    // No corrections needed or low confidence - proceed with search
+    performSearch(query.trim());
+  };
+
+  const performSearch = async (query) => {
     // Add to recent searches
-    addToRecentSearches(query.trim());
+    addToRecentSearches(query);
 
     setLoading(true);
     setHasSearched(true);
 
     try {
+      console.log('='.repeat(60));
+      console.log('🔍 SEARCH STARTED');
       console.log('🔍 Searching for recipes:', query);
+      console.log('📋 Applied filters:', filters);
+      console.log('🔑 API Keys loaded:', {
+        edamamId: process.env.EXPO_PUBLIC_EDAMAM_APP_ID,
+        edamamKey: process.env.EXPO_PUBLIC_EDAMAM_APP_KEY?.substring(0, 10) + '...'
+      });
       
-      // Check API limits before searching
-      const apiStats = RecipeCacheService.getApiUsageStats();
-      if (!apiStats.canMakeApiCall) {
-        Alert.alert(
-          'Search Limit Reached', 
-          `Please wait ${apiStats.secondsUntilReset} seconds before searching again.\n\nAPI Limit: ${apiStats.rateLimit} searches per minute.`,
-          [{ text: 'OK' }]
-        );
-        setLoading(false);
-        return;
-      }
+      // Build complete search options with filters
+      // Edamam API requires separate parameters:
+      // - health: for allergies AND dietary preferences (both are health labels in Edamam)
+      // - diet: for nutritional profiles (diet labels in Edamam)
+      const healthLabels = [
+        ...(filters.allergy || []),
+        ...(filters.dietary || [])
+      ];
+      
+      console.log('🏥 Health labels to send:', healthLabels);
+      console.log('🥗 Diet labels to send:', filters.diet);
       
       const searchOptions = {
         from: 0,
-        to: 20,
-        ...filters
+        to: 20
       };
 
-      const result = await EdamamService.searchRecipes(query, searchOptions);
+      // Only add filter parameters if they have values
+      if (healthLabels.length > 0) {
+        searchOptions.health = healthLabels;
+      }
+      if (filters.diet?.length > 0) {
+        searchOptions.diet = filters.diet;
+      }
+
+      console.log('🔧 Search options sent to API:', searchOptions);
+      console.log('🔗 Full search params:', JSON.stringify(searchOptions, null, 2));
+
+      // Use Supabase cache service (automatically handles caching and API calls)
+      // Note: Cache service returns recipes array directly, not wrapped in an object
+      console.log('📞 Calling cache service with query:', query);
       
-      // Track the API call
-      await RecipeCacheService.trackApiCall();
+      const recipesResult = await cacheService.getSearchResults(query, searchOptions);
+      console.log('📦 Cache service raw result type:', Array.isArray(recipesResult) ? 'Array' : typeof recipesResult);
+      console.log('📦 Cache service returned:', recipesResult?.length || 0, 'recipes');
+      console.log('📦 First recipe:', recipesResult?.[0]?.label || 'No recipes');
+      
+      // 🌐 Enhance search with multilingual support
+      const MultilingualSearch = require('../utils/multilingual-search').default;
+      const enhancedSearch = MultilingualSearch.enhanceSearchQuery(query);
+      
+      // Cache service returns array directly, not { success, data }
+      const recipes = Array.isArray(recipesResult) ? recipesResult : [];
+      const result = { success: true, data: { recipes } };
+      console.log('✅ Final result:', { success: result.success, recipeCount: result.data.recipes.length });
 
       if (result.success) {
-        setRecipes(result.data.recipes);
-        console.log(`✅ Found ${result.data.recipes.length} recipes`);
+        // ✅ ALWAYS check database for AI recipes (even if Edamam found results)
+        console.log('🔍 Checking database for AI-generated recipes...');
+        console.log('🌐 Multilingual search queries:', enhancedSearch.searchQueries);
         
-        if (result.cached) {
-          console.log(`💾 Results loaded from cache (no API call used)`);
+        let dbResult = { found: false, recipes: [], count: 0 };
+        try {
+          // Use enhanced search queries for better matching
+          if (typeof SousChefAIService?.checkExistingRecipes === 'function') {
+            // Try all translated queries to find more matches
+            for (const searchQuery of enhancedSearch.searchQueries) {
+              const tempResult = await SousChefAIService.checkExistingRecipes(searchQuery, filters);
+              if (tempResult.found && tempResult.recipes.length > 0) {
+                // Merge results (avoid duplicates by recipeID)
+                const existingIds = new Set(dbResult.recipes.map(r => r.recipeID));
+                const newRecipes = tempResult.recipes.filter(r => !existingIds.has(r.recipeID));
+                dbResult.recipes.push(...newRecipes);
+                dbResult.found = true;
+                dbResult.count += newRecipes.length;
+              }
+            }
+          } else {
+            console.warn('⚠️ checkExistingRecipes is not a function or SousChefAIService is undefined');
+          }
+        } catch (dbError) {
+          console.error('Error checking existing recipes:', dbError);
+          console.error('Error details:', dbError.message, dbError.stack);
+        }
+        
+        let allRecipes = [...result.data.recipes]; // Start with Edamam recipes
+        
+        if (dbResult.found && dbResult.recipes.length > 0) {
+          console.log(`✅ Found ${dbResult.count} AI recipes in database`);
+          
+          // Format database recipes to match Edamam structure
+          const formattedDbRecipes = dbResult.recipes.map(recipe => ({
+            id: recipe.recipeID,
+            uri: `souschef://recipe/${recipe.recipeID}`,
+            label: recipe.recipeName,
+            image: recipe.recipeImage,
+            source: recipe.generatedBy || 'SousChef AI',
+            url: null,
+            yield: recipe.servings,
+            dietLabels: recipe.dietLabels || [],
+            healthLabels: recipe.healthLabels || [],
+            cautions: recipe.allergens || [],
+            ingredientLines: recipe.ingredients?.map(ing => 
+              `${ing.quantity || ''} ${ing.unit || ''} ${ing.name}${ing.notes ? ` (${ing.notes})` : ''}`
+            ) || [],
+            ingredients: recipe.ingredients || [],
+            calories: recipe.calories,
+            // ✅ Add macronutrients from database columns
+            protein: recipe.protein,
+            carbs: recipe.carbs,
+            fat: recipe.fat,
+            totalTime: recipe.cookingTime,
+            cuisineType: [recipe.cuisineType],
+            mealType: [recipe.mealType],
+            dishType: [recipe.dishType],
+            isCustom: true,
+            recipeID: recipe.recipeID,
+            instructions: recipe.instructions,
+            difficulty: recipe.difficulty
+          }));
+          
+          // ✅ Merge: AI recipes FIRST, then Edamam recipes
+          allRecipes = [...formattedDbRecipes, ...allRecipes];
+          console.log(`� Total recipes (AI + Edamam): ${allRecipes.length}`);
+        }
+        
+        const totalRecipes = allRecipes.length;
+        
+        if (totalRecipes > 0) {
+          // ✅ Show all recipes (AI + Edamam)
+          setRecipes(allRecipes);
+          
+          // 🤖 If less than 5 recipes, enable "Generate More" button
+          if (totalRecipes < 5) {
+            setCanGenerateMore(true);
+            const recipesNeeded = 5 - totalRecipes;
+            console.log(`📊 Only ${totalRecipes} recipes found. User can generate ${recipesNeeded} more AI recipes.`);
+          } else {
+            setCanGenerateMore(false);
+          }
+          
+          setAiRecipeCount(dbResult.count || 0);
+          console.log(`✅ Displaying ${totalRecipes} total recipes (${dbResult.count} AI, ${result.data.recipes.length} Edamam)`);
+          setLoading(false);
         } else {
-          console.log(`📊 API calls used: ${apiStats.apiCallsThisMinute + 1}/${apiStats.rateLimit} this minute`);
+          // ❌ No results anywhere - Generate 1 AI recipe
+          // ❌ Step 3: No results anywhere - Generate 1 AI recipe
+          console.log('ℹ️ No existing recipes found, generating 1 AI recipe...');
+          setLoading(false);
+          setGeneratingAI(true);
+          setCurrentSearchQuery(query);
+          
+          try {
+            // Get user's pantry items
+            let pantryItems = [];
+            if (user?.email) {
+              pantryItems = await SousChefAIService.getUserPantryItems(user.email);
+              console.log(`📦 Found ${pantryItems.length} pantry items`);
+            }
+            
+            // Generate 1 AI recipe (with duplicate detection)
+            const aiResult = await SousChefAIService.generateSingleRecipe(
+              query,
+              filters,
+              pantryItems,
+              0, // First recipe
+              [] // No existing recipes yet
+            );
+            
+            if (aiResult.success && aiResult.recipe) {
+              // Format AI recipe
+              const formattedRecipe = {
+                id: aiResult.recipe.recipeID,
+                uri: `souschef://recipe/${aiResult.recipe.recipeID}`,
+                label: aiResult.recipe.recipeName,
+                image: aiResult.recipe.recipeImage,
+                source: 'SousChef AI',
+                url: null,
+                yield: aiResult.recipe.servings,
+                dietLabels: aiResult.recipe.dietLabels || [],
+                healthLabels: aiResult.recipe.healthLabels || [],
+                cautions: aiResult.recipe.allergens || [],
+                ingredientLines: aiResult.recipe.ingredients.map(ing => 
+                  `${ing.quantity} ${ing.unit} ${ing.name}${ing.notes ? ` (${ing.notes})` : ''}`
+                ),
+                ingredients: aiResult.recipe.ingredients,
+                calories: aiResult.recipe.calories,
+                // ✅ Add macronutrients from AI generation
+                protein: aiResult.recipe.protein,
+                carbs: aiResult.recipe.carbs,
+                fat: aiResult.recipe.fat,
+                totalTime: aiResult.recipe.cookingTime,
+                cuisineType: [aiResult.recipe.cuisineType],
+                mealType: [aiResult.recipe.mealType],
+                dishType: [aiResult.recipe.dishType],
+                isCustom: true,
+                recipeID: aiResult.recipe.recipeID,
+                instructions: aiResult.recipe.instructions,
+                difficulty: aiResult.recipe.difficulty
+              };
+              
+              setRecipes([formattedRecipe]);
+              setAiRecipeCount(1);
+              setCanGenerateMore(true); // Enable "Generate Another"
+              console.log(`✅ Generated 1 AI recipe (1/5)`);
+              
+              Alert.alert(
+                '🤖 AI Recipe Created!',
+                `No existing recipes found, so SousChef AI created a custom recipe just for you!${pantryItems.length > 0 ? '\n\n✨ Personalized with your pantry items!' : ''}\n\nWant more options? Tap "Generate Another" (up to 5 total).`,
+                [{ text: 'Awesome!', style: 'default' }]
+              );
+            } else {
+              console.error('❌ AI generation failed:', aiResult.error);
+              Alert.alert(
+                'No Recipes Found',
+                'Sorry, we couldn\'t find or generate any recipes. Please try a different search term.',
+                [{ text: 'OK' }]
+              );
+              setRecipes([]);
+              setCanGenerateMore(false);
+            }
+          } catch (aiError) {
+            console.error('❌ AI generation error:', aiError);
+            Alert.alert(
+              'Generation Failed',
+              `Could not generate AI recipe: ${aiError.message}`,
+              [{ text: 'OK' }]
+            );
+            setRecipes([]);
+            setCanGenerateMore(false);
+          } finally {
+            setGeneratingAI(false);
+          }
         }
       } else {
+        // API error
         Alert.alert('Search Error', result.error || 'Failed to search recipes. Please try again.');
         setRecipes([]);
+        setLoading(false);
       }
     } catch (error) {
-      console.error('Search error:', error);
+      console.error('='.repeat(60));
+      console.error('❌ SEARCH ERROR - Full details:');
+      console.error('❌ Error message:', error.message);
+      console.error('❌ Error type:', error.name);
+      console.error('❌ Error stack:', error.stack);
+      console.error('='.repeat(60));
       Alert.alert('Error', 'Something went wrong while searching. Please try again.');
       setRecipes([]);
-    } finally {
       setLoading(false);
+      setGeneratingAI(false);
+    }
+  };
+
+  const handleGenerateAnother = async () => {
+    const currentTotal = recipes.length;
+    
+    // Check if we've reached 5 total recipes
+    if (currentTotal >= 5) {
+      Alert.alert(
+        'Limit Reached',
+        'You have 5 recipes already! Try a new search for more options.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    setGeneratingAI(true);
+
+    try {
+      const recipesNeeded = 5 - currentTotal;
+      console.log(`🤖 Generating another recipe (Total: ${currentTotal}/5, Need: ${recipesNeeded} more)...`);
+
+      // Get user's pantry items
+      let pantryItems = [];
+      if (user?.email) {
+        pantryItems = await SousChefAIService.getUserPantryItems(user.email);
+      }
+
+      // Generate 1 more AI recipe (pass existing recipes for duplicate detection)
+      const aiResult = await SousChefAIService.generateSingleRecipe(
+        currentSearchQuery,
+        filters,
+        pantryItems,
+        aiRecipeCount, // Pass current count
+        recipes // Pass existing recipes to avoid duplicates
+      );
+
+      if (aiResult.success && aiResult.recipe) {
+        // Format new recipe
+        const formattedRecipe = {
+          id: aiResult.recipe.recipeID,
+          uri: `souschef://recipe/${aiResult.recipe.recipeID}`,
+          label: aiResult.recipe.recipeName,
+          image: aiResult.recipe.recipeImage,
+          source: 'SousChef AI',
+          url: null,
+          yield: aiResult.recipe.servings,
+          dietLabels: aiResult.recipe.dietLabels || [],
+          healthLabels: aiResult.recipe.healthLabels || [],
+          cautions: aiResult.recipe.allergens || [],
+          ingredientLines: aiResult.recipe.ingredients.map(ing => 
+            `${ing.quantity} ${ing.unit} ${ing.name}${ing.notes ? ` (${ing.notes})` : ''}`
+          ),
+          ingredients: aiResult.recipe.ingredients,
+          calories: aiResult.recipe.calories,
+          // ✅ Add macronutrients from AI generation
+          protein: aiResult.recipe.protein,
+          carbs: aiResult.recipe.carbs,
+          fat: aiResult.recipe.fat,
+          totalTime: aiResult.recipe.cookingTime,
+          cuisineType: [aiResult.recipe.cuisineType],
+          mealType: [aiResult.recipe.mealType],
+          dishType: [aiResult.recipe.dishType],
+          isCustom: true,
+          recipeID: aiResult.recipe.recipeID,
+          instructions: aiResult.recipe.instructions,
+          difficulty: aiResult.recipe.difficulty
+        };
+
+        // Add to existing recipes
+        setRecipes(prevRecipes => [...prevRecipes, formattedRecipe]);
+        const newAiCount = aiRecipeCount + 1;
+        setAiRecipeCount(newAiCount);
+        
+        const newTotal = currentTotal + 1;
+        
+        // Disable button if reached 5 total recipes
+        if (newTotal >= 5) {
+          setCanGenerateMore(false);
+        }
+
+        console.log(`✅ Generated another recipe (Total: ${newTotal}/5, AI: ${newAiCount})`);
+
+        Alert.alert(
+          '✨ New Recipe Added!',
+          `Now showing ${newTotal} recipes!${newTotal < 5 ? `\n\nWant ${5 - newTotal} more? Tap "Generate Another" again.` : '\n\nThat\'s 5 recipes! Try a new search for more.'}`,
+          [{ text: 'Nice!', style: 'default' }]
+        );
+      } else {
+        console.error('❌ AI generation failed:', aiResult.error);
+        Alert.alert(
+          'Generation Failed',
+          'Could not generate another recipe. Please try again.',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error) {
+      console.error('❌ Generate another error:', error);
+      Alert.alert(
+        'Error',
+        `Failed to generate recipe: ${error.message}`,
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setGeneratingAI(false);
     }
   };
 
@@ -371,11 +796,22 @@ const RecipeSearch = () => {
     }
   };
 
-  const quickSearches = EdamamService.getPopularSearches();
+  // Quick search suggestions (static, no API call needed)
+  const quickSearches = [
+    { id: '1', icon: '🍕', label: 'Pizza', query: 'pizza' },
+    { id: '2', icon: '🍝', label: 'Pasta', query: 'pasta' },
+    { id: '3', icon: '🍔', label: 'Burger', query: 'burger' },
+    { id: '4', icon: '🥗', label: 'Salad', query: 'salad' },
+    { id: '5', icon: '🍛', label: 'Curry', query: 'curry' },
+    { id: '6', icon: '🌮', label: 'Tacos', query: 'tacos' },
+    { id: '7', icon: '🍜', label: 'Ramen', query: 'ramen' },
+    { id: '8', icon: '🥘', label: 'Stew', query: 'stew' }
+  ];
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+    <AuthGuard>
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="dark-content" backgroundColor="#fff" />
       
       {/* API Usage Stats - Only show in development */}
 
@@ -389,7 +825,7 @@ const RecipeSearch = () => {
               onPress={clearSearchResults}
             >
               <Ionicons name="arrow-back" size={20} color="#666" />
-            </TouchableOpacity>
+            </TouchableOpacity> 
           )}
           <Ionicons name="search-outline" size={20} color="#666" style={styles.searchIcon} />
           <TextInput
@@ -400,14 +836,120 @@ const RecipeSearch = () => {
             onSubmitEditing={() => handleSearch()}
             returnKeyType="search"
           />
-          <TouchableOpacity style={styles.filterButton}>
+          <TouchableOpacity style={styles.filterButton} onPress={toggleFilters}>
             <Ionicons name="options-outline" size={20} color="#666" />
+            {getFilterCount() > 0 && (
+              <View style={styles.filterBadge}>
+                <Text style={styles.filterBadgeText}>{getFilterCount()}</Text>
+              </View>
+            )}
           </TouchableOpacity>
           <TouchableOpacity style={styles.cameraButton}>
             <Ionicons name="camera-outline" size={20} color="#666" />
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Expandable Filter Section */}
+      {showFilters && (
+        <View style={styles.filterSection}>
+          <View style={styles.filterHeader}>
+            <Text style={styles.filterTitle}>Filters ({getFilterCount()})</Text>
+            <View style={styles.filterHeaderActions}>
+              {getFilterCount() > 0 && (
+                <TouchableOpacity onPress={clearAllFilters} style={styles.clearButton}>
+                  <Text style={styles.clearFiltersText}>Clear All</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity onPress={toggleFilters}>
+                <Text style={styles.clearFiltersText}>Hide</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+          <ScrollView 
+            style={styles.filterScrollView}
+            showsVerticalScrollIndicator={false}
+          >
+            {/* Allergy Filters */}
+            <View style={styles.filterCategory}>
+              <Text style={styles.filterCategoryTitle}>Allergies (Allergen-Free)</Text>
+              <View style={styles.filterChipsContainer}>
+                {allergyLabels.map((label) => (
+                  <TouchableOpacity
+                    key={label}
+                    style={[
+                      styles.filterChip,
+                      filters.allergy?.includes(label) && styles.filterChipActive
+                    ]}
+                    onPress={() => toggleAllergyFilter(label)}
+                  >
+                    <Text
+                      style={[
+                        styles.filterChipText,
+                        filters.allergy?.includes(label) && styles.filterChipTextActive
+                      ]}
+                    >
+                      {label.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* Dietary Preference Filters */}
+            <View style={styles.filterCategory}>
+              <Text style={styles.filterCategoryTitle}>Dietary Preferences</Text>
+              <View style={styles.filterChipsContainer}>
+                {dietaryLabels.map((label) => (
+                  <TouchableOpacity
+                    key={label}
+                    style={[
+                      styles.filterChip,
+                      filters.dietary?.includes(label) && styles.filterChipActive
+                    ]}
+                    onPress={() => toggleDietaryFilter(label)}
+                  >
+                    <Text
+                      style={[
+                        styles.filterChipText,
+                        filters.dietary?.includes(label) && styles.filterChipTextActive
+                      ]}
+                    >
+                      {label.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* Nutritional Profile Filters */}
+            <View style={styles.filterCategory}>
+              <Text style={styles.filterCategoryTitle}>Nutritional Profiles</Text>
+              <View style={styles.filterChipsContainer}>
+                {dietLabels.map((label) => (
+                  <TouchableOpacity
+                    key={label}
+                    style={[
+                      styles.filterChip,
+                      filters.diet?.includes(label) && styles.filterChipActive
+                    ]}
+                    onPress={() => toggleDietFilter(label)}
+                  >
+                    <Text
+                      style={[
+                        styles.filterChipText,
+                        filters.diet?.includes(label) && styles.filterChipTextActive
+                      ]}
+                    >
+                      {label.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          </ScrollView>
+        </View>
+      )}
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Search Results - Show when user has searched */}
@@ -426,6 +968,28 @@ const RecipeSearch = () => {
               scrollEnabled={false} // Disable internal scrolling since we're in a ScrollView
               numColumns={1}
             />
+
+            {/* Generate Another Button */}
+            {canGenerateMore && !generatingAI && (
+              <TouchableOpacity 
+                style={styles.generateAnotherButton}
+                onPress={handleGenerateAnother}
+                activeOpacity={0.7}
+              >
+                <View style={styles.generateAnotherContent}>
+                  <Ionicons name="sparkles" size={24} color="#fff" />
+                  <View style={styles.generateAnotherTextContainer}>
+                    <Text style={styles.generateAnotherText}>
+                      Generate Another Recipe
+                    </Text>
+                    <Text style={styles.generateAnotherSubtext}>
+                      {aiRecipeCount}/5 AI recipes created
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={24} color="#fff" />
+                </View>
+              </TouchableOpacity>
+            )}
           </View>
         )}
 
@@ -445,6 +1009,18 @@ const RecipeSearch = () => {
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="#4CAF50" />
               <Text style={styles.loadingText}>Searching for recipes...</Text>
+            </View>
+          </View>
+        )}
+
+        {/* AI Generation State */}
+        {generatingAI && (
+          <View style={styles.section}>
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#8A2BE2" />
+              <Text style={styles.loadingText}>🤖 SousChef AI is creating custom recipes...</Text>
+              <Text style={styles.loadingSubtext}>Generating images and cooking instructions</Text>
+              <Text style={styles.loadingSubtext}>This may take 30-60 seconds</Text>
             </View>
           </View>
         )}
@@ -530,33 +1106,40 @@ const RecipeSearch = () => {
 
       {/* Bottom Navigation */}
       <View style={styles.bottomNav}>
-        <TouchableOpacity style={styles.navItem}>
+        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/home')}>
           <Ionicons name="home-outline" size={24} color="#666" />
           <Text style={styles.navLabel}>Home</Text>
         </TouchableOpacity>
         
-        <TouchableOpacity style={[styles.navItem, styles.activeNavItem]}>
+        <TouchableOpacity
+          style={[styles.navItem, styles.activeNavItem]}
+          onPress={() => router.push('/recipe-search')}
+        >
           <Ionicons name="search-outline" size={24} color="#4CAF50" />
           <Text style={[styles.navLabel, styles.activeNavLabel]}>Search</Text>
         </TouchableOpacity>
         
-        <TouchableOpacity style={styles.centerNavButton}>
+        <TouchableOpacity
+          style={styles.centerNavButton}
+          onPress={() => router.push('/food-recognition/upload')}
+        >
           <View style={styles.centerNavIcon}>
             <Ionicons name="add" size={28} color="#fff" />
           </View>
         </TouchableOpacity>
         
-        <TouchableOpacity style={styles.navItem}>
+        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/pantry')}>
           <Ionicons name="list-outline" size={24} color="#666" />
           <Text style={styles.navLabel}>Pantry</Text>
         </TouchableOpacity>
         
-        <TouchableOpacity style={styles.navItem}>
+        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/profile')}>
           <Ionicons name="person-outline" size={24} color="#666" />
           <Text style={styles.navLabel}>Profile</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
+    </AuthGuard>
   );
 };
 
@@ -598,6 +1181,94 @@ const styles = StyleSheet.create({
   cameraButton: {
     padding: 5,
     marginLeft: 5,
+  },
+  filterBadge: {
+    position: 'absolute',
+    top: -5,
+    right: -5,
+    backgroundColor: '#4CAF50',
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  filterBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  filterSection: {
+    backgroundColor: '#f8f9fa',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  filterHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  filterTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+  },
+  filterHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 15,
+  },
+  clearButton: {
+    paddingRight: 10,
+  },
+  clearFiltersText: {
+    fontSize: 14,
+    color: '#4CAF50',
+    fontWeight: '500',
+  },
+  filterScrollView: {
+    maxHeight: 300,
+  },
+  filterCategory: {
+    marginBottom: 20,
+  },
+  filterCategoryTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  filterChipsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  filterChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    marginBottom: 8,
+  },
+  filterChipActive: {
+    backgroundColor: '#4CAF50',
+    borderColor: '#4CAF50',
+  },
+  filterChipText: {
+    fontSize: 14,
+    color: '#333',
+    fontWeight: '500',
+  },
+  filterChipTextActive: {
+    color: '#fff',
   },
   content: {
     flex: 1,
@@ -785,6 +1456,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     marginTop: 10,
+    fontWeight: '600',
+  },
+  loadingSubtext: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 5,
+    fontStyle: 'italic',
   },
   bottomNav: {
     flexDirection: 'row',
@@ -832,6 +1510,41 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 4.65,
     elevation: 8,
+  },
+  generateAnotherButton: {
+    backgroundColor: '#8A2BE2',
+    borderRadius: 12,
+    marginTop: 20,
+    marginBottom: 10,
+    shadowColor: '#8A2BE2',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 4.65,
+    elevation: 8,
+    overflow: 'hidden',
+  },
+  generateAnotherContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 18,
+  },
+  generateAnotherTextContainer: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  generateAnotherText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  generateAnotherSubtext: {
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 13,
+    marginTop: 2,
   },
 });
 

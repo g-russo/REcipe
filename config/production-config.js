@@ -28,13 +28,13 @@ const PRODUCTION_CONFIG = {
       POPULAR_RECIPES: 2 * 60 * 60 * 1000, // 2 hours for testing
       SEARCH_RESULTS: 30 * 60 * 1000, // 30 minutes for testing
       SIMILAR_RECIPES: 1 * 60 * 60 * 1000, // 1 hour for testing
-      CLEANUP_INTERVAL: 5 * 60 * 1000, // 5 minutes cleanup
+      CLEANUP_INTERVAL: 12 * 60 * 60 * 1000, // 12 hours cleanup (reduced frequency)
     },
     production: {
       POPULAR_RECIPES: 7 * 24 * 60 * 60 * 1000, // 7 days
       SEARCH_RESULTS: 4 * 60 * 60 * 1000, // 4 hours (extended for production)
       SIMILAR_RECIPES: 48 * 60 * 60 * 1000, // 48 hours (extended for production)
-      CLEANUP_INTERVAL: 30 * 60 * 1000, // 30 minutes cleanup
+      CLEANUP_INTERVAL: 12 * 60 * 60 * 1000, // 12 hours cleanup (reduced frequency)
     }
   },
   
