@@ -36,3 +36,52 @@ yarn-error.*
 
 # typescript
 *.tsbuildinfo
+
+#google-services
+google-services.json
+
+#markdown and text files
+*.md
+*.mdx
+*.txt
+
+#sql files
+*.sql
+*.sqlite
+*.sqlite3
+
+# Python
+**/__pycache__/
+*.pyc
+.venv/
+env/
+venv/
+
+# Datasets and training outputs
+backend/datasets/
+backend/food-101/              # add this
+YOLO11-cls/                    # add this
+runs/
+backend/runs/
+REcipe/runs/
+weights/
+
+# Keep ONLY specific model weights to run the API
+!backend/models/
+backend/models/*
+!backend/models/.gitkeep
+!backend/models/best.pt
+!backend/models/filipino_cls_best.pt
+!backend/models/food101_cls_best.pt
+!backend/models/food101_pseudo.pt
+
+# Ignore model checkpoints placed at backend root
+/backend/*.pt
+/*.pt
+
+# Caches
+*.cache
+*.log
+
+# Zips/large archives
+*.zip

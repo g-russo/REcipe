@@ -1,5 +1,5 @@
 import RecipeCacheService from '../services/recipe-cache-service';
-import PerformanceMonitor from './performanceMonitor';
+import PerformanceMonitor from './performance-monitor';
 
 /**
  * Initialize app-wide services and caches
@@ -10,18 +10,20 @@ export const initializeAppServices = async () => {
     console.log('🚀 Initializing app services...');
     PerformanceMonitor.startTiming('App Services Initialization');
     
+    // ⚠️ OLD CACHE DISABLED - Now using Supabase cache (supabase-cache-service.js)
+    // The old AsyncStorage cache was filling up device storage
     // Initialize recipe cache in background
-    const cachePromise = RecipeCacheService.initializeCache()
-      .then(() => {
-        console.log('✅ Recipe cache initialized');
-      })
-      .catch(error => {
-        console.error('❌ Recipe cache initialization failed:', error);
-      });
+    // const cachePromise = RecipeCacheService.initializeCache()
+    //   .then(() => {
+    //     console.log('✅ Recipe cache initialized');
+    //   })
+    //   .catch(error => {
+    //     console.error('❌ Recipe cache initialization failed:', error);
+    //   });
     
     // Initialize other services in parallel
     const initPromises = [
-      cachePromise,
+      // cachePromise, // DISABLED - using Supabase cache now
       // Add other service initializations here
       // initializeAnalytics(),
       // initializeCrashReporting(),
