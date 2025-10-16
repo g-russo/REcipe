@@ -13,6 +13,7 @@ import {
   addNotificationReceivedListener
 } from '../services/notification-service';
 import { supabase } from '../lib/supabase';
+import { useRouter } from 'expo-router';
 
 // Keep the splash screen visible while we initialize
 SplashScreen.preventAutoHideAsync();
@@ -116,7 +117,14 @@ export default function RootLayout() {
         }}
       >
         <Stack.Screen name="index" options={{ title: 'Welcome' }} />
-        <Stack.Screen name="home" options={{ title: 'Home' }} />
+        <Stack.Screen
+          name="home"
+          options={{
+            title: 'Home',
+            headerShown: true,
+            // headerRight: () => <DiscoverPlusButton />,
+          }}
+        />
         <Stack.Screen name="signin" options={{ title: 'Sign In' }} />
         <Stack.Screen name="signup" options={{ title: 'Sign Up' }} />
         <Stack.Screen name="forgot-password" options={{ title: 'Reset Password' }} />
@@ -126,6 +134,8 @@ export default function RootLayout() {
         <Stack.Screen name="force-password-change" options={{ title: 'Update Password' }} />
         <Stack.Screen name="recipe-search" options={{ title: 'Search Recipes' }} />
         <Stack.Screen name="recipe-detail" options={{ title: 'Recipe Details' }} />
+        <Stack.Screen name="food-recognition/upload" options={{ title: 'Food Recognition' }} />
+        <Stack.Screen name="food-recognition/result" options={{ title: 'Result' }} />
       </Stack>
       <StatusBar style="auto" />
     </SupabaseProvider>

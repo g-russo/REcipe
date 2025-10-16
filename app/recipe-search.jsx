@@ -1106,28 +1106,34 @@ const RecipeSearch = () => {
 
       {/* Bottom Navigation */}
       <View style={styles.bottomNav}>
-        <TouchableOpacity style={styles.navItem}>
+        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/home')}>
           <Ionicons name="home-outline" size={24} color="#666" />
           <Text style={styles.navLabel}>Home</Text>
         </TouchableOpacity>
         
-        <TouchableOpacity style={[styles.navItem, styles.activeNavItem]}>
+        <TouchableOpacity
+          style={[styles.navItem, styles.activeNavItem]}
+          onPress={() => router.push('/recipe-search')}
+        >
           <Ionicons name="search-outline" size={24} color="#4CAF50" />
           <Text style={[styles.navLabel, styles.activeNavLabel]}>Search</Text>
         </TouchableOpacity>
         
-        <TouchableOpacity style={styles.centerNavButton}>
+        <TouchableOpacity
+          style={styles.centerNavButton}
+          onPress={() => router.push('/food-recognition/upload')}
+        >
           <View style={styles.centerNavIcon}>
             <Ionicons name="add" size={28} color="#fff" />
           </View>
         </TouchableOpacity>
         
-        <TouchableOpacity style={styles.navItem}>
+        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/pantry')}>
           <Ionicons name="list-outline" size={24} color="#666" />
           <Text style={styles.navLabel}>Pantry</Text>
         </TouchableOpacity>
         
-        <TouchableOpacity style={styles.navItem}>
+        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/profile')}>
           <Ionicons name="person-outline" size={24} color="#666" />
           <Text style={styles.navLabel}>Profile</Text>
         </TouchableOpacity>
