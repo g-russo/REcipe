@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -6,20 +6,57 @@ import {
   TouchableOpacity,
   Alert,
   StyleSheet,
-  ScrollView,
-  SafeAreaView
+  Animated,
+  Keyboard,
+  Platform
 } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useCustomAuth } from '../hooks/use-custom-auth';
+import { globalStyles } from '../assets/css/globalStyles';
+import TopographicBackground from '../components/TopographicBackground';
 
 const ForcePasswordChange = () => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [passwordFocused, setPasswordFocused] = useState(false);
+  const [confirmPasswordFocused, setConfirmPasswordFocused] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const translateY = useRef(new Animated.Value(0)).current;
 
   const { forcePasswordChange } = useCustomAuth();
   const { email, autoSignedIn } = useLocalSearchParams();
+
+  useEffect(() => {
+    const keyboardWillShowListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => {
+        Animated.timing(translateY, {
+          toValue: -e.endCoordinates.height / 2,
+          duration: Platform.OS === 'ios' ? 250 : 200,
+          useNativeDriver: true,
+        }).start();
+      }
+    );
+
+    const keyboardWillHideListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => {
+        Animated.timing(translateY, {
+          toValue: 0,
+          duration: Platform.OS === 'ios' ? 250 : 200,
+          useNativeDriver: true,
+        }).start();
+      }
+    );
+
+    return () => {
+      keyboardWillShowListener.remove();
+      keyboardWillHideListener.remove();
+    };
+  }, []);
 
   const validatePassword = (password) => {
     const minLength = password.length >= 8;
@@ -160,63 +197,139 @@ const ForcePasswordChange = () => {
 
   const passwordStrength = getPasswordStrength(password);
 
-  return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContainer}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Set New Password</Text>
-          <Text style={styles.subtitle}>
-            For your security, please create a new password
-          </Text>
-          
-          {autoSignedIn === 'true' && (
-            <View style={styles.successBanner}>
-              <Text style={styles.successText}>✅ You are now signed in!</Text>
-            </View>
-          )}
-        </View>
+  const goBack = () => {
+    router.back();
+  };
 
-        <View style={styles.form}>
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>New Password</Text>
-            <View style={styles.passwordInputContainer}>
+  return (
+    <TopographicBackground>
+      {/* Back button */}
+      <TouchableOpacity style={globalStyles.backButton} onPress={goBack}>
+        <Svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#81A969" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <Path d="m15 18-6-6 6-6"/>
+        </Svg>
+      </TouchableOpacity>
+
+      <Animated.View style={[globalStyles.card, { 
+        paddingTop: 8, 
+        paddingBottom: 10, 
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        marginTop: 0,
+        minHeight: '75%',
+        borderBottomLeftRadius: 0, 
+        borderBottomRightRadius: 0,
+        transform: [{ translateY }]
+      }]}>
+        <View style={[globalStyles.formContent, { flex: 0 }]}>
+          <View style={{ position: 'relative', alignSelf: 'flex-start', marginTop: 0, marginBottom: 20 }}>
+            <Text style={[globalStyles.title, { marginBottom: 6, paddingBottom: 0 }]}>Change Password</Text>
+            <View
+              style={{
+                position: 'absolute',
+                left: 0,
+                bottom: 0,
+                height: 4,
+                width: 180,
+                backgroundColor: '#97B88B',
+                borderRadius: 4,
+              }}
+            />
+          </View>
+
+          <View style={[globalStyles.inputContainer, { marginBottom: 10, marginTop: 32 }]}>
+            <Text style={globalStyles.inputLabel}>New Password</Text>
+            <View style={{ position: 'relative' }}>
               <TextInput
-                style={styles.passwordInput}
+                style={[
+                  globalStyles.input,
+                  passwordFocused && globalStyles.inputFocused,
+                  { paddingRight: 45 }
+                ]}
                 value={password}
                 onChangeText={setPassword}
                 placeholder="Enter your new password"
+                placeholderTextColor="#BDC3C7"
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
+                onFocus={() => setPasswordFocused(true)}
+                onBlur={() => setPasswordFocused(false)}
                 editable={!loading}
               />
               <TouchableOpacity
-                style={styles.eyeButton}
+                style={{
+                  position: 'absolute',
+                  right: 12,
+                  top: '50%',
+                  transform: [{ translateY: -12 }],
+                  padding: 4,
+                }}
                 onPress={() => setShowPassword(!showPassword)}
               >
-                <Text style={styles.eyeText}>{showPassword ? '👁️' : '👁️‍🗨️'}</Text>
+                {showPassword ? (
+                  <Svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7F8C8D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <Path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                    <Path d="M1 1l22 22" />
+                  </Svg>
+                ) : (
+                  <Svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7F8C8D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <Path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                    <Path d="M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z" />
+                  </Svg>
+                )}
               </TouchableOpacity>
             </View>
-            
             {password.length > 0 && (
-              <View style={styles.strengthContainer}>
-                <Text style={[styles.strengthText, { color: passwordStrength.color }]}>
-                  Strength: {passwordStrength.level}
-                </Text>
-              </View>
+              <Text style={[styles.strengthText, { color: passwordStrength.color, marginTop: 6, marginLeft: 4 }]}>
+                Strength: {passwordStrength.level}
+              </Text>
             )}
           </View>
 
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Confirm New Password</Text>
-            <TextInput
-              style={styles.input}
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-              placeholder="Confirm your new password"
-              secureTextEntry={!showPassword}
-              autoCapitalize="none"
-              editable={!loading}
-            />
+          <View style={[globalStyles.inputContainer, { marginBottom: 10 }]}>
+            <Text style={globalStyles.inputLabel}>Confirm New Password</Text>
+            <View style={{ position: 'relative' }}>
+              <TextInput
+                style={[
+                  globalStyles.input,
+                  confirmPasswordFocused && globalStyles.inputFocused,
+                  { paddingRight: 45 }
+                ]}
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                placeholder="Confirm your new password"
+                placeholderTextColor="#BDC3C7"
+                secureTextEntry={!showConfirmPassword}
+                autoCapitalize="none"
+                onFocus={() => setConfirmPasswordFocused(true)}
+                onBlur={() => setConfirmPasswordFocused(false)}
+                editable={!loading}
+              />
+              <TouchableOpacity
+                style={{
+                  position: 'absolute',
+                  right: 12,
+                  top: '50%',
+                  transform: [{ translateY: -12 }],
+                  padding: 4,
+                }}
+                onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+              >
+                {showConfirmPassword ? (
+                  <Svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7F8C8D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <Path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                    <Path d="M1 1l22 22" />
+                  </Svg>
+                ) : (
+                  <Svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7F8C8D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <Path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                    <Path d="M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z" />
+                  </Svg>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
 
           <View style={styles.requirementsContainer}>
@@ -227,141 +340,48 @@ const ForcePasswordChange = () => {
             <Text style={styles.requirement}>• Contains number (0-9)</Text>
             <Text style={styles.requirement}>• Contains special character (!@#$%^&*)</Text>
           </View>
+        </View>
 
+        <View style={[globalStyles.formActions, { marginTop: 48, marginBottom: 0, paddingTop: 0 }]}>
           <TouchableOpacity
-            style={[styles.changeButton, loading && styles.changeButtonDisabled]}
+            style={globalStyles.primaryButton}
             onPress={handleForcePasswordChange}
             disabled={loading}
           >
-            <Text style={styles.changeButtonText}>
-              {loading ? 'Updating Password...' : 'Set New Password'}
+            <Text style={globalStyles.primaryButtonText}>
+              {loading ? 'Updating Password...' : 'Change Password'}
             </Text>
           </TouchableOpacity>
         </View>
-      </ScrollView>
-    </SafeAreaView>
+      </Animated.View>
+    </TopographicBackground>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f8f9fa',
-  },
-  scrollContainer: {
-    flexGrow: 1,
-    padding: 20,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 30,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#2c3e50',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#7f8c8d',
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  successBanner: {
-    backgroundColor: '#d4edda',
-    padding: 15,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#c3e6cb',
-    marginTop: 10,
-  },
-  successText: {
-    color: '#155724',
-    fontSize: 16,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  form: {
-    flex: 1,
-  },
-  inputContainer: {
-    marginBottom: 20,
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#2c3e50',
-    marginBottom: 8,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 12,
-    padding: 15,
-    fontSize: 16,
-    backgroundColor: '#fff',
-  },
-  passwordInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 12,
-    backgroundColor: '#fff',
-  },
-  passwordInput: {
-    flex: 1,
-    padding: 15,
-    fontSize: 16,
-  },
-  eyeButton: {
-    padding: 15,
-  },
-  eyeText: {
-    fontSize: 18,
-  },
-  strengthContainer: {
-    marginTop: 8,
-  },
   strengthText: {
     fontSize: 14,
     fontWeight: '600',
   },
   requirementsContainer: {
-    backgroundColor: '#fff',
+    backgroundColor: '#F8F9FA',
     padding: 15,
     borderRadius: 12,
-    marginBottom: 30,
+    marginTop: 12,
+    marginBottom: 10,
     borderWidth: 1,
-    borderColor: '#e9ecef',
+    borderColor: '#E9ECEF',
   },
   requirementsTitle: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
-    color: '#2c3e50',
-    marginBottom: 10,
+    color: '#2C3E50',
+    marginBottom: 8,
   },
   requirement: {
-    fontSize: 14,
-    color: '#6c757d',
-    marginBottom: 4,
-  },
-  changeButton: {
-    backgroundColor: '#3498db',
-    padding: 18,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  changeButtonDisabled: {
-    backgroundColor: '#bdc3c7',
-  },
-  changeButtonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 13,
+    color: '#7F8C8D',
+    marginBottom: 3,
   },
 });
 
