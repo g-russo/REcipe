@@ -879,6 +879,57 @@ const styles = StyleSheet.create({
   deleteButton: {
     borderColor: '#ff4d4d',
   },
+  // Add these new styles to your pantryStyles.js file
+  dateSection: {
+    marginBottom: 16,
+  },
+  sectionLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 10,
+  },
+  dateDisplayText: {
+    fontSize: 15,
+    color: '#333',
+  },
+  disabledInput: {
+    backgroundColor: '#f5f5f5',
+  },
+  // Date picker modal styles
+  centeredView: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  datePickerModalView: {
+    backgroundColor: 'white',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  datePickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 15,
+  },
+  datePickerCancelText: {
+    fontSize: 17,
+    color: '#007AFF',
+  },
+  datePickerDoneText: {
+    fontSize: 17,
+    color: '#007AFF',
+    fontWeight: '600',
+  },
 
 });
 
