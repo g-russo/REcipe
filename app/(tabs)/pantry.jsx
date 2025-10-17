@@ -17,6 +17,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import styles from '../../assets/css/pantryStyles';
 import AuthGuard from '../../components/AuthGuard';
 
@@ -557,13 +558,27 @@ const Pantry = () => {
     const groupToUpdate = categories.find(c => c.id === groupId);
     if (!groupToUpdate) return;
     
-    // Update the group (implementation depends on your group structure)
+    // Filter out items that are already in the group
+    const existingItems = groupToUpdate.items || [];
+    const newItemsToAdd = selectedItems.filter(id => !existingItems.includes(id));
+    
+    // If all items are already in the group, show message and return
+    if (newItemsToAdd.length === 0) {
+      Alert.alert('Note', 'All selected items are already in this group.');
+      setGroupSelectionModalVisible(false);
+      exitSelectionMode();
+      return;
+    }
+    
+    // Update the group with only new items
     const updatedCategories = categories.map(category => {
       if (category.id === groupId) {
         return {
           ...category,
-          itemCount: (category.itemCount || 0) + selectedItems.length,
-          items: [...(category.items || []), ...selectedItems]
+          // Add only the count of new items
+          itemCount: (category.itemCount || 0) + newItemsToAdd.length,
+          // Combine existing items with new unique items
+          items: [...existingItems, ...newItemsToAdd]
         };
       }
       return category;
@@ -577,8 +592,14 @@ const Pantry = () => {
     setGroupSelectionModalVisible(false);
     exitSelectionMode();
     
-    // Show confirmation
-    Alert.alert('Success', `Added ${selectedItems.length} items to ${groupToUpdate.name}`);
+    // Show confirmation with accurate count of new items added
+    const duplicateCount = selectedItems.length - newItemsToAdd.length;
+    let message = `Added ${newItemsToAdd.length} items to ${groupToUpdate.name}`;
+    if (duplicateCount > 0) {
+      message += ` (${duplicateCount} ${duplicateCount === 1 ? 'item was' : 'items were'} already in the group)`;
+    }
+    
+    Alert.alert('Success', message);
   };
   
   // Function to get items in a group
@@ -654,23 +675,111 @@ const Pantry = () => {
 
   // Add date picker handlers for new item
   const onDateChange = (event, selectedDate) => {
-    const currentDate = selectedDate || new Date();
-    setShowDatePicker(Platform.OS === 'ios'); // Only iOS keeps the picker open
+    // Hide the picker on Android after selection
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
+    }
     
-    if (event.type === 'set' || Platform.OS === 'android') { // Android doesn't have event.type
-      handleInputChange('expDate', formatDate(currentDate));
+    if (selectedDate) {
+      const formattedDate = formatDate(selectedDate);
+      
+      // Validate that expiration date is after date added
+      if (isValidExpDate(formattedDate, getCurrentDate())) {
+        handleInputChange('expDate', formattedDate);
+      } else {
+        Alert.alert(
+          'Invalid Date',
+          'Expiration date must be after the date added.',
+          [{ text: 'OK' }]
+        );
+      }
     }
   };
 
   // Add date picker handlers for edit item
   const onEditDateChange = (event, selectedDate) => {
-    const currentDate = selectedDate || new Date();
-    setShowEditDatePicker(Platform.OS === 'ios'); // Only iOS keeps the picker open
+    // Hide the picker on Android after selection
+    if (Platform.OS === 'android') {
+      setShowEditDatePicker(false);
+    }
     
-    if (event.type === 'set' || Platform.OS === 'android') { // Android doesn't have event.type
-      handleEditInputChange('expDate', formatDate(currentDate));
+    if (selectedDate) {
+      const formattedDate = formatDate(selectedDate);
+      
+      // Validate that expiration date is after date added
+      if (isValidExpDate(formattedDate, itemToEdit?.dateAdded)) {
+        handleEditInputChange('expDate', formattedDate);
+      } else {
+        Alert.alert(
+          'Invalid Date',
+          'Expiration date must be after the date added.',
+          [{ text: 'OK' }]
+        );
+      }
     }
   };
+
+  // Replace both date picker functions with these simplified versions that use the native date picker
+  const showDatePickerForNew = () => {
+    if (Platform.OS === 'android') {
+      // For Android, show the native date picker directly
+      setShowDatePicker(true);
+    } else {
+      // For iOS, we'll also just set state and show the picker in JSX
+      setShowDatePicker(true);
+    }
+  };
+
+  // Replace the showDatePickerForEdit function
+  const showDatePickerForEdit = () => {
+    if (Platform.OS === 'android') {
+      // For Android, show the native date picker directly
+      setShowEditDatePicker(true);
+    } else {
+      // For iOS, we'll also just set state
+      setShowEditDatePicker(true);
+    }
+  };
+
+  // Add these helper functions at the appropriate place in your component code
+const parseDate = (dateString) => {
+  if (!dateString) return null;
+  // If it's already a Date object, return it
+  if (dateString instanceof Date) return dateString;
+  
+  // Try to parse the date string
+  try {
+    // Handle different date formats
+    if (dateString.includes('/')) {
+      // Format: MM/DD/YYYY
+      const [month, day, year] = dateString.split('/').map(Number);
+      return new Date(year, month - 1, day); // Month is 0-indexed in JS Date
+    } else if (dateString.includes('-')) {
+      // Format: YYYY-MM-DD (ISO format)
+      return new Date(dateString);
+    }
+    return new Date(dateString);
+  } catch (error) {
+    console.log('Error parsing date:', error);
+    return null;
+  }
+};
+
+// Check if expiration date is valid (greater than date added)
+const isValidExpDate = (expDate, dateAdded) => {
+  const expDateTime = parseDate(expDate)?.getTime();
+  const addedDateTime = parseDate(dateAdded)?.getTime();
+  
+  // Allow null expiration date (no expiration)
+  if (!expDateTime) return true;
+  
+  // If we have both dates, compare them
+  if (expDateTime && addedDateTime) {
+    return expDateTime > addedDateTime;
+  }
+  
+  return true;
+};
 
   return (
     <AuthGuard>
@@ -977,34 +1086,39 @@ const Pantry = () => {
                   </View>
                 </View>
                 
-                <View style={styles.formRow}>
-                  <Text style={styles.formLabel}>Expiration Date:</Text>
-                  <TouchableOpacity 
-                    style={styles.dateInput}
-                    onPress={() => setShowDatePicker(true)}
-                  >
-                    <Text style={styles.dropdownPlaceholder}>
-                      {newItem.expDate || 'Select Date'}
-                    </Text>
-                    <Ionicons name="calendar-outline" size={20} color="#999" />
-                  </TouchableOpacity>
+                <View style={styles.dateSection}>
+                  <Text style={styles.sectionLabel}>Dates</Text>
+                  
+                  <View style={styles.formRow}>
+                    <Text style={styles.formLabel}>Date Added:</Text>
+                    <View style={[styles.dateInput, styles.disabledInput]}>
+                      <Text style={styles.dateDisplayText}>{getCurrentDate()}</Text>
+                    </View>
+                  </View>
+                  
+                  <View style={styles.formRow}>
+                    <Text style={styles.formLabel}>Expiration Date:</Text>
+                    <TouchableOpacity 
+                      style={styles.dateInput}
+                      onPress={showDatePickerForNew}
+                    >
+                      <Text style={newItem.expDate ? styles.dateDisplayText : styles.dropdownPlaceholder}>
+                        {newItem.expDate || 'Select Date'}
+                      </Text>
+                      <Ionicons name="calendar-outline" size={20} color="#999" />
+                    </TouchableOpacity>
+                  </View>
                 </View>
                 
                 {showDatePicker && (
                   <DateTimePicker
-                    value={newItem.expDate ? new Date(newItem.expDate) : new Date()}
+                    value={newItem.expDate ? parseDate(newItem.expDate) : new Date()}
                     mode="date"
                     display="default"
                     onChange={onDateChange}
+                    minimumDate={parseDate(getCurrentDate())} // Set minimum date to today
                   />
                 )}
-                
-                <View style={styles.formRow}>
-                  <Text style={styles.formLabel}>Date Added:</Text>
-                  <View style={styles.dateInput}>
-                    <Text>{getCurrentDate()}</Text>
-                  </View>
-                </View>
                 
                 <Text style={styles.formLabel}>Item Description:</Text>
                 <TextInput
@@ -1778,34 +1892,845 @@ const Pantry = () => {
                   </View>
                 </View>
                 
-                <View style={styles.formRow}>
-                  <Text style={styles.formLabel}>Expiration Date:</Text>
-                  <TouchableOpacity 
-                    style={styles.dateInput}
-                    onPress={() => setShowDatePicker(true)}
-                  >
-                    <Text style={styles.dropdownPlaceholder}>
-                      {newItem.expDate || 'Select Date'}
-                    </Text>
-                    <Ionicons name="calendar-outline" size={20} color="#999" />
-                  </TouchableOpacity>
+                <View style={styles.dateSection}>
+                  <Text style={styles.sectionLabel}>Dates</Text>
+                  
+                  <View style={styles.formRow}>
+                    <Text style={styles.formLabel}>Date Added:</Text>
+                    <View style={[styles.dateInput, styles.disabledInput]}>
+                      <Text style={styles.dateDisplayText}>{getCurrentDate()}</Text>
+                    </View>
+                  </View>
+                  
+                  <View style={styles.formRow}>
+                    <Text style={styles.formLabel}>Expiration Date:</Text>
+                    <TouchableOpacity 
+                      style={styles.dateInput}
+                      onPress={showDatePickerForNew}
+                    >
+                      <Text style={newItem.expDate ? styles.dateDisplayText : styles.dropdownPlaceholder}>
+                        {newItem.expDate || 'Select Date'}
+                      </Text>
+                      <Ionicons name="calendar-outline" size={20} color="#999" />
+                    </TouchableOpacity>
+                  </View>
                 </View>
                 
                 {showDatePicker && (
                   <DateTimePicker
-                    value={newItem.expDate ? new Date(newItem.expDate) : new Date()}
+                    value={newItem.expDate ? parseDate(newItem.expDate) : new Date()}
                     mode="date"
                     display="default"
                     onChange={onDateChange}
+                    minimumDate={parseDate(getCurrentDate())} // Set minimum date to today
                   />
                 )}
                 
+                <Text style={styles.formLabel}>Item Description:</Text>
+                <TextInput
+                  style={styles.textAreaInput}
+                  placeholder="Type item description..."
+                  placeholderTextColor="#999"
+                  multiline={true}
+                  numberOfLines={4}
+                  value={newItem.description}
+                  onChangeText={(text) => handleInputChange('description', text)}
+                />
+                
+                <View style={styles.buttonContainer}>
+                  <TouchableOpacity 
+                    style={styles.saveButton}
+                    onPress={saveNewItem}
+                  >
+                    <Text style={styles.saveButtonText}>
+                      {isEditMode ? 'Update' : 'Save'}
+                    </Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={styles.cancelButton}
+                    onPress={closeModal}
+                  >
+                    <Text style={styles.cancelButtonText}>Cancel</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+      </Modal>
+
+      {/* Category Selection Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={categoryModalVisible}
+        onRequestClose={() => setCategoryModalVisible(false)}
+      >
+        <View style={styles.categoryModalOverlay}>
+          <View style={styles.categoryModalContent}>
+            <View style={styles.categoryModalHeader}>
+              <Text style={styles.categoryModalTitle}>Select Category</Text>
+              <TouchableOpacity onPress={() => setCategoryModalVisible(false)}>
+                <Ionicons name="close" size={24} color="#555" />
+              </TouchableOpacity>
+            </View>
+
+            <FlatList
+              data={foodCategories}
+              keyExtractor={(item) => item}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.categoryOption}
+                  onPress={() => {
+                    if (isEditingExisting) {
+                      handleEditInputChange('category', item);
+                    } else {
+                      handleInputChange('category', item);
+                    }
+                    setCategoryModalVisible(false);
+                  }}
+                >
+                  <Text style={styles.categoryOptionText}>{item}</Text>
+                </TouchableOpacity>
+              )}
+              style={styles.categoryList}
+            />
+          </View>
+        </View>
+      </Modal>
+
+      {/* Unit Selection Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={unitModalVisible}
+        onRequestClose={() => setUnitModalVisible(false)}
+      >
+        <View style={styles.categoryModalOverlay}>
+          <View style={styles.categoryModalContent}>
+            <View style={styles.categoryModalHeader}>
+              <Text style={styles.categoryModalTitle}>Select Unit</Text>
+              <TouchableOpacity onPress={() => setUnitModalVisible(false)}>
+                <Ionicons name="close" size={24} color="#555" />
+              </TouchableOpacity>
+            </View>
+            
+            <FlatList
+              data={unitOptions}
+              keyExtractor={(item) => item}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.categoryOption}
+                  onPress={() => {
+                    if (isEditingExisting) {
+                      handleEditInputChange('unit', item);
+                    } else {
+                      handleInputChange('unit', item);
+                    }
+                    setUnitModalVisible(false);
+                  }}
+                >
+                  <Text style={styles.categoryOptionText}>{item}</Text>
+                </TouchableOpacity>
+              )}
+              style={styles.categoryList}
+            />
+          </View>
+        </View>
+      </Modal>
+
+      {/* Item Actions Modal - MODIFIED to use cleaner approach */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={itemActionVisible}
+        onRequestClose={() => setItemActionVisible(false)}
+      >
+        <TouchableOpacity 
+          style={styles.actionModalOverlay}
+          onPress={() => setItemActionVisible(false)}
+          activeOpacity={1}
+        >
+          <View style={styles.actionModalContent}>
+            {selectedItemId && (
+              <>
+                <TouchableOpacity 
+                  style={styles.actionOption}
+                  onPress={() => {
+                    // Find the item once and pass it directly
+                    const selectedItem = pantryItems.find(i => i.id === selectedItemId);
+                    if (selectedItem) {
+                      handleItemAction('edit', selectedItem);
+                    }
+                  }}
+                >
+                  <Ionicons name="create-outline" size={22} color="#555" />
+                  <Text style={styles.actionText}>Edit</Text>
+                </TouchableOpacity>
+                
+                <View style={styles.actionDivider} />
+                
+                <TouchableOpacity 
+                  style={styles.actionOption}
+                  onPress={() => {
+                    const selectedItem = pantryItems.find(i => i.id === selectedItemId);
+                    if (selectedItem) {
+                      handleItemAction('delete', selectedItem);
+                    }
+                  }}
+                >
+                  <Ionicons name="trash-outline" size={22} color="#ff4d4d" />
+                  <Text style={[styles.actionText, { color: '#ff4d4d' }]}>Delete</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Add New Group Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={newGroupModalVisible}
+        onRequestClose={() => setNewGroupModalVisible(false)}
+      >
+        <View style={styles.categoryModalOverlay}>
+          <View style={styles.categoryModalContent}>
+            <View style={styles.categoryModalHeader}>
+              <Text style={styles.categoryModalTitle}>Create New Group</Text>
+              <TouchableOpacity onPress={() => setNewGroupModalVisible(false)}>
+                <Ionicons name="close" size={24} color="#555" />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.modalContent}>
+              <TextInput
+                style={styles.input}
+                placeholder="Group Name (e.g., Spices, Baking)"
+                placeholderTextColor="#999"
+                value={newGroup.name}
+                onChangeText={(text) => setNewGroup({...newGroup, name: text})}
+              />
+              
+              <View style={styles.colorPickerContainer}>
+                <Text style={styles.formLabel}>Group Color:</Text>
+                <View style={styles.colorOptions}>
+                  {['#8BC34A', '#FF5722', '#2196F3', '#9C27B0', '#FF9800'].map(color => (
+                    <TouchableOpacity
+                      key={color}
+                      style={[
+                        styles.colorOption,
+                        { backgroundColor: color },
+                        newGroup.color === color && styles.selectedColorOption
+                      ]}
+                      onPress={() => setNewGroup({...newGroup, color: color})}
+                    />
+                  ))}
+                </View>
+              </View>
+              
+              <TouchableOpacity 
+                style={styles.saveButton}
+                onPress={handleAddGroup}
+              >
+                <Text style={styles.saveButtonText}>Create Group</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Group Selection Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={groupSelectionModalVisible}
+        onRequestClose={() => setGroupSelectionModalVisible(false)}
+      >
+        <View style={styles.categoryModalOverlay}>
+          <View style={styles.categoryModalContent}>
+            <View style={styles.categoryModalHeader}>
+              <Text style={styles.categoryModalTitle}>Add to Group</Text>
+              <TouchableOpacity onPress={() => setGroupSelectionModalVisible(false)}>
+                <Ionicons name="close" size={24} color="#555" />
+              </TouchableOpacity>
+            </View>
+            
+            {categories.length === 0 ? (
+              <View style={styles.emptyModalContent}>
+                <Text style={styles.emptyModalText}>No groups available</Text>
+                <TouchableOpacity 
+                  style={styles.createGroupButton}
+                  onPress={() => {
+                    setGroupSelectionModalVisible(false);
+                    setNewGroupModalVisible(true);
+                  }}
+                >
+                  <Text style={styles.createGroupButtonText}>Create New Group</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <FlatList
+                data={categories}
+                keyExtractor={(item) => item.id.toString()}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={styles.groupSelectionOption}
+                    onPress={() => addItemsToGroup(item.id)}
+                  >
+                    <View style={[styles.groupColorIndicator, { backgroundColor: item.color }]} />
+                    <Text style={styles.groupSelectionText}>{item.name}</Text>
+                    <Text style={styles.groupSelectionCount}>
+                      {item.itemCount || 0} items
+                    </Text>
+                  </TouchableOpacity>
+                )}
+                style={styles.categoryList}
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Group Detail Modal */}
+      <Modal
+        animationType="slide"
+        transparent={false}
+        visible={groupDetailModalVisible}
+        onRequestClose={() => {
+          setGroupDetailModalVisible(false);
+          setRemoveItemsMode(false);
+        }}
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={[
+            styles.groupDetailHeader, 
+            { backgroundColor: selectedGroup?.color || '#8BC34A' }
+          ]}>
+            <View style={styles.groupDetailHeaderContent}>
+              <TouchableOpacity 
+                style={styles.backButton}
+                onPress={() => {
+                  setGroupDetailModalVisible(false);
+                  setRemoveItemsMode(false);
+                }}
+              >
+                <Ionicons name="arrow-back" size={24} color="#fff" />
+              </TouchableOpacity>
+              
+              <Text style={styles.groupDetailTitle}>{selectedGroup?.name}</Text>
+              
+              <TouchableOpacity 
+                style={styles.groupDetailOptionButton}
+                onPress={() => setGroupActionModalVisible(true)}
+              >
+                <Ionicons name="ellipsis-vertical" size={20} color="#fff" />
+              </TouchableOpacity>
+            </View>
+            
+            <Text style={styles.groupDetailItemCount}>
+              {selectedGroup?.itemCount || 0} items
+            </Text>
+            
+            {removeItemsMode && (
+              <Text style={styles.removeItemsText}>
+                Tap items to remove from group
+              </Text>
+            )}
+          </View>
+          
+          <View style={styles.groupDetailContent}>
+            {selectedGroup && getGroupItems(selectedGroup.id).length === 0 ? (
+              <View style={styles.emptyStateContainer}>
+                <View style={styles.emptyIconContainer}>
+                  <Ionicons name="cube-outline" size={70} color="#ccc" />
+                </View>
+                <Text style={styles.emptyTitle}>No items in this group</Text>
+                <Text style={styles.emptySubtitle}>
+                  Add items from your pantry to this group
+                </Text>
+                <TouchableOpacity 
+                  style={styles.addItemButton}
+                  onPress={() => {
+                    setGroupDetailModalVisible(false);
+                    setSelectionMode(true); // Enter selection mode to add items
+                  }}
+                >
+                  <Text style={styles.addItemButtonText}>Add Items</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={styles.groupItemsContainer}>
+                <View style={styles.itemsGrid}>
+                  {selectedGroup && getGroupItems(selectedGroup.id).map((item) => (
+                    <TouchableOpacity 
+                      key={item.id} 
+                      style={[
+                        styles.itemCard,
+                        removeItemsMode && styles.itemCardRemoveMode
+                      ]}
+                      onPress={() => {
+                        if (removeItemsMode) {
+                          removeItemFromGroup(selectedGroup.id, item.id);
+                        }
+                      }}
+                    >
+                      <View style={styles.itemImagePlaceholder} />
+                      <View style={styles.itemDetails}>
+                        <Text style={styles.itemName}>{item.name}</Text>
+                        <View style={styles.itemFooter}>
+                          <Text style={styles.expDate}>{item.expDate}</Text>
+                          {removeItemsMode && (
+                            <Ionicons 
+                              name="remove-circle" 
+                              size={18} 
+                              color="#ff4d4d" 
+                            />
+                          )}
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            )}
+          </View>
+        </SafeAreaView>
+      </Modal>
+      
+      {/* Group Action Modal */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={groupActionModalVisible}
+        onRequestClose={() => setGroupActionModalVisible(false)}
+      >
+        <TouchableOpacity 
+          style={styles.actionModalOverlay}
+          onPress={() => setGroupActionModalVisible(false)}
+          activeOpacity={1}
+        >
+          <View style={[styles.actionModalContent, { top: 120, right: 20, position: 'absolute' }]}>
+            <TouchableOpacity 
+              style={styles.actionOption}
+              onPress={() => {
+                setGroupActionModalVisible(false);
+                setEditGroupModalVisible(true);
+              }}
+            >
+              <Ionicons name="create-outline" size={22} color="#555" />
+              <Text style={styles.actionText}>Edit Group</Text>
+            </TouchableOpacity>
+            
+            <View style={styles.actionDivider} />
+            
+            <TouchableOpacity 
+              style={styles.actionOption}
+              onPress={toggleRemoveItemsMode}
+            >
+              <Ionicons name="trash-outline" size={22} color="#555" />
+              <Text style={styles.actionText}>
+                {removeItemsMode ? 'Cancel Removing' : 'Remove Items'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+      
+      {/* Edit Group Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={editGroupModalVisible}
+        onRequestClose={() => setEditGroupModalVisible(false)}
+      >
+        <View style={styles.categoryModalOverlay}>
+          <View style={styles.categoryModalContent}>
+            <View style={styles.categoryModalHeader}>
+              <Text style={styles.categoryModalTitle}>Edit Group</Text>
+              <TouchableOpacity onPress={() => setEditGroupModalVisible(false)}>
+                <Ionicons name="close" size={24} color="#555" />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.modalContent}>
+              <TextInput
+                style={styles.input}
+                placeholder="Group Name"
+                placeholderTextColor="#999"
+                value={selectedGroup?.name || ''}
+                onChangeText={(text) => setSelectedGroup({
+                  ...selectedGroup, 
+                  name: text,
+                  letter: text.charAt(0).toUpperCase()
+                })}
+              />
+              
+              <View style={styles.colorPickerContainer}>
+                <Text style={styles.formLabel}>Group Color:</Text>
+                <View style={styles.colorOptions}>
+                  {['#8BC34A', '#FF5722', '#2196F3', '#9C27B0', '#FF9800'].map(color => (
+                    <TouchableOpacity
+                      key={color}
+                      style={[
+                        styles.colorOption,
+                        { backgroundColor: color },
+                        selectedGroup?.color === color && styles.selectedColorOption
+                      ]}
+                      onPress={() => setSelectedGroup({...selectedGroup, color: color})}
+                    />
+                  ))}
+                </View>
+              </View>
+              
+              <TouchableOpacity 
+                style={styles.saveButton}
+                onPress={handleEditGroup}
+              >
+                <Text style={styles.saveButtonText}>Save Changes</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Search Modal */}
+      <Modal
+        animationType="slide"
+        transparent={false}
+        visible={searchModalVisible}
+        onRequestClose={() => {
+          setSearchModalVisible(false);
+          clearSearch();
+        }}
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.searchHeader}>
+            <TouchableOpacity 
+              style={styles.backButton}
+              onPress={() => {
+                setSearchModalVisible(false);
+                clearSearch();
+              }}
+            >
+              <Ionicons name="arrow-back" size={24} color="#555" />
+            </TouchableOpacity>
+            
+            <View style={styles.searchInputContainer}>
+              <Ionicons name="search" size={20} color="#999" style={styles.searchIcon} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search your pantry..."
+                placeholderTextColor="#999"
+                value={searchQuery}
+                onChangeText={(text) => {
+                  setSearchQuery(text);
+                  handleSearch(text);
+                }}
+                autoFocus={true}
+                returnKeyType="search"
+              />
+              {searchQuery ? (
+                <TouchableOpacity onPress={clearSearch}>
+                  <Ionicons name="close-circle" size={20} color="#999" />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </View>
+          
+          {/* Search Results */}
+          {searchQuery.trim() === '' ? (
+            <View style={styles.emptySearchContainer}>
+              <Ionicons name="search" size={60} color="#ddd" />
+              <Text style={styles.emptySearchText}>Search for items and groups</Text>
+            </View>
+          ) : (
+            <ScrollView style={styles.searchResultsContainer}>
+              {/* Groups Results */}
+              {searchResults.groups.length > 0 && (
+                <View style={styles.searchSection}>
+                  <Text style={styles.searchSectionTitle}>Groups</Text>
+                  {searchResults.groups.map(group => (
+                    <TouchableOpacity 
+                      key={group.id} 
+                      style={styles.searchResultItem}
+                      onPress={() => {
+                        openGroupDetails(group);
+                        setSearchModalVisible(false);
+                        clearSearch();
+                      }}
+                    >
+                      <View style={[styles.searchResultColorDot, { backgroundColor: group.color }]} />
+                      <View style={styles.searchResultTextContainer}>
+                        <Text style={styles.searchResultTitle}>{group.name}</Text>
+                        <Text style={styles.searchResultSubtitle}>
+                          {group.itemCount || 0} items
+                        </Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={20} color="#ccc" />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+              
+              {/* Items Results */}
+              {searchResults.items.length > 0 && (
+                <View style={styles.searchSection}>
+                  <Text style={styles.searchSectionTitle}>Items</Text>
+                  {searchResults.items.map(item => (
+                    <TouchableOpacity 
+                      key={item.id} 
+                      style={styles.searchResultItem}
+                      onPress={() => {
+                        setSelectedItemId(item.id);
+                        setSearchModalVisible(false);
+                        clearSearch();
+                        setItemActionVisible(true);
+                      }}
+                    >
+                      <View style={styles.searchResultIcon}>
+                        <Ionicons name="cube-outline" size={22} color="#8BC34A" />
+                      </View>
+                      <View style={styles.searchResultTextContainer}>
+                        <Text style={styles.searchResultTitle}>{item.name}</Text>
+                        <Text style={styles.searchResultSubtitle}>
+                          {item.quantity} {item.unit} • {item.category}
+                        </Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={20} color="#ccc" />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+              
+              {/* No Results */}
+              {searchResults.groups.length === 0 && searchResults.items.length === 0 && (
+                <View style={styles.emptySearchContainer}>
+                  <Ionicons name="search-outline" size={60} color="#ddd" />
+                  <Text style={styles.emptySearchText}>No results found</Text>
+                </View>
+              )}
+            </ScrollView>
+          )}
+        </SafeAreaView>
+      </Modal>
+      
+      {/* Item Detail Overlay */}
+      {detailOverlayVisible && detailItem && (
+        <TouchableOpacity 
+          style={styles.detailOverlay}
+          activeOpacity={1}
+          onPress={() => setDetailOverlayVisible(false)}
+        >
+          <View 
+            style={styles.detailCard}
+            onStartShouldSetResponder={() => true} // Prevent touch events from propagating
+          >
+            <View style={styles.detailHeader}>
+              <Text style={styles.detailTitle}>{detailItem.name}</Text>
+              <TouchableOpacity onPress={() => setDetailOverlayVisible(false)}>
+                <Ionicons name="close" size={24} color="#555" />
+              </TouchableOpacity>
+            </View>
+
+            {detailItem.image ? (
+              <Image 
+                source={{ uri: detailItem.image }} 
+                style={styles.detailImage}
+                resizeMode="cover"
+              />
+            ) : (
+              <View style={styles.detailImagePlaceholder}>
+                <Ionicons name="image-outline" size={60} color="#ccc" />
+              </View>
+            )}
+
+            <View style={styles.detailContent}>
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Category:</Text>
+                <Text style={styles.detailValue}>{detailItem.category}</Text>
+              </View>
+              
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Quantity:</Text>
+                <Text style={styles.detailValue}>{detailItem.quantity} {detailItem.unit}</Text>
+              </View>
+              
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Expiry:</Text>
+                <Text style={styles.detailValue}>{detailItem.expDate}</Text>
+              </View>
+              
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Added:</Text>
+                <Text style={styles.detailValue}>{detailItem.dateAdded}</Text>
+              </View>
+              
+              {detailItem.description ? (
+                <View style={styles.detailDescription}>
+                  <Text style={styles.detailDescriptionLabel}>Description:</Text>
+                  <Text style={styles.detailDescriptionText}>{detailItem.description}</Text>
+                </View>
+              ) : null}
+              
+              <View style={styles.detailActions}>
+                <TouchableOpacity 
+                  style={styles.detailActionButton}
+                  onPress={() => {
+                    setDetailOverlayVisible(false);
+                    handleItemAction('edit', detailItem);
+                  }}
+                >
+                  <Ionicons name="create-outline" size={20} color="#8BC34A" />
+                  <Text style={styles.detailActionText}>Edit</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={[styles.detailActionButton, styles.deleteButton]}
+                  onPress={() => {
+                    setDetailOverlayVisible(false);
+                    handleItemAction('delete', detailItem);
+                  }}
+                >
+                  <Ionicons name="trash-outline" size={20} color="#ff4d4d" />
+                  <Text style={[styles.detailActionText, {color: "#ff4d4d"}]}>Delete</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </TouchableOpacity>
+      )}
+      
+      {/* KEEP Add New Item Modal (unchanged) */}
+      <Modal
+        animationType="slide"
+        transparent={false}
+        visible={modalVisible}
+        onRequestClose={closeModal}
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <KeyboardAvoidingView 
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={{flex: 1}}
+          >
+            {/* Modal Header - Updated title based on mode */}
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                {isEditMode ? 'Edit Item' : 'Add New Item'}
+              </Text>
+              <TouchableOpacity 
+                style={styles.closeButton}
+                onPress={closeModal}
+              >
+                <Ionicons name="close" size={24} color="#555" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView 
+              style={styles.modalScrollView}
+              contentContainerStyle={styles.modalContentContainer}
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.modalContent}>
+                {/* Image Upload Area - Updated to show selected image or placeholder */}
+                <TouchableOpacity 
+                  style={styles.imageUploadArea}
+                  onPress={showImagePickerOptions}
+                >
+                  {newItem.image ? (
+                    <Image 
+                      source={{ uri: newItem.image }} 
+                      style={styles.uploadedImage} 
+                    />
+                  ) : (
+                    <View style={styles.uploadPlaceholder}>
+                      <Ionicons name="image-outline" size={32} color="#fff" />
+                      <Text style={styles.uploadText}>Add Photo</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+                
+                {/* Form Fields */}
+                <TextInput 
+                  style={styles.input}
+                  placeholder="Item Name"
+                  placeholderTextColor="#999"
+                  value={newItem.name}
+                  onChangeText={(text) => handleInputChange('name', text)}
+                />
+                
+                <TouchableOpacity 
+                  style={styles.dropdownInput}
+                  onPress={openCategoryModalForNew}
+                >
+                  <Text style={newItem.category ? styles.dropdownSelectedText : styles.dropdownPlaceholder}>
+                    {newItem.category || 'Choose Category'}
+                  </Text>
+                  <Ionicons name="chevron-down" size={20} color="#999" />
+                </TouchableOpacity>
+                
                 <View style={styles.formRow}>
-                  <Text style={styles.formLabel}>Date Added:</Text>
-                  <View style={styles.dateInput}>
-                    <Text>{getCurrentDate()}</Text>
+                  <View style={styles.formColumn}>
+                    <Text style={styles.columnLabel}>Quantity:</Text>
+                    <TextInput 
+                      style={styles.smallInput}
+                      placeholder="1-99"
+                      placeholderTextColor="#999"
+                      keyboardType="numeric"
+                      value={newItem.quantity}
+                      onChangeText={(text) => handleInputChange('quantity', text)}
+                    />
+                  </View>
+                  
+                  <View style={styles.formColumn}>
+                    <Text style={styles.columnLabel}>Unit:</Text>
+                    <TouchableOpacity 
+                      style={styles.smallDropdown}
+                      onPress={openUnitModalForNew}  // Add this handler
+                    >
+                      <Text style={newItem.unit ? styles.dropdownSelectedText : styles.dropdownPlaceholder}>
+                        {newItem.unit || 'Select'}
+                      </Text>
+                      <Ionicons name="chevron-down" size={20} color="#999" />
+                    </TouchableOpacity>
                   </View>
                 </View>
+                
+                <View style={styles.dateSection}>
+                  <Text style={styles.sectionLabel}>Dates</Text>
+                  
+                  <View style={styles.formRow}>
+                    <Text style={styles.formLabel}>Date Added:</Text>
+                    <View style={[styles.dateInput, styles.disabledInput]}>
+                      <Text style={styles.dateDisplayText}>{getCurrentDate()}</Text>
+                    </View>
+                  </View>
+                  
+                  <View style={styles.formRow}>
+                    <Text style={styles.formLabel}>Expiration Date:</Text>
+                    <TouchableOpacity 
+                      style={styles.dateInput}
+                      onPress={showDatePickerForNew}
+                    >
+                      <Text style={newItem.expDate ? styles.dateDisplayText : styles.dropdownPlaceholder}>
+                        {newItem.expDate || 'Select Date'}
+                      </Text>
+                      <Ionicons name="calendar-outline" size={20} color="#999" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+                
+                {showDatePicker && (
+                  <DateTimePicker
+                    value={newItem.expDate ? parseDate(newItem.expDate) : new Date()}
+                    mode="date"
+                    display="default"
+                    onChange={onDateChange}
+                    minimumDate={parseDate(getCurrentDate())} // Set minimum date to today
+                  />
+                )}
                 
                 <Text style={styles.formLabel}>Item Description:</Text>
                 <TextInput
@@ -1933,34 +2858,39 @@ const Pantry = () => {
                   </View>
                 </View>
                 
-                <View style={styles.formRow}>
-                  <Text style={styles.formLabel}>Expiration Date:</Text>
-                  <TouchableOpacity 
-                    style={styles.dateInput}
-                    onPress={() => setShowEditDatePicker(true)}
-                  >
-                    <Text style={styles.dropdownPlaceholder}>
-                      {itemToEdit?.expDate || 'Select Date'}
-                    </Text>
-                    <Ionicons name="calendar-outline" size={20} color="#999" />
-                  </TouchableOpacity>
+                <View style={styles.dateSection}>
+                  <Text style={styles.sectionLabel}>Dates</Text>
+                  
+                  <View style={styles.formRow}>
+                    <Text style={styles.formLabel}>Date Added:</Text>
+                    <View style={[styles.dateInput, styles.disabledInput]}>
+                      <Text style={styles.dateDisplayText}>{itemToEdit?.dateAdded || getCurrentDate()}</Text>
+                    </View>
+                  </View>
+                  
+                  <View style={styles.formRow}>
+                    <Text style={styles.formLabel}>Expiration Date:</Text>
+                    <TouchableOpacity 
+                      style={styles.dateInput}
+                      onPress={showDatePickerForEdit}
+                    >
+                      <Text style={itemToEdit?.expDate ? styles.dateDisplayText : styles.dropdownPlaceholder}>
+                        {itemToEdit?.expDate || 'Select Date'}
+                      </Text>
+                      <Ionicons name="calendar-outline" size={20} color="#999" />
+                    </TouchableOpacity>
+                  </View>
                 </View>
-                
+
                 {showEditDatePicker && (
                   <DateTimePicker
-                    value={itemToEdit?.expDate ? new Date(itemToEdit.expDate) : new Date()}
+                    value={itemToEdit?.expDate ? parseDate(itemToEdit.expDate) : new Date()}
                     mode="date"
                     display="default"
                     onChange={onEditDateChange}
+                    minimumDate={parseDate(itemToEdit?.dateAdded || getCurrentDate())} // Set minimum date to date added
                   />
                 )}
-                
-                <View style={styles.formRow}>
-                  <Text style={styles.formLabel}>Date Added:</Text>
-                  <View style={styles.dateInput}>
-                    <Text>{itemToEdit?.dateAdded || getCurrentDate()}</Text>
-                  </View>
-                </View>
                 
                 <Text style={styles.formLabel}>Item Description:</Text>
                 <TextInput
