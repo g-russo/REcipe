@@ -11,11 +11,11 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { supabase } from '../lib/supabase';
-import { useCustomAuth } from '../hooks/use-custom-auth';
-import styles from '../assets/css/profileStyles';
-import AuthGuard from '../components/AuthGuard';
-import CacheClearButton from '../components/cache-clear-button';
+import { supabase } from '../../lib/supabase';
+import { useCustomAuth } from '../../hooks/use-custom-auth';
+import styles from '../../assets/css/profileStyles';
+import AuthGuard from '../../components/AuthGuard';
+import CacheClearButton from '../../components/cache-clear-button';
 
 const Profile = () => {
   const { user, customUserData, signOut } = useCustomAuth();

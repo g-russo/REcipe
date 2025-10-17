@@ -111,20 +111,47 @@ export default function Home() {
   useEffect(() => {
     if (user) {
       console.log('✅ User authenticated, redirecting to home...');
-      router.replace('/home');
+      router.replace('/(tabs)/home');
     }
   }, [user]);
 
   // Welcome screen for non-authenticated users
   return (
     <TopographicBackground>
-      <View style={globalStyles.welcomeCard}>
-        <Text style={globalStyles.title}>Welcome</Text>
-        <Text style={globalStyles.subtitle}>
+      <View style={[globalStyles.welcomeCard, {
+        borderTopLeftRadius: 32,
+        borderTopRightRadius: 32,
+        borderBottomLeftRadius: 0,
+        borderBottomRightRadius: 0,
+        overflow: 'hidden',
+        backgroundColor: '#fff',
+        paddingBottom: 0,
+        paddingTop: 0,
+        minHeight: 260,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: -6 },
+        shadowOpacity: 0.18,
+        shadowRadius: 18,
+        elevation: 14,
+      }]}> 
+        <View style={{ position: 'relative', alignSelf: 'flex-start', marginBottom: 16, padding: 0, margin: 0 }}>
+          <Text style={[globalStyles.title, { marginBottom: 6, paddingBottom: 0 }]}>Welcome</Text>
+          <View
+            style={{
+              position: 'absolute',
+              left: 0,
+              bottom: 0,
+              height: 4,
+              width: 96,
+              backgroundColor: '#97B88B',
+              borderRadius: 4,
+            }}
+          />
+        </View>
+  <Text style={[globalStyles.subtitle, { marginLeft: 8, marginTop: 18 }]}> 
           Just a few steps to start saving food and cooking smarter.
         </Text>
-        
-        <View style={globalStyles.formActions}>
+  <View style={[globalStyles.formActions, { marginBottom: 0, marginTop: 60 }]}> 
           <TouchableOpacity 
             style={globalStyles.primaryButton} 
             onPress={goToSignIn}

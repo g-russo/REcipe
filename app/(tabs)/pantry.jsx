@@ -17,8 +17,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
-import styles from '../assets/css/pantryStyles';
-import AuthGuard from '../components/AuthGuard';
+import styles from '../../assets/css/pantryStyles';
+import AuthGuard from '../../components/AuthGuard';
 
 const Pantry = () => {
   // Regular modal state variables

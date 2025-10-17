@@ -1,24 +1,62 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   Alert,
-  StyleSheet
+  StyleSheet,
+  Animated,
+  Keyboard,
+  Platform
 } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useCustomAuth } from '../hooks/use-custom-auth';
+import { globalStyles } from '../assets/css/globalStyles';
+import TopographicBackground from '../components/TopographicBackground';
 
 const ResetPasswordOTP = () => {
-  const [otp, setOtp] = useState('');
+  const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [loading, setLoading] = useState(false);
   const [resendLoading, setResendLoading] = useState(false);
   const [countdown, setCountdown] = useState(60);
   const [canResend, setCanResend] = useState(false);
+  const [focusedIndex, setFocusedIndex] = useState(null);
+  const inputRefs = useRef([]);
+  const translateY = useRef(new Animated.Value(0)).current;
 
   const { verifyPasswordResetOTP, resendPasswordResetOTP } = useCustomAuth();
   const { email, returnTo } = useLocalSearchParams();
+
+  useEffect(() => {
+    const keyboardWillShowListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => {
+        Animated.timing(translateY, {
+          toValue: -e.endCoordinates.height / 2,
+          duration: Platform.OS === 'ios' ? 250 : 200,
+          useNativeDriver: true,
+        }).start();
+      }
+    );
+
+    const keyboardWillHideListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => {
+        Animated.timing(translateY, {
+          toValue: 0,
+          duration: Platform.OS === 'ios' ? 250 : 200,
+          useNativeDriver: true,
+        }).start();
+      }
+    );
+
+    return () => {
+      keyboardWillShowListener.remove();
+      keyboardWillHideListener.remove();
+    };
+  }, []);
 
   useEffect(() => {
     if (countdown > 0) {
@@ -29,22 +67,59 @@ const ResetPasswordOTP = () => {
     }
   }, [countdown]);
 
-  const handleVerifyOTP = async () => {
-    if (!otp || otp.length !== 6) {
-      Alert.alert('Error', 'Please enter a valid 6-digit verification code');
+  const handleOtpChange = (text, index) => {
+    // Handle paste - if text is longer than 1 character, it's likely a paste
+    if (text.length > 1) {
+      // Extract only numbers from pasted text
+      const numbers = text.replace(/\D/g, '');
+      
+      if (numbers.length > 0) {
+        const newOtp = [...otp];
+        // Fill the OTP boxes starting from current index
+        for (let i = 0; i < numbers.length && (index + i) < 6; i++) {
+          newOtp[index + i] = numbers[i];
+        }
+        setOtp(newOtp);
+        
+        // Focus the next empty box or the last box
+        const nextIndex = Math.min(index + numbers.length, 5);
+        inputRefs.current[nextIndex]?.focus();
+      }
       return;
     }
 
-    // Basic OTP format validation
-    if (!/^\d{6}$/.test(otp)) {
-      Alert.alert('Error', 'Verification code must contain only numbers');
+    // Single character input - only allow numbers
+    if (text && !/^\d$/.test(text)) return;
+
+    const newOtp = [...otp];
+    newOtp[index] = text;
+    setOtp(newOtp);
+
+    // Auto-focus next input
+    if (text && index < 5) {
+      inputRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handleKeyPress = (e, index) => {
+    // Handle backspace
+    if (e.nativeEvent.key === 'Backspace' && !otp[index] && index > 0) {
+      inputRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const handleVerifyOTP = async () => {
+    const otpString = otp.join('');
+    
+    if (!otpString || otpString.length !== 6) {
+      Alert.alert('Error', 'Please enter a valid 6-digit verification code');
       return;
     }
 
     try {
       setLoading(true);
 
-      const { data, error } = await verifyPasswordResetOTP(email, otp);
+      const { data, error } = await verifyPasswordResetOTP(email, otpString);
 
       if (error) {
         // Handle different types of OTP errors
@@ -136,7 +211,8 @@ const ResetPasswordOTP = () => {
         Alert.alert('Success', 'A new verification code has been sent to your email');
         setCountdown(60);
         setCanResend(false);
-        setOtp(''); // Clear current OTP input
+        setOtp(['', '', '', '', '', '']); // Clear current OTP input
+        inputRefs.current[0]?.focus();
       }
     } catch (err) {
       Alert.alert('Error', 'Failed to resend verification code. Please try again.');
@@ -145,186 +221,137 @@ const ResetPasswordOTP = () => {
     }
   };
 
-  const formatOTP = (text) => {
-    // Only allow numbers and limit to 6 digits
-    const numbers = text.replace(/[^0-9]/g, '');
-    return numbers.slice(0, 6);
+  const goBack = () => {
+    router.back();
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Reset Password</Text>
-
-      <Text style={styles.subtitle}>
-        Enter the 6-digit verification code sent to:
-      </Text>
-
-      <Text style={styles.email}>{email}</Text>
-
-      <Text style={styles.instruction}>
-        Enter the verification code below:
-      </Text>
-
-      <TextInput
-        style={styles.otpInput}
-        placeholder="000000"
-        value={otp}
-        onChangeText={(text) => setOtp(formatOTP(text))}
-        keyboardType="numeric"
-        maxLength={6}
-        textAlign="center"
-        fontSize={24}
-        letterSpacing={5}
-        editable={!loading}
-      />
-
-      <TouchableOpacity
-        style={[styles.button, (!otp || otp.length !== 6 || loading) && styles.buttonDisabled]}
-        onPress={handleVerifyOTP}
-        disabled={loading || !otp || otp.length !== 6}
-      >
-        <Text style={styles.buttonText}>
-          {loading ? 'Verifying...' : 'Verify Code'}
-        </Text>
+    <TopographicBackground>
+      {/* Back button */}
+      <TouchableOpacity style={globalStyles.backButton} onPress={goBack}>
+        <Svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#81A969" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <Path d="m15 18-6-6 6-6"/>
+        </Svg>
       </TouchableOpacity>
 
-      <View style={styles.resendContainer}>
-        {canResend ? (
+      <Animated.View 
+        style={[globalStyles.card, { 
+          paddingTop: 8, 
+          paddingBottom: 10, 
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          marginTop: 0,
+          minHeight: '55%',
+          borderBottomLeftRadius: 0, 
+          borderBottomRightRadius: 0,
+          transform: [{ translateY }]
+        }]}
+        pointerEvents="box-none"
+      >
+        <View style={[globalStyles.formContent, { flex: 0 }]}>
+          <View style={{ position: 'relative', alignSelf: 'flex-start', marginTop: 0, marginBottom: 20 }}>
+            <Text style={[globalStyles.title, { marginBottom: 6, paddingBottom: 0 }]}>Reset Password</Text>
+            <View
+              style={{
+                position: 'absolute',
+                left: 0,
+                bottom: 0,
+                height: 4,
+                width: 160,
+                backgroundColor: '#97B88B',
+                borderRadius: 4,
+              }}
+            />
+          </View>
+
+          <Text style={[globalStyles.subtitle, { marginLeft: 8, marginTop: 18, marginBottom: 10 }]}>
+            Enter the verification code we just sent to your email address.
+          </Text>
+
+          {/* OTP Input Boxes */}
+          <View style={styles.otpContainer}>
+            {otp.map((digit, index) => (
+              <View key={index} style={{ flex: 1, maxWidth: 50 }}>
+                <TextInput
+                  ref={(ref) => (inputRefs.current[index] = ref)}
+                  style={[
+                    globalStyles.otpBox,
+                    digit && globalStyles.otpBoxFilled,
+                    focusedIndex === index && {
+                      borderColor: '#81A969',
+                      borderWidth: 2,
+                    }
+                  ]}
+                  value={digit}
+                  onChangeText={(text) => handleOtpChange(text, index)}
+                  onKeyPress={(e) => handleKeyPress(e, index)}
+                  onFocus={() => {
+                    console.log('Input focused:', index);
+                    setFocusedIndex(index);
+                  }}
+                  onBlur={() => {
+                    console.log('Input blurred');
+                    setFocusedIndex(null);
+                  }}
+                  keyboardType="number-pad"
+                  returnKeyType="next"
+                  maxLength={1}
+                  textAlign="center"
+                  editable={!loading}
+                  caretHidden={false}
+                  selectTextOnFocus={true}
+                  contextMenuHidden={false}
+                />
+              </View>
+            ))}
+          </View>
+        </View>
+
+        <View style={[globalStyles.formActions, { marginTop: 20, marginBottom: 0, paddingTop: 0 }]}>
           <TouchableOpacity
-            onPress={handleResendOTP}
-            disabled={resendLoading}
-            style={styles.resendButton}
+            style={globalStyles.primaryButton}
+            onPress={handleVerifyOTP}
+            disabled={loading || otp.join('').length !== 6}
           >
-            <Text style={styles.resendText}>
-              {resendLoading ? 'Sending...' : 'Send New Code'}
+            <Text style={globalStyles.primaryButtonText}>
+              {loading ? 'Verifying...' : 'Verify Code'}
             </Text>
           </TouchableOpacity>
-        ) : (
-          <Text style={styles.countdownText}>
-            Send new code in {countdown}s
-          </Text>
-        )}
-      </View>
 
-      <View style={styles.helpSection}>
-        <Text style={styles.helpTitle}>📧 Didn't receive the code?</Text>
-        <Text style={styles.helpText}>
-          • Check your spam/junk folder{'\n'}
-          • Make sure you entered the correct email{'\n'}
-          • Wait a few minutes and try resending{'\n'}
-          • Contact support if issues persist
-        </Text>
-      </View>
-
-      <TouchableOpacity
-        style={styles.backButton}
-        onPress={() => router.back()}
-      >
-        <Text style={styles.backButtonText}>← Back to Email Entry</Text>
-      </TouchableOpacity>
-    </View>
+          <View style={styles.resendContainer}>
+            <Text style={globalStyles.grayText}>Didn't receive email? </Text>
+            {canResend ? (
+              <TouchableOpacity onPress={handleResendOTP} disabled={resendLoading}>
+                <Text style={globalStyles.linkText}>
+                  {resendLoading ? 'Sending...' : 'Resend'}
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <Text style={globalStyles.grayText}>
+                Resend in {countdown}s
+              </Text>
+            )}
+          </View>
+        </View>
+      </Animated.View>
+    </TopographicBackground>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: 20,
-    backgroundColor: '#fff',
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 20,
-    color: '#333',
-  },
-  subtitle: {
-    fontSize: 16,
-    textAlign: 'center',
-    color: '#666',
-    marginBottom: 10,
-  },
-  email: {
-    fontSize: 16,
-    fontWeight: '600',
-    textAlign: 'center',
-    color: '#007AFF',
-    marginBottom: 30,
-  },
-  instruction: {
-    fontSize: 16,
-    textAlign: 'center',
-    color: '#333',
-    marginBottom: 30,
-  },
-  otpInput: {
-    borderWidth: 2,
-    borderColor: '#007AFF',
-    borderRadius: 10,
-    padding: 20,
-    marginBottom: 30,
-    backgroundColor: '#f8f9fa',
-    fontWeight: 'bold',
-  },
-  button: {
-    backgroundColor: '#007AFF',
-    padding: 18,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  buttonDisabled: {
-    backgroundColor: '#ccc',
-  },
-  buttonText: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: 'bold',
+  otpContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginVertical: 32,
+    paddingHorizontal: 4,
   },
   resendContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 30,
-  },
-  resendButton: {
-    padding: 10,
-  },
-  resendText: {
-    color: '#007AFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  countdownText: {
-    color: '#666',
-    fontSize: 16,
-  },
-  helpSection: {
-    backgroundColor: '#f0f8ff',
-    padding: 20,
-    borderRadius: 10,
-    marginBottom: 20,
-    borderLeftWidth: 4,
-    borderLeftColor: '#007AFF',
-  },
-  helpTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 10,
-  },
-  helpText: {
-    fontSize: 14,
-    color: '#666',
-    lineHeight: 20,
-  },
-  backButton: {
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  backButtonText: {
-    color: '#666',
-    fontSize: 16,
+    marginTop: 20,
   },
 });
 

@@ -118,11 +118,11 @@ export default function RootLayout() {
       >
         <Stack.Screen name="index" options={{ title: 'Welcome' }} />
         <Stack.Screen
-          name="home"
+          name="(tabs)"
           options={{
-            title: 'Home',
-            headerShown: true,
-            // headerRight: () => <DiscoverPlusButton />,
+            title: 'Main',
+            headerShown: false,
+            animation: 'none', // No animation for tabs
           }}
         />
         <Stack.Screen name="signin" options={{ title: 'Sign In' }} />
@@ -132,7 +132,6 @@ export default function RootLayout() {
         <Stack.Screen name="reset-password-otp" options={{ title: 'Reset Password' }} />
         <Stack.Screen name="new-password" options={{ title: 'New Password' }} />
         <Stack.Screen name="force-password-change" options={{ title: 'Update Password' }} />
-        <Stack.Screen name="recipe-search" options={{ title: 'Search Recipes' }} />
         <Stack.Screen name="recipe-detail" options={{ title: 'Recipe Details' }} />
         <Stack.Screen name="food-recognition/upload" options={{ title: 'Food Recognition' }} />
         <Stack.Screen name="food-recognition/result" options={{ title: 'Result' }} />

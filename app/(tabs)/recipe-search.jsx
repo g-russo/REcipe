@@ -15,11 +15,11 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import cacheService from '../services/supabase-cache-service';
-import SousChefAIService from '../services/souschef-ai-service';
-import SpellCorrector from '../utils/spell-corrector';
-import AuthGuard from '../components/AuthGuard';
-import { useCustomAuth } from '../hooks/use-custom-auth';
+import cacheService from '../../services/supabase-cache-service';
+import SousChefAIService from '../../services/souschef-ai-service';
+import SpellCorrector from '../../utils/spell-corrector';
+import AuthGuard from '../../components/AuthGuard';
+import { useCustomAuth } from '../../hooks/use-custom-auth';
 
 const RecipeSearch = () => {
   const router = useRouter();
@@ -1104,40 +1104,6 @@ const RecipeSearch = () => {
         )}
       </ScrollView>
 
-      {/* Bottom Navigation */}
-      <View style={styles.bottomNav}>
-        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/home')}>
-          <Ionicons name="home-outline" size={24} color="#666" />
-          <Text style={styles.navLabel}>Home</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity
-          style={[styles.navItem, styles.activeNavItem]}
-          onPress={() => router.push('/recipe-search')}
-        >
-          <Ionicons name="search-outline" size={24} color="#4CAF50" />
-          <Text style={[styles.navLabel, styles.activeNavLabel]}>Search</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity
-          style={styles.centerNavButton}
-          onPress={() => router.push('/food-recognition/upload')}
-        >
-          <View style={styles.centerNavIcon}>
-            <Ionicons name="add" size={28} color="#fff" />
-          </View>
-        </TouchableOpacity>
-        
-        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/pantry')}>
-          <Ionicons name="list-outline" size={24} color="#666" />
-          <Text style={styles.navLabel}>Pantry</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/profile')}>
-          <Ionicons name="person-outline" size={24} color="#666" />
-          <Text style={styles.navLabel}>Profile</Text>
-        </TouchableOpacity>
-      </View>
     </SafeAreaView>
     </AuthGuard>
   );
