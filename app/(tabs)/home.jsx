@@ -60,17 +60,15 @@ const Home = () => {
         </Svg>
       );
     } else if (hour < 18) {
-      // Afternoon - Sun with clouds
+      // Afternoon - Sun with clouds (custom SVG)
       return (
         <Svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#81A969" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <Path d="M12 2v2" />
-          <Path d="m4.93 4.93 1.41 1.41" />
-          <Path d="M2 12h2" />
-          <Path d="m19.07 4.93-1.41 1.41" />
-          <Path d="M22 12h-2" />
-          <Path d="m17.66 17.66 1.41 1.41" />
-          <Circle cx="12" cy="12" r="4" />
-          <Path d="M16 16h6a4 4 0 0 0-4-4 4 4 0 0 0-2 .57" />
+          <Path d="M4.93 4.93l1.41 1.41" />
+          <Path d="M20 12h2" />
+          <Path d="M17.07 4.93l-1.41 1.41" />
+          <Path d="M14.917 12.724a4 4 0 0 0-5.925-4.128" />
+          <Path d="M13 22H7a5 5 0 1 1 4.9-6H13a3 3 0 0 1 0 6" />
         </Svg>
       );
     } else {
