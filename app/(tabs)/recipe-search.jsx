@@ -405,7 +405,7 @@ const RecipeSearch = () => {
       console.log('📦 First recipe:', recipesResult?.[0]?.label || 'No recipes');
       
       // 🌐 Enhance search with multilingual support
-      const MultilingualSearch = require('../utils/multilingual-search').default;
+      const MultilingualSearch = require('../../utils/multilingual-search').default;
       const enhancedSearch = MultilingualSearch.enhanceSearchQuery(query);
       
       // Cache service returns array directly, not { success, data }
@@ -734,11 +734,18 @@ const RecipeSearch = () => {
 
   const renderRecipeCard = ({ item }) => (
     <TouchableOpacity style={styles.recipeCard} onPress={() => handleRecipePress(item)}>
-      <Image 
-        source={{ uri: item.image }} 
-        style={styles.recipeImage}
-        resizeMode="cover"
-      />
+      {item.image ? (
+        <Image 
+          source={{ uri: item.image }} 
+          style={styles.recipeImage}
+          resizeMode="cover"
+          onError={(error) => console.log('Recipe image load error:', item.label, error.nativeEvent?.error)}
+        />
+      ) : (
+        <View style={[styles.recipeImage, { backgroundColor: '#f0f0f0', alignItems: 'center', justifyContent: 'center' }]}>
+          <Ionicons name="image-outline" size={50} color="#ccc" />
+        </View>
+      )}
       <View style={styles.recipeInfo}>
         <Text style={styles.recipeTitle} numberOfLines={2}>{item.label}</Text>
         <Text style={styles.recipeSource}>by {item.source}</Text>
@@ -1084,11 +1091,17 @@ const RecipeSearch = () => {
                     style={[styles.popularRecipeCard, index === 0 && styles.firstCard]}
                     onPress={() => handlePopularRecipePress(recipe)}
                   >
-                    <Image 
-                      source={{ uri: recipe.image }} 
-                      style={styles.popularRecipeImage}
-                      onError={() => console.log('Image load error for:', recipe.title)}
-                    />
+                    {recipe.image ? (
+                      <Image 
+                        source={{ uri: recipe.image }} 
+                        style={styles.popularRecipeImage}
+                        onError={(error) => console.log('Popular recipe image load error:', recipe.title, error.nativeEvent?.error)}
+                      />
+                    ) : (
+                      <View style={[styles.popularRecipeImage, { backgroundColor: '#f0f0f0', alignItems: 'center', justifyContent: 'center' }]}>
+                        <Ionicons name="image-outline" size={30} color="#ccc" />
+                      </View>
+                    )}
                     <Text style={styles.popularRecipeTitle}>{recipe.title}</Text>
                     {recipe.category && (
                       <Text style={styles.recipeCategory}>{recipe.category}</Text>
