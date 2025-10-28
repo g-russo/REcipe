@@ -18,7 +18,7 @@ import { useRouter } from 'expo-router';
 import cacheService from '../../services/supabase-cache-service';
 import SousChefAIService from '../../services/souschef-ai-service';
 import SpellCorrector from '../../utils/spell-corrector';
-import AuthGuard from '../../components/AuthGuard';
+import AuthGuard from '../../components/auth-guard';
 import { useCustomAuth } from '../../hooks/use-custom-auth';
 
 const RecipeSearch = () => {
