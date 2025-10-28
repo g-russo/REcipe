@@ -14,7 +14,7 @@ import { router } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { useCustomAuth } from '../../hooks/use-custom-auth';
 import styles from '../../assets/css/profileStyles';
-import AuthGuard from '../../components/AuthGuard';
+import AuthGuard from '../../components/auth-guard';
 import CacheClearButton from '../../components/cache-clear-button';
 
 const Profile = () => {

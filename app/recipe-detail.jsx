@@ -19,7 +19,7 @@ import cacheService from '../services/supabase-cache-service';
 import EdamamService from '../services/edamam-service';
 import RecipeMatcherService from '../services/recipe-matcher-service';
 import { useCustomAuth } from '../hooks/use-custom-auth';
-import AuthGuard from '../components/AuthGuard';
+import AuthGuard from '../components/auth-guard';
 
 const { width } = Dimensions.get('window');
 

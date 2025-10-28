@@ -11,7 +11,7 @@ import {
 import Svg, { Path, Circle } from 'react-native-svg';
 import { useCustomAuth } from '../../hooks/use-custom-auth';
 import { router } from 'expo-router';
-import AuthGuard from '../../components/AuthGuard';
+import AuthGuard from '../../components/auth-guard';
 
 const Home = () => {
   const { user, customUserData } = useCustomAuth();

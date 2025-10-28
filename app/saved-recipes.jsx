@@ -16,7 +16,7 @@ import { router } from 'expo-router';
 import TopographicBackground from '../components/TopographicBackground';
 import RecipeMatcherService from '../services/recipe-matcher-service';
 import { useCustomAuth } from '../hooks/use-custom-auth';
-import AuthGuard from '../components/AuthGuard';
+import AuthGuard from '../components/auth-guard';
 
 export default function SavedRecipesScreen() {
   const { user } = useCustomAuth();

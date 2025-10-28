@@ -19,7 +19,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import styles from '../../assets/css/pantryStyles';
-import AuthGuard from '../../components/AuthGuard';
+import AuthGuard from '../../components/auth-guard';
 
 const Pantry = () => {
   // Regular modal state variables
