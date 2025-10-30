@@ -177,10 +177,6 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     overflow: 'hidden',
     elevation: 3,  // Increased for better shadow
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 3,
   },
   itemImagePlaceholder: {
     width: '100%',
@@ -372,10 +368,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
     width: '100%',
-    shadowColor: '#8BC34A',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
     elevation: 3,
   },
   saveButtonText: {
@@ -518,10 +510,6 @@ const styles = StyleSheet.create({
   selectedColorOption: {
     borderWidth: 3,
     borderColor: '#fff',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
     elevation: 5,
   },
   // Selection mode styles
@@ -789,10 +777,6 @@ const styles = StyleSheet.create({
     maxHeight: '80%',
     overflow: 'hidden',
     elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
   },
   detailHeader: {
     flexDirection: 'row',
@@ -907,13 +891,6 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: 20,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
     elevation: 5,
   },
   datePickerHeader: {

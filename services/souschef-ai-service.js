@@ -110,10 +110,12 @@ class SousChefAIService {
         
         // Increment usage count for each recipe
         for (const recipe of allRecipes) {
+          // Read current count, increment, and update
+          const currentCount = recipe.usageCount || 0;
           await supabase
             .from('tbl_recipes')
             .update({ 
-              usageCount: supabase.sql`"usageCount" + 1`,
+              usageCount: currentCount + 1,
               updatedAt: new Date().toISOString()
             })
             .eq('recipeID', recipe.recipeID);
@@ -607,6 +609,19 @@ Search Query: "${searchQuery}"
     prompt += `## REQUIRED OUTPUT FORMAT
 Generate EXACTLY ${recipeCount} ${recipeCount === 1 ? 'recipe' : 'recipes'} with this structure:
 
+CRITICAL NUTRITION CALCULATION RULES:
+- All nutritional values MUST be calculated PER SERVING
+- Use standard USDA nutrition database values for ingredients
+- Round all values to whole numbers (no decimals)
+- Calories should be in KCAL (kilocalories), labeled as "kcal"
+- Use these formulas for calculating macros:
+  * Protein: Sum all ingredient proteins ÷ servings
+  * Carbs: Sum all ingredient carbs ÷ servings  
+  * Fat: Sum all ingredient fats ÷ servings
+  * Calories: (Protein × 4) + (Carbs × 4) + (Fat × 9) ÷ servings
+- Be accurate and realistic with portion sizes
+- Account for cooking methods (e.g., fried adds fat, boiled doesn't)
+
 {
   "recipes": [
     {
@@ -617,10 +632,10 @@ Generate EXACTLY ${recipeCount} ${recipeCount === 1 ? 'recipe' : 'recipes'} with
       "dishType": "main/side/dessert/appetizer/soup/salad",
       "cookingTime": number (total minutes),
       "servings": number,
-      "calories": number (kcal per serving - use kcal, NOT just "calories"),
-      "protein": number (grams per serving),
-      "carbs": number (grams per serving),
-      "fat": number (grams per serving),
+      "calories": number (TOTAL kcal per serving - must be realistic),
+      "protein": number (grams per serving - must match standard food values),
+      "carbs": number (grams per serving - must match standard food values),
+      "fat": number (grams per serving - must match standard food values),
       "difficulty": "Easy/Medium/Hard",
       "ingredients": [
         {

@@ -28,6 +28,9 @@ export default function SavedRecipesScreen() {
     // Wait for user to be loaded before fetching recipes
     if (user?.email) {
       loadSavedRecipes();
+    } else {
+      // If no user, stop loading immediately
+      setLoading(false);
     }
   }, [user]);
 
@@ -338,10 +341,6 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     marginBottom: 16,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
     elevation: 4,
   },
   recipeImage: {
@@ -416,10 +415,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: 20,
     padding: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
     elevation: 4,
   },
   emptyContainer: {
@@ -447,10 +442,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     paddingVertical: 14,
     borderRadius: 25,
-    shadowColor: '#FF6B6B',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
     elevation: 6,
   },
   searchButtonText: {

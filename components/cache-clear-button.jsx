@@ -168,10 +168,6 @@ const styles = StyleSheet.create({
   },
   pulseButton: {
     backgroundColor: '#ff6b6b',
-    shadowColor: '#ff6b6b',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
     elevation: 8,
   },
   buttonText: {

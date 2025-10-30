@@ -407,9 +407,21 @@ Return ONLY valid JSON:
         return [];
       }
 
+      // ⚡ OPTIMIZED: Select only essential fields to avoid "Row too big" error
       const { data } = await supabase
         .from('tbl_favorites')
-        .select('*')
+        .select(`
+          favoriteID,
+          userID,
+          aiRecipeID,
+          edamamRecipeURI,
+          recipeSource,
+          isFavorited,
+          notes,
+          lastViewed,
+          savedAt,
+          viewCount
+        `)
         .eq('userID', userData.userID)
         .eq('isFavorited', true)
         .order('savedAt', { ascending: false });
@@ -445,7 +457,7 @@ Return ONLY valid JSON:
 
       console.log(`✨ After removing duplicates: ${uniqueRecipes.length} recipes`);
 
-      // Fetch full recipe details
+      // Fetch full recipe details - OPTIMIZED for speed
       const formattedRecipes = await Promise.all(
         uniqueRecipes.map(async (userRecipe) => {
           if (userRecipe.recipeSource === 'ai') {
@@ -457,17 +469,66 @@ Return ONLY valid JSON:
               .eq('recipeID', userRecipe.aiRecipeID)
               .single();
 
+            if (!aiRecipe) {
+              console.error('❌ AI recipe not found:', userRecipe.aiRecipeID);
+              return null;
+            }
+
+            // Format AI recipe to match Edamam structure for recipe-detail compatibility
+            const formattedAiRecipe = {
+              ...aiRecipe,
+              // Core identifiers
+              recipeID: aiRecipe.recipeID,
+              uri: `souschef://recipe/${aiRecipe.recipeID}`,
+              
+              // Display fields
+              label: aiRecipe.recipeName,
+              image: aiRecipe.recipeImage,
+              source: 'SousChef AI',
+              
+              // Ingredient fields
+              ingredientLines: aiRecipe.ingredients?.map(ing => 
+                `${ing.quantity || ''} ${ing.unit || ''} ${ing.name}${ing.notes ? ` (${ing.notes})` : ''}`.trim()
+              ) || [],
+              
+              // Nutrition fields (already per serving from AI)
+              calories: aiRecipe.calories,
+              protein: aiRecipe.protein,
+              carbs: aiRecipe.carbs,
+              fat: aiRecipe.fat,
+              
+              // Time and serving fields
+              totalTime: aiRecipe.cookingTime,
+              yield: aiRecipe.servings,
+              
+              // Labels and categories
+              healthLabels: aiRecipe.healthLabels || [],
+              dietLabels: aiRecipe.dietLabels || [],
+              cautions: aiRecipe.allergens || [],
+              cuisineType: aiRecipe.cuisineType ? [aiRecipe.cuisineType] : [],
+              mealType: aiRecipe.mealType ? [aiRecipe.mealType] : [],
+              dishType: aiRecipe.dishType ? [aiRecipe.dishType] : [],
+              
+              // Instructions (AI recipes have instructions in database)
+              instructions: aiRecipe.instructions || [],
+              
+              // AI recipe flag
+              isCustom: true,
+              
+              // No external URL for AI recipes
+              url: null
+            };
+
             return {
               ...userRecipe,
-              recipe: aiRecipe,
+              recipe: formattedAiRecipe,
               isCustom: true
             };
           } else {
-            // For Edamam recipes, try to fetch fresh data from API
-            console.log('🔗 Attempting to fetch Edamam recipe from API:', userRecipe.edamamRecipeURI);
+            // ⚡ OPTIMIZED: For Edamam recipes, ALWAYS use cached data for fast loading
+            // This eliminates slow API calls and provides instant loading
+            console.log('� Using cached Edamam recipe:', userRecipe.edamamRecipeURI);
             
-            // IMPORTANT: Always use cached data first, then try to fetch fresh in background
-            // This ensures UI loads quickly even if API is slow/fails
             const cachedRecipe = userRecipe.recipeData;
             
             // Ensure cached recipe has uri field (critical for favorites)
@@ -476,40 +537,24 @@ Return ONLY valid JSON:
               console.log('✅ Added missing URI to cached recipe');
             }
             
-            try {
-              const recipeResult = await EdamamService.getRecipeByUri(userRecipe.edamamRecipeURI);
-              
-              if (recipeResult.success && recipeResult.recipe) {
-                console.log('✅ Successfully fetched fresh Edamam recipe from API');
-                return {
-                  ...userRecipe,
-                  recipe: recipeResult.recipe,
-                  isCustom: false
-                };
-              } else {
-                // Use cached data if API fails (expected behavior)
-                console.log('💾 Using cached recipe data (API unavailable or recipe not found)');
-                return {
-                  ...userRecipe,
-                  recipe: cachedRecipe,
-                  isCustom: false
-                };
-              }
-            } catch (error) {
-              // Unexpected error - still use cache but log it
-              console.log('💾 Using cached recipe data (unexpected error):', error.message);
-              return {
-                ...userRecipe,
-                recipe: cachedRecipe,
-                isCustom: false
-              };
-            }
+            return {
+              ...userRecipe,
+              recipe: cachedRecipe || {
+                label: 'Recipe Not Available',
+                image: null,
+                uri: userRecipe.edamamRecipeURI
+              },
+              isCustom: false
+            };
           }
         })
       );
 
-      console.log(`✅ Successfully formatted ${formattedRecipes.length} recipes`);
-      return formattedRecipes;
+      // Filter out null results (deleted recipes)
+      const validRecipes = formattedRecipes.filter(recipe => recipe !== null);
+
+      console.log(`✅ Successfully formatted ${validRecipes.length} recipes`);
+      return validRecipes;
     } catch (error) {
       console.error('💥 Error fetching saved recipes:', error);
       return [];

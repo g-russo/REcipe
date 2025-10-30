@@ -129,10 +129,6 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 30,
     borderTopWidth: 0,
     elevation: 15,
-    shadowColor: '#000000ff',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.45,
-    shadowRadius: 12,
   },
   navItem: {
     flex: 1,
