@@ -27,14 +27,21 @@ export function useCustomAuth() {
   useEffect(() => {
     // Get initial session and user data
     const getInitialSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      
-      if (session?.user) {
-        setUser(session.user)
-        await fetchCustomUserData(session.user.email)
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        
+        if (session?.user) {
+          setUser(session.user)
+          // Only fetch custom data if we don't already have it
+          if (!customUserData) {
+            await fetchCustomUserData(session.user.email)
+          }
+        }
+      } catch (error) {
+        console.error('Error getting session:', error)
+      } finally {
+        setLoading(false)
       }
-      
-      setLoading(false)
     }
 
     getInitialSession()
@@ -42,10 +49,14 @@ export function useCustomAuth() {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        console.log('🔐 Auth state changed:', event)
         setUser(session?.user ?? null)
         
         if (session?.user) {
-          await fetchCustomUserData(session.user.email)
+          // Only fetch on sign in, not on every token refresh
+          if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
+            await fetchCustomUserData(session.user.email)
+          }
         } else {
           setCustomUserData(null)
         }
@@ -55,7 +66,7 @@ export function useCustomAuth() {
     )
 
     return () => subscription?.unsubscribe()
-  }, [])
+  }, []) // Remove customUserData from dependencies to prevent infinite loops
 
   // Fetch custom user data from tbl_users by email
   const fetchCustomUserData = async (userEmail) => {

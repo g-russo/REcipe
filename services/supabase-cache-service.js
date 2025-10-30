@@ -225,15 +225,25 @@ class SupabaseCacheService {
    */
   async updateSearchAccessStats(cacheKey) {
     try {
+      // Get current access count first
+      const { data: existing } = await supabase
+        .from('cache_search_results')
+        .select('access_count')
+        .eq('search_query', cacheKey)
+        .single();
+      
+      const currentCount = existing?.access_count || 0;
+      
       await supabase
         .from('cache_search_results')
         .update({ 
-          access_count: supabase.sql`access_count + 1`,
+          access_count: currentCount + 1,
           last_accessed: new Date().toISOString()
         })
         .eq('search_query', cacheKey);
     } catch (error) {
       // Silent fail, not critical
+      console.log('Could not update search stats:', error.message);
     }
   }
 

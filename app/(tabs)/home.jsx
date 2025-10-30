@@ -330,13 +330,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     overflow: 'hidden',
     position: 'relative',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 0,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
     elevation: 8,
   },
   pantryCardImage: {
@@ -389,13 +382,6 @@ const styles = StyleSheet.create({
     padding: 12,
     marginRight: 15,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 0,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
     elevation: 8,
   },
   makeAgainImage: {
@@ -433,13 +419,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: 20,
     marginRight: 15,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 0,
-    },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
     elevation: 6,
   },
   tryNewImageContainer: {

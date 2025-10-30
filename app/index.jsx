@@ -128,10 +128,6 @@ export default function Home() {
         paddingBottom: 0,
         paddingTop: 0,
         minHeight: 260,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: -6 },
-        shadowOpacity: 0.18,
-        shadowRadius: 18,
         elevation: 14,
       }]}> 
         <View style={{ position: 'relative', alignSelf: 'flex-start', marginBottom: 16, padding: 0, margin: 0 }}>

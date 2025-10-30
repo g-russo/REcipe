@@ -13,6 +13,7 @@ import {
   ActivityIndicator,
   StatusBar
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import cacheService from '../../services/supabase-cache-service';
@@ -94,7 +95,7 @@ const RecipeSearch = () => {
   useEffect(() => {
     // Load popular recipes on component mount using cache service
     loadPopularRecipesFromCache();
-    // Load recent searches from storage (you could use AsyncStorage here)
+    // Load recent searches from AsyncStorage
     loadRecentSearches();
   }, []);
 
@@ -181,10 +182,17 @@ const RecipeSearch = () => {
     }
   };
 
-  const loadRecentSearches = () => {
-    // For now, we'll use local state. In a real app, you'd use AsyncStorage
-    // Example: const stored = await AsyncStorage.getItem('recentSearches');
-    // setRecentSearches(stored ? JSON.parse(stored) : []);
+  const loadRecentSearches = async () => {
+    try {
+      const stored = await AsyncStorage.getItem('recentSearches');
+      if (stored) {
+        const searches = JSON.parse(stored);
+        setRecentSearches(searches);
+        console.log('📜 Loaded recent searches:', searches);
+      }
+    } catch (error) {
+      console.error('Error loading recent searches:', error);
+    }
   };
 
   const toggleFilters = () => {
@@ -236,20 +244,25 @@ const RecipeSearch = () => {
     return (filters.allergy?.length || 0) + (filters.dietary?.length || 0) + (filters.diet?.length || 0);
   };
 
-  const addToRecentSearches = (query) => {
+  const addToRecentSearches = async (query) => {
     if (!query.trim()) return;
     
-    setRecentSearches(prev => {
-      // Remove if already exists to avoid duplicates
-      const filtered = prev.filter(search => search.toLowerCase() !== query.toLowerCase());
-      // Add to beginning and limit to 5 items
-      const updated = [query, ...filtered].slice(0, 5);
-      
-      // In a real app, you'd save to AsyncStorage here
-      // AsyncStorage.setItem('recentSearches', JSON.stringify(updated));
-      
-      return updated;
-    });
+    try {
+      setRecentSearches(prev => {
+        // Remove if already exists to avoid duplicates
+        const filtered = prev.filter(search => search.toLowerCase() !== query.toLowerCase());
+        // Add to beginning and limit to 5 items
+        const updated = [query, ...filtered].slice(0, 5);
+        
+        // Save to AsyncStorage
+        AsyncStorage.setItem('recentSearches', JSON.stringify(updated))
+          .catch(err => console.error('Error saving recent searches:', err));
+        
+        return updated;
+      });
+    } catch (error) {
+      console.error('Error adding to recent searches:', error);
+    }
   };
 
   const fetchPopularRecipes = async () => {
@@ -298,19 +311,29 @@ const RecipeSearch = () => {
     }
   };
 
-  const removeRecentSearch = (index) => {
-    setRecentSearches(prev => {
-      const updated = prev.filter((_, i) => i !== index);
-      // In a real app, save to AsyncStorage
-      // AsyncStorage.setItem('recentSearches', JSON.stringify(updated));
-      return updated;
-    });
+  const removeRecentSearch = async (index) => {
+    try {
+      setRecentSearches(prev => {
+        const updated = prev.filter((_, i) => i !== index);
+        // Save to AsyncStorage
+        AsyncStorage.setItem('recentSearches', JSON.stringify(updated))
+          .catch(err => console.error('Error saving recent searches:', err));
+        return updated;
+      });
+    } catch (error) {
+      console.error('Error removing recent search:', error);
+    }
   };
 
-  const clearAllRecentSearches = () => {
-    setRecentSearches([]);
-    // In a real app, clear from AsyncStorage
-    // AsyncStorage.removeItem('recentSearches');
+  const clearAllRecentSearches = async () => {
+    try {
+      setRecentSearches([]);
+      // Clear from AsyncStorage
+      await AsyncStorage.removeItem('recentSearches');
+      console.log('🗑️ Cleared all recent searches');
+    } catch (error) {
+      console.error('Error clearing recent searches:', error);
+    }
   };
 
   const handleSearch = async (query = searchQuery) => {
@@ -420,12 +443,12 @@ const RecipeSearch = () => {
         
         let dbResult = { found: false, recipes: [], count: 0 };
         try {
-          // Use enhanced search queries for better matching
-          if (typeof SousChefAIService?.checkExistingRecipes === 'function') {
+          // ✅ Check if SousChefAIService and checkExistingRecipes exist
+          if (SousChefAIService && typeof SousChefAIService.checkExistingRecipes === 'function') {
             // Try all translated queries to find more matches
             for (const searchQuery of enhancedSearch.searchQueries) {
               const tempResult = await SousChefAIService.checkExistingRecipes(searchQuery, filters);
-              if (tempResult.found && tempResult.recipes.length > 0) {
+              if (tempResult && tempResult.found && tempResult.recipes && tempResult.recipes.length > 0) {
                 // Merge results (avoid duplicates by recipeID)
                 const existingIds = new Set(dbResult.recipes.map(r => r.recipeID));
                 const newRecipes = tempResult.recipes.filter(r => !existingIds.has(r.recipeID));
@@ -435,14 +458,14 @@ const RecipeSearch = () => {
               }
             }
           } else {
-            console.warn('⚠️ checkExistingRecipes is not a function or SousChefAIService is undefined');
+            console.warn('⚠️ SousChefAIService.checkExistingRecipes is not available');
           }
         } catch (dbError) {
-          console.error('Error checking existing recipes:', dbError);
-          console.error('Error details:', dbError.message, dbError.stack);
+          console.error('❌ Error checking existing recipes:', dbError);
+          console.error('Error details:', dbError.message);
         }
         
-        let allRecipes = [...result.data.recipes]; // Start with Edamam recipes
+        let allRecipes = []; // Start empty for proper ordering
         
         if (dbResult.found && dbResult.recipes.length > 0) {
           console.log(`✅ Found ${dbResult.count} AI recipes in database`);
@@ -463,11 +486,11 @@ const RecipeSearch = () => {
               `${ing.quantity || ''} ${ing.unit || ''} ${ing.name}${ing.notes ? ` (${ing.notes})` : ''}`
             ) || [],
             ingredients: recipe.ingredients || [],
-            calories: recipe.calories,
-            // ✅ Add macronutrients from database columns
-            protein: recipe.protein,
-            carbs: recipe.carbs,
-            fat: recipe.fat,
+            // ✅ Nutrition values (already per serving from database)
+            calories: Math.round(recipe.calories || 0),
+            protein: Math.round(recipe.protein || 0),
+            carbs: Math.round(recipe.carbs || 0),
+            fat: Math.round(recipe.fat || 0),
             totalTime: recipe.cookingTime,
             cuisineType: [recipe.cuisineType],
             mealType: [recipe.mealType],
@@ -479,8 +502,11 @@ const RecipeSearch = () => {
           }));
           
           // ✅ Merge: AI recipes FIRST, then Edamam recipes
-          allRecipes = [...formattedDbRecipes, ...allRecipes];
-          console.log(`� Total recipes (AI + Edamam): ${allRecipes.length}`);
+          allRecipes = [...formattedDbRecipes, ...result.data.recipes];
+          console.log(`🍽️ Total recipes: ${allRecipes.length} (AI: ${formattedDbRecipes.length}, Edamam: ${result.data.recipes.length})`);
+        } else {
+          // No AI recipes found, just show Edamam results
+          allRecipes = [...result.data.recipes];
         }
         
         const totalRecipes = allRecipes.length;
@@ -543,11 +569,11 @@ const RecipeSearch = () => {
                   `${ing.quantity} ${ing.unit} ${ing.name}${ing.notes ? ` (${ing.notes})` : ''}`
                 ),
                 ingredients: aiResult.recipe.ingredients,
-                calories: aiResult.recipe.calories,
-                // ✅ Add macronutrients from AI generation
-                protein: aiResult.recipe.protein,
-                carbs: aiResult.recipe.carbs,
-                fat: aiResult.recipe.fat,
+                // ✅ Nutrition values (per serving from AI)
+                calories: Math.round(aiResult.recipe.calories || 0),
+                protein: Math.round(aiResult.recipe.protein || 0),
+                carbs: Math.round(aiResult.recipe.carbs || 0),
+                fat: Math.round(aiResult.recipe.fat || 0),
                 totalTime: aiResult.recipe.cookingTime,
                 cuisineType: [aiResult.recipe.cuisineType],
                 mealType: [aiResult.recipe.mealType],
@@ -662,11 +688,11 @@ const RecipeSearch = () => {
             `${ing.quantity} ${ing.unit} ${ing.name}${ing.notes ? ` (${ing.notes})` : ''}`
           ),
           ingredients: aiResult.recipe.ingredients,
-          calories: aiResult.recipe.calories,
-          // ✅ Add macronutrients from AI generation
-          protein: aiResult.recipe.protein,
-          carbs: aiResult.recipe.carbs,
-          fat: aiResult.recipe.fat,
+          // ✅ Nutrition values (per serving from AI)
+          calories: Math.round(aiResult.recipe.calories || 0),
+          protein: Math.round(aiResult.recipe.protein || 0),
+          carbs: Math.round(aiResult.recipe.carbs || 0),
+          fat: Math.round(aiResult.recipe.fat || 0),
           totalTime: aiResult.recipe.cookingTime,
           cuisineType: [aiResult.recipe.cuisineType],
           mealType: [aiResult.recipe.mealType],
@@ -732,30 +758,42 @@ const RecipeSearch = () => {
     setSearchQuery('');
   };
 
-  const renderRecipeCard = ({ item }) => (
-    <TouchableOpacity style={styles.recipeCard} onPress={() => handleRecipePress(item)}>
-      {item.image ? (
-        <Image 
-          source={{ uri: item.image }} 
-          style={styles.recipeImage}
-          resizeMode="cover"
-          onError={(error) => console.log('Recipe image load error:', item.label, error.nativeEvent?.error)}
-        />
-      ) : (
-        <View style={[styles.recipeImage, { backgroundColor: '#f0f0f0', alignItems: 'center', justifyContent: 'center' }]}>
-          <Ionicons name="image-outline" size={50} color="#ccc" />
-        </View>
-      )}
-      <View style={styles.recipeInfo}>
-        <Text style={styles.recipeTitle} numberOfLines={2}>{item.label}</Text>
-        <Text style={styles.recipeSource}>by {item.source}</Text>
+  const renderRecipeCard = ({ item }) => {
+    const isAI = item.isCustom || item.source === 'SousChef AI';
+    
+    return (
+      <TouchableOpacity style={styles.recipeCard} onPress={() => handleRecipePress(item)}>
+        {item.image ? (
+          <Image 
+            source={{ uri: item.image }} 
+            style={styles.recipeImage}
+            resizeMode="cover"
+            onError={(error) => console.log('Recipe image load error:', item.label, error.nativeEvent?.error)}
+          />
+        ) : (
+          <View style={[styles.recipeImage, { backgroundColor: '#f0f0f0', alignItems: 'center', justifyContent: 'center' }]}>
+            <Ionicons name="image-outline" size={50} color="#ccc" />
+          </View>
+        )}
+        
+        {/* AI Badge */}
+        {isAI && (
+          <View style={styles.aiBadge}>
+            <Ionicons name="sparkles" size={12} color="#fff" />
+            <Text style={styles.aiBadgeText}>SousChef AI</Text>
+          </View>
+        )}
+        
+        <View style={styles.recipeInfo}>
+          <Text style={styles.recipeTitle} numberOfLines={2}>{item.label}</Text>
+          <Text style={styles.recipeSource}>by {item.source}</Text>
         
         <View style={styles.recipeStats}>
           <View style={styles.statItem}>
             <Text style={styles.statLabel}>⏱️ {item.totalTime || 'N/A'}min</Text>
           </View>
           <View style={styles.statItem}>
-            <Text style={styles.statLabel}>🔥 {item.calories} cal</Text>
+            <Text style={styles.statLabel}>🔥 {Math.round(item.calories || 0)} kcal</Text>
           </View>
           <View style={styles.statItem}>
             <Text style={styles.statLabel}>👥 {item.yield} servings</Text>
@@ -784,6 +822,7 @@ const RecipeSearch = () => {
       </View>
     </TouchableOpacity>
   );
+  };
 
   const handleRecipePress = (recipe) => {
     // Navigate to detailed recipe view
@@ -1287,19 +1326,30 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: 12,
     marginBottom: 15,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3.84,
     elevation: 5,
     overflow: 'hidden',
   },
   recipeImage: {
     width: '100%',
     height: 200,
+  },
+  aiBadge: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(138, 43, 226, 0.9)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+    gap: 4,
+    zIndex: 1,
+  },
+  aiBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '600',
   },
   recipeInfo: {
     padding: 15,
@@ -1481,13 +1531,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#4CAF50',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#4CAF50',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 4.65,
     elevation: 8,
   },
   generateAnotherButton: {
@@ -1495,13 +1538,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginTop: 20,
     marginBottom: 10,
-    shadowColor: '#8A2BE2',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 4.65,
     elevation: 8,
     overflow: 'hidden',
   },

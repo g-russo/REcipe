@@ -7,15 +7,19 @@ import {
   SafeAreaView,
   StatusBar,
   Alert,
-  Image
+  StyleSheet,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { supabase } from '../../lib/supabase';
 import { useCustomAuth } from '../../hooks/use-custom-auth';
-import styles from '../../assets/css/profileStyles';
+import RecipeMatcherService from '../../services/recipe-matcher-service';
 import AuthGuard from '../../components/auth-guard';
 import CacheClearButton from '../../components/cache-clear-button';
+import ProfileHeader from '../../components/profile/profile-header';
+import ProfileTabs from '../../components/profile/profile-tabs';
+import FavoritesTab from '../../components/profile/favorites-tab';
+import EmptyState from '../../components/profile/empty-state';
+import ProfileActions from '../../components/profile/profile-actions';
 
 const Profile = () => {
   const { user, customUserData, signOut } = useCustomAuth();
@@ -25,6 +29,8 @@ const Profile = () => {
     email: 'user@example.com',
     verified: true
   });
+  const [savedRecipes, setSavedRecipes] = useState([]);
+  const [loadingRecipes, setLoadingRecipes] = useState(false);
 
   useEffect(() => {
     // Update profile data if user information is available
@@ -34,8 +40,36 @@ const Profile = () => {
         email: user.email || 'No email available',
         verified: user.email_confirmed_at !== null
       });
+      
+      // Load saved recipes when user is available (lazy load - only on mount)
+      if (activeTab === 'favorites') {
+        loadSavedRecipes();
+      }
     }
   }, [user, customUserData]);
+
+  const loadSavedRecipes = async () => {
+    if (!user?.email) return;
+    
+    try {
+      setLoadingRecipes(true);
+      const recipes = await RecipeMatcherService.getSavedRecipes(user.email);
+      setSavedRecipes(recipes);
+    } catch (error) {
+      console.error('❌ Error loading saved recipes:', error);
+    } finally {
+      setLoadingRecipes(false);
+    }
+  };
+
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    
+    // Load recipes when favorites tab is selected
+    if (tab === 'favorites' && savedRecipes.length === 0 && !loadingRecipes) {
+      loadSavedRecipes();
+    }
+  };
 
   const handleLogout = async () => {
     Alert.alert(
@@ -64,50 +98,148 @@ const Profile = () => {
     router.back();
   };
 
+  const handleRecipePress = (savedRecipe) => {
+    const recipe = savedRecipe.recipe;
+    
+    // Ensure recipe data has all necessary fields
+    let recipeData;
+    if (savedRecipe.isCustom) {
+      // AI recipe - add isCustom flag
+      recipeData = { ...recipe, isCustom: true };
+    } else {
+      // Edamam recipe - ensure it has uri field for favorites functionality
+      recipeData = { 
+        ...recipe,
+        uri: recipe.uri || savedRecipe.edamamRecipeURI,
+        isCustom: false
+      };
+    }
+
+    router.push({
+      pathname: '/recipe-detail',
+      params: { recipeData: JSON.stringify(recipeData) }
+    });
+  };
+
+  const handleRemoveRecipe = async (savedRecipe) => {
+    Alert.alert(
+      'Remove Recipe',
+      'Are you sure you want to remove this recipe from your favorites?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const recipe = {
+                ...savedRecipe.recipe,
+                isCustom: savedRecipe.recipeSource === 'ai',
+                recipeID: savedRecipe.aiRecipeID,
+                uri: savedRecipe.edamamRecipeURI
+              };
+
+              const result = await RecipeMatcherService.unsaveRecipe(user.email, recipe);
+              
+              if (result.success) {
+                setSavedRecipes(prev => prev.filter(r => 
+                  savedRecipe.recipeSource === 'ai'
+                    ? r.aiRecipeID !== savedRecipe.aiRecipeID
+                    : r.edamamRecipeURI !== savedRecipe.edamamRecipeURI
+                ));
+                Alert.alert('Removed', 'Recipe removed from favorites');
+              } else {
+                Alert.alert('Error', 'Failed to remove recipe');
+              }
+            } catch (error) {
+              console.error('Error removing recipe:', error);
+              Alert.alert('Error', 'Something went wrong');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const renderRecipeCard = ({ item }) => {
+    const recipe = item.recipe;
+    const isAI = item.recipeSource === 'ai';
+    
+    return (
+      <TouchableOpacity
+        style={styles.favoriteRecipeCard}
+        onPress={() => handleRecipePress(item)}
+        activeOpacity={0.7}
+      >
+        <Image
+          source={{ uri: recipe.recipeImage || recipe.image }}
+          style={styles.favoriteRecipeImage}
+          resizeMode="cover"
+        />
+        
+        {/* AI Badge */}
+        {isAI && (
+          <View style={styles.aiBadge}>
+            <Ionicons name="sparkles" size={10} color="#fff" />
+            <Text style={styles.aiBadgeText}>AI</Text>
+          </View>
+        )}
+        
+        <View style={styles.favoriteRecipeInfo}>
+          <Text style={styles.favoriteRecipeTitle} numberOfLines={2}>
+            {recipe.recipeName || recipe.label}
+          </Text>
+          
+          <View style={styles.favoriteRecipeMeta}>
+            <Ionicons name="time-outline" size={12} color="#999" />
+            <Text style={styles.favoriteRecipeMetaText}>
+              {recipe.cookTime || recipe.totalTime || 'N/A'} min
+            </Text>
+          </View>
+        </View>
+
+        <TouchableOpacity
+          style={styles.favoriteRemoveButton}
+          onPress={() => handleRemoveRecipe(item)}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Ionicons name="heart" size={18} color="#FF6B6B" />
+        </TouchableOpacity>
+      </TouchableOpacity>
+    );
+  };
+
   const renderTabContent = () => {
     switch (activeTab) {
       case 'scheduled':
         return (
           <View style={styles.tabContent}>
-            <View style={styles.emptyStateContainer}>
-              <Ionicons name="calendar-outline" size={60} color="#ccc" />
-              <Text style={styles.emptyStateText}>No scheduled items</Text>
-              <Text style={styles.emptyStateSubText}>
-                Items you schedule will appear here
-              </Text>
-            </View>
+            <EmptyState
+              icon="calendar-outline"
+              title="No scheduled items"
+              subtitle="Items you schedule will appear here"
+            />
           </View>
         );
       case 'favorites':
         return (
           <View style={styles.tabContent}>
-            <TouchableOpacity 
-              style={styles.savedRecipesButton}
-              onPress={() => router.push('/saved-recipes')}
-            >
-              <View style={styles.savedRecipesIconContainer}>
-                <Ionicons name="bookmark" size={24} color="#FF6B6B" />
-              </View>
-              <View style={styles.savedRecipesTextContainer}>
-                <Text style={styles.savedRecipesTitle}>View Saved Recipes</Text>
-                <Text style={styles.savedRecipesSubtitle}>
-                  See all your favorite recipes from Edamam and SousChef AI
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={24} color="#ccc" />
-            </TouchableOpacity>
+            <FavoritesTab
+              recipes={savedRecipes}
+              loading={loadingRecipes}
+              onRecipePress={handleRecipePress}
+              onRemoveRecipe={handleRemoveRecipe}
+            />
           </View>
         );
       case 'history':
         return (
           <View style={styles.tabContent}>
-            <View style={styles.emptyStateContainer}>
-              <Ionicons name="time-outline" size={60} color="#ccc" />
-              <Text style={styles.emptyStateText}>No history</Text>
-              <Text style={styles.emptyStateSubText}>
-                Your recipe history will appear here
-              </Text>
-            </View>
+            <EmptyState
+              icon="time-outline"
+              title="No history"
+              subtitle="Your recipe history will appear here"
+            />
           </View>
         );
       default:
@@ -134,69 +266,10 @@ const Profile = () => {
       
       <ScrollView style={styles.scrollView}>
         {/* Profile Section */}
-        <View style={styles.profileSection}>
-          <View style={styles.profileImageContainer}>
-            <View style={styles.profileImage}>
-              <Text style={styles.profileInitial}>
-                {profileData.name.charAt(0).toUpperCase()}
-              </Text>
-            </View>
-          </View>
-          
-          <View style={styles.profileInfo}>
-            <Text style={styles.profileName}>{profileData.name}</Text>
-            <View style={styles.emailContainer}>
-              <Text style={styles.profileEmail}>{profileData.email}</Text>
-              {profileData.verified && (
-                <View style={styles.verifiedBadge}>
-                  <Ionicons name="checkmark" size={12} color="#fff" />
-                </View>
-              )}
-            </View>
-          </View>
-        </View>
+        <ProfileHeader profileData={profileData} />
         
         {/* Tabs Navigation */}
-        <View style={styles.tabsContainer}>
-          <TouchableOpacity 
-            style={[
-              styles.tabItem, 
-              activeTab === 'scheduled' && styles.activeTabItem
-            ]}
-            onPress={() => setActiveTab('scheduled')}
-          >
-            <Text style={[
-              styles.tabText,
-              activeTab === 'scheduled' && styles.activeTabText
-            ]}>Scheduled</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={[
-              styles.tabItem, 
-              activeTab === 'favorites' && styles.activeTabItem
-            ]}
-            onPress={() => setActiveTab('favorites')}
-          >
-            <Text style={[
-              styles.tabText,
-              activeTab === 'favorites' && styles.activeTabText
-            ]}>Favorites</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={[
-              styles.tabItem, 
-              activeTab === 'history' && styles.activeTabItem
-            ]}
-            onPress={() => setActiveTab('history')}
-          >
-            <Text style={[
-              styles.tabText,
-              activeTab === 'history' && styles.activeTabText
-            ]}>History</Text>
-          </TouchableOpacity>
-        </View>
+        <ProfileTabs activeTab={activeTab} onTabChange={handleTabChange} />
         
         {/* Tab Content */}
         {renderTabContent()}
@@ -205,25 +278,7 @@ const Profile = () => {
         <CacheClearButton />
         
         {/* Account Actions */}
-        <View style={styles.actionsSection}>
-          <TouchableOpacity style={styles.actionItem}>
-            <Ionicons name="help-circle-outline" size={22} color="#555" />
-            <Text style={styles.actionText}>FAQs</Text>
-            <Ionicons name="chevron-forward" size={20} color="#ccc" style={styles.actionArrow} />
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={styles.actionItem}>
-            <Ionicons name="information-circle-outline" size={22} color="#555" />
-            <Text style={styles.actionText}>Help Center</Text>
-            <Ionicons name="chevron-forward" size={20} color="#ccc" style={styles.actionArrow} />
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={styles.actionItem}>
-            <Ionicons name="document-text-outline" size={22} color="#555" />
-            <Text style={styles.actionText}>Terms & Policies</Text>
-            <Ionicons name="chevron-forward" size={20} color="#ccc" style={styles.actionArrow} />
-          </TouchableOpacity>
-        </View>
+        <ProfileActions />
         
         {/* Logout Button */}
         <TouchableOpacity 
@@ -239,5 +294,63 @@ const Profile = () => {
     </AuthGuard>
   );
 };
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  backButton: {
+    padding: 8,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+  },
+  placeholderRight: {
+    width: 40,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  tabContent: {
+    flex: 1,
+    minHeight: 200,
+    paddingHorizontal: 16,
+    paddingVertical: 20,
+  },
+  logoutButton: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 24,
+    backgroundColor: '#fff',
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  logoutText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  versionText: {
+    textAlign: 'center',
+    fontSize: 12,
+    color: '#aaa',
+    marginBottom: 30,
+  },
+});
 
 export default Profile;
