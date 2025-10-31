@@ -1,0 +1,708 @@
+import React, { useState } from 'react';
+import {
+  Modal,
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  Image,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+  Alert,
+  SafeAreaView,
+  StyleSheet,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
+import DateTimePicker from '@react-native-community/datetimepicker';
+
+/**
+ * Item Form Modal Component
+ * Reusable modal for adding/editing pantry items
+ */
+const ItemFormModal = ({
+  visible,
+  onClose,
+  onSave,
+  initialData = null,
+  inventories = [],
+}) => {
+  const isEditMode = !!initialData;
+
+  // Form state
+  const [formData, setFormData] = useState(
+    initialData || {
+      itemName: '',
+      inventoryID: inventories[0]?.inventoryID || null,
+      quantity: '',
+      unit: '',
+      itemCategory: '',
+      itemDescription: '',
+      itemExpiration: '',
+      imageURL: null,
+    }
+  );
+
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [categoryModalVisible, setCategoryModalVisible] = useState(false);
+  const [unitModalVisible, setUnitModalVisible] = useState(false);
+  const [inventoryModalVisible, setInventoryModalVisible] = useState(false);
+
+  // Food categories
+  const foodCategories = [
+    'Vegetables', 'Fruits', 'Meat', 'Poultry', 'Seafood', 'Dairy',
+    'Eggs', 'Deli', 'Bread & Bakery', 'Pasta & Rice', 'Canned Goods',
+    'Soups & Broths', 'Condiments', 'Sauces', 'Oils & Vinegars',
+    'Spices & Herbs', 'Snacks', 'Nuts & Seeds', 'Dried Fruits',
+    'Beans & Legumes', 'Baking Supplies', 'Beverages', 'Coffee & Tea',
+    'Frozen Foods', 'Desserts & Sweets', 'Alcohol', 'Baby Food',
+    'Pet Food', 'Gluten-Free', 'Organic', 'Vegan', 'Vegetarian'
+  ];
+
+  // Units
+  const unitOptions = [
+    'oz', 'lb', 'g', 'kg', 'ml', 'l', 'tsp', 'tbsp', 
+    'cup', 'pint', 'quart', 'gallon', 'each', 'bunch',
+    'slice', 'package', 'can', 'bottle', 'box'
+  ];
+
+  // Update form field
+  const updateField = (field, value) => {
+    setFormData({ ...formData, [field]: value });
+  };
+
+  // Get current date
+  const getCurrentDate = () => {
+    const today = new Date();
+    return `${today.getMonth() + 1}/${today.getDate()}/${today.getFullYear()}`;
+  };
+
+  // Format date
+  const formatDate = (date) => {
+    if (!date) return '';
+    if (typeof date === 'string') return date;
+    return `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()}`;
+  };
+
+  // Parse date string to Date object
+  const parseDate = (dateString) => {
+    if (!dateString) return new Date();
+    if (dateString instanceof Date) return dateString;
+    
+    const parts = dateString.split('/');
+    if (parts.length === 3) {
+      return new Date(parts[2], parts[0] - 1, parts[1]);
+    }
+    return new Date(dateString);
+  };
+
+  // Handle date change
+  const onDateChange = (event, selectedDate) => {
+    setShowDatePicker(Platform.OS === 'ios');
+    if (selectedDate) {
+      updateField('itemExpiration', formatDate(selectedDate));
+    }
+  };
+
+  // Pick image
+  const pickImage = async (useCamera = false) => {
+    try {
+      let result;
+      if (useCamera) {
+        const permission = await ImagePicker.requestCameraPermissionsAsync();
+        if (!permission.granted) {
+          Alert.alert('Permission needed', 'Camera permission is required');
+          return;
+        }
+        result = await ImagePicker.launchCameraAsync({
+          allowsEditing: true,
+          aspect: [4, 3],
+          quality: 0.8,
+        });
+      } else {
+        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permission.granted) {
+          Alert.alert('Permission needed', 'Photo library permission is required');
+          return;
+        }
+        result = await ImagePicker.launchImageLibraryAsync({
+          allowsEditing: true,
+          aspect: [4, 3],
+          quality: 0.8,
+        });
+      }
+
+      if (!result.canceled && result.assets && result.assets[0]) {
+        updateField('imageURL', result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to pick image');
+    }
+  };
+
+  // Show image picker options
+  const showImagePickerOptions = () => {
+    Alert.alert(
+      'Select Image',
+      'Choose an option',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Take Photo', onPress: () => pickImage(true) },
+        { text: 'Choose from Library', onPress: () => pickImage(false) }
+      ]
+    );
+  };
+
+  // Validate and save
+  const handleSave = () => {
+    if (!formData.itemName.trim()) {
+      Alert.alert('Error', 'Please enter an item name');
+      return;
+    }
+    if (!formData.itemCategory) {
+      Alert.alert('Error', 'Please select a category');
+      return;
+    }
+    if (!formData.inventoryID) {
+      Alert.alert('Error', 'Please select an inventory');
+      return;
+    }
+
+    onSave(formData);
+    handleClose();
+  };
+
+  // Close modal and reset
+  const handleClose = () => {
+    setFormData({
+      itemName: '',
+      inventoryID: inventories[0]?.inventoryID || null,
+      quantity: '',
+      unit: '',
+      itemCategory: '',
+      itemDescription: '',
+      itemExpiration: '',
+      imageURL: null,
+    });
+    onClose();
+  };
+
+  return (
+    <>
+      <Modal
+        animationType="slide"
+        transparent={false}
+        visible={visible}
+        onRequestClose={handleClose}
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <KeyboardAvoidingView 
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={{flex: 1}}
+          >
+            {/* Header */}
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                {isEditMode ? 'Edit Item' : 'Add New Item'}
+              </Text>
+              <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
+                <Ionicons name="close" size={24} color="#555" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView 
+              style={styles.modalScrollView}
+              contentContainerStyle={styles.modalContentContainer}
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.modalContent}>
+                {/* Image Upload */}
+                <TouchableOpacity 
+                  style={styles.imageUploadArea}
+                  onPress={showImagePickerOptions}
+                >
+                  {formData.imageURL ? (
+                    <Image 
+                      source={{ uri: formData.imageURL }} 
+                      style={styles.uploadedImage} 
+                    />
+                  ) : (
+                    <View style={styles.uploadPlaceholder}>
+                      <Ionicons name="image-outline" size={32} color="#fff" />
+                      <Text style={styles.uploadText}>Add Photo</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+                
+                {/* Item Name */}
+                <TextInput 
+                  style={styles.input}
+                  placeholder="Item Name *"
+                  placeholderTextColor="#999"
+                  value={formData.itemName}
+                  onChangeText={(text) => updateField('itemName', text)}
+                />
+
+                {/* Inventory Selection */}
+                <TouchableOpacity 
+                  style={styles.dropdownInput}
+                  onPress={() => setInventoryModalVisible(true)}
+                >
+                  <Text style={formData.inventoryID ? styles.dropdownSelectedText : styles.dropdownPlaceholder}>
+                    {formData.inventoryID 
+                      ? `Inventory #${formData.inventoryID}` 
+                      : 'Choose Inventory *'}
+                  </Text>
+                  <Ionicons name="chevron-down" size={20} color="#999" />
+                </TouchableOpacity>
+                
+                {/* Category */}
+                <TouchableOpacity 
+                  style={styles.dropdownInput}
+                  onPress={() => setCategoryModalVisible(true)}
+                >
+                  <Text style={formData.itemCategory ? styles.dropdownSelectedText : styles.dropdownPlaceholder}>
+                    {formData.itemCategory || 'Choose Category *'}
+                  </Text>
+                  <Ionicons name="chevron-down" size={20} color="#999" />
+                </TouchableOpacity>
+                
+                {/* Quantity and Unit Row */}
+                <View style={styles.formRow}>
+                  <View style={styles.formColumn}>
+                    <Text style={styles.columnLabel}>Quantity:</Text>
+                    <TextInput 
+                      style={styles.smallInput}
+                      placeholder="0"
+                      placeholderTextColor="#999"
+                      keyboardType="numeric"
+                      value={formData.quantity.toString()}
+                      onChangeText={(text) => updateField('quantity', text)}
+                    />
+                  </View>
+                  
+                  <View style={styles.formColumn}>
+                    <Text style={styles.columnLabel}>Unit:</Text>
+                    <TouchableOpacity 
+                      style={styles.smallDropdown}
+                      onPress={() => setUnitModalVisible(true)}
+                    >
+                      <Text style={formData.unit ? styles.dropdownSelectedText : styles.dropdownPlaceholder}>
+                        {formData.unit || 'Select'}
+                      </Text>
+                      <Ionicons name="chevron-down" size={20} color="#999" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+                
+                {/* Date Section */}
+                <View style={styles.dateSection}>
+                  <Text style={styles.sectionLabel}>Dates</Text>
+                  
+                  <View style={styles.formRow}>
+                    <Text style={styles.formLabel}>Date Added:</Text>
+                    <View style={[styles.dateInput, styles.disabledInput]}>
+                      <Text style={styles.dateDisplayText}>{getCurrentDate()}</Text>
+                    </View>
+                  </View>
+                  
+                  <View style={styles.formRow}>
+                    <Text style={styles.formLabel}>Expiration Date:</Text>
+                    <TouchableOpacity 
+                      style={styles.dateInput}
+                      onPress={() => setShowDatePicker(true)}
+                    >
+                      <Text style={formData.itemExpiration ? styles.dateDisplayText : styles.dropdownPlaceholder}>
+                        {formData.itemExpiration || 'Select Date'}
+                      </Text>
+                      <Ionicons name="calendar-outline" size={20} color="#999" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+                
+                {showDatePicker && (
+                  <DateTimePicker
+                    value={formData.itemExpiration ? parseDate(formData.itemExpiration) : new Date()}
+                    mode="date"
+                    display="default"
+                    onChange={onDateChange}
+                    minimumDate={new Date()}
+                  />
+                )}
+                
+                {/* Description */}
+                <Text style={styles.formLabel}>Item Description:</Text>
+                <TextInput
+                  style={styles.textAreaInput}
+                  placeholder="Type item description..."
+                  placeholderTextColor="#999"
+                  multiline={true}
+                  numberOfLines={4}
+                  value={formData.itemDescription}
+                  onChangeText={(text) => updateField('itemDescription', text)}
+                />
+                
+                {/* Action Buttons */}
+                <View style={styles.buttonContainer}>
+                  <TouchableOpacity 
+                    style={styles.saveButton}
+                    onPress={handleSave}
+                  >
+                    <Text style={styles.saveButtonText}>
+                      {isEditMode ? 'Update' : 'Save'}
+                    </Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={styles.cancelButton}
+                    onPress={handleClose}
+                  >
+                    <Text style={styles.cancelButtonText}>Cancel</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+      </Modal>
+
+      {/* Category Selection Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={categoryModalVisible}
+        onRequestClose={() => setCategoryModalVisible(false)}
+      >
+        <View style={styles.categoryModalOverlay}>
+          <View style={styles.categoryModalContent}>
+            <View style={styles.categoryModalHeader}>
+              <Text style={styles.categoryModalTitle}>Select Category</Text>
+              <TouchableOpacity onPress={() => setCategoryModalVisible(false)}>
+                <Ionicons name="close" size={24} color="#555" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.categoryList}>
+              {foodCategories.map((category) => (
+                <TouchableOpacity
+                  key={category}
+                  style={styles.categoryOption}
+                  onPress={() => {
+                    updateField('itemCategory', category);
+                    setCategoryModalVisible(false);
+                  }}
+                >
+                  <Text style={styles.categoryOptionText}>{category}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Unit Selection Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={unitModalVisible}
+        onRequestClose={() => setUnitModalVisible(false)}
+      >
+        <View style={styles.categoryModalOverlay}>
+          <View style={styles.categoryModalContent}>
+            <View style={styles.categoryModalHeader}>
+              <Text style={styles.categoryModalTitle}>Select Unit</Text>
+              <TouchableOpacity onPress={() => setUnitModalVisible(false)}>
+                <Ionicons name="close" size={24} color="#555" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.categoryList}>
+              {unitOptions.map((unit) => (
+                <TouchableOpacity
+                  key={unit}
+                  style={styles.categoryOption}
+                  onPress={() => {
+                    updateField('unit', unit);
+                    setUnitModalVisible(false);
+                  }}
+                >
+                  <Text style={styles.categoryOptionText}>{unit}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Inventory Selection Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={inventoryModalVisible}
+        onRequestClose={() => setInventoryModalVisible(false)}
+      >
+        <View style={styles.categoryModalOverlay}>
+          <View style={styles.categoryModalContent}>
+            <View style={styles.categoryModalHeader}>
+              <Text style={styles.categoryModalTitle}>Select Inventory</Text>
+              <TouchableOpacity onPress={() => setInventoryModalVisible(false)}>
+                <Ionicons name="close" size={24} color="#555" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.categoryList}>
+              {inventories.map((inventory) => (
+                <TouchableOpacity
+                  key={inventory.inventoryID}
+                  style={styles.categoryOption}
+                  onPress={() => {
+                    updateField('inventoryID', inventory.inventoryID);
+                    setInventoryModalVisible(false);
+                  }}
+                >
+                  <Text style={styles.categoryOptionText}>
+                    Inventory #{inventory.inventoryID}
+                  </Text>
+                  <Text style={styles.inventoryDetails}>
+                    {inventory.itemCount || 0} / {inventory.maxItems} items
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    </>
+  );
+};
+
+const styles = StyleSheet.create({
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#333',
+  },
+  closeButton: {
+    padding: 5,
+  },
+  modalScrollView: {
+    flex: 1,
+  },
+  modalContentContainer: {
+    paddingBottom: 30,
+  },
+  modalContent: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+  },
+  imageUploadArea: {
+    width: '100%',
+    height: 200,
+    backgroundColor: '#8BC34A',
+    borderRadius: 12,
+    marginBottom: 20,
+    overflow: 'hidden',
+  },
+  uploadedImage: {
+    width: '100%',
+    height: '100%',
+  },
+  uploadPlaceholder: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  uploadText: {
+    color: '#fff',
+    marginTop: 10,
+    fontSize: 16,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: '#333',
+    marginBottom: 15,
+  },
+  dropdownInput: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+    marginBottom: 15,
+  },
+  dropdownPlaceholder: {
+    fontSize: 16,
+    color: '#999',
+  },
+  dropdownSelectedText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  formRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 15,
+  },
+  formColumn: {
+    flex: 1,
+    marginRight: 10,
+  },
+  columnLabel: {
+    fontSize: 14,
+    color: '#555',
+    marginBottom: 8,
+  },
+  smallInput: {
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: '#333',
+  },
+  smallDropdown: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+  },
+  dateSection: {
+    marginBottom: 15,
+  },
+  sectionLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 10,
+  },
+  formLabel: {
+    fontSize: 14,
+    color: '#555',
+    marginBottom: 8,
+  },
+  dateInput: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+  },
+  disabledInput: {
+    backgroundColor: '#f5f5f5',
+  },
+  dateDisplayText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  textAreaInput: {
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: '#333',
+    height: 100,
+    textAlignVertical: 'top',
+    marginBottom: 20,
+  },
+  buttonContainer: {
+    marginTop: 10,
+  },
+  saveButton: {
+    backgroundColor: '#8BC34A',
+    paddingVertical: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  saveButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  cancelButton: {
+    backgroundColor: '#f5f5f5',
+    paddingVertical: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    color: '#555',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  categoryModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  categoryModalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 20,
+    maxHeight: '70%',
+  },
+  categoryModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingBottom: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  categoryModalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+  },
+  categoryList: {
+    paddingHorizontal: 20,
+  },
+  categoryOption: {
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  categoryOptionText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  inventoryDetails: {
+    fontSize: 14,
+    color: '#999',
+    marginTop: 4,
+  },
+});
+
+export default ItemFormModal;
