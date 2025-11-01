@@ -1,10 +1,12 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import PantryService from './pantry-service';
+import NotificationDatabaseService from './notification-database-service';
 
 /**
  * Expiration Notifications Service
  * Manages notifications for items expiring within 3 days
+ * Now also saves notification history to database
  */
 
 // Configure notification behavior
@@ -134,6 +136,31 @@ class ExpirationNotificationService {
         },
         trigger,
       });
+
+      // Also save to database for notification history
+      try {
+        const inventoryData = await PantryService.getInventory(item.inventoryID);
+        const userID = inventoryData?.userID;
+        
+        if (userID) {
+          await NotificationDatabaseService.createNotification(
+            userID,
+            title,
+            body,
+            'pantry_expiration',
+            {
+              itemID: item.itemID,
+              itemName: item.itemName,
+              expirationDate: item.itemExpiration,
+              daysUntilExpiry,
+              inventoryID: item.inventoryID,
+            }
+          );
+        }
+      } catch (dbError) {
+        console.warn('⚠️ Could not save notification to database:', dbError.message);
+        // Don't fail the whole operation if database save fails
+      }
 
       console.log(`✅ Scheduled notification for "${item.itemName}" (${daysUntilExpiry} days)`);
       return notificationId;
