@@ -40,15 +40,43 @@ yarn-error.*
 #google-services
 google-services.json
 
+# VS Code settings (workspace-specific)
+.vscode/
+!.vscode/extensions.json
+!.vscode/launch.json
+
+# Supabase - Keep Edge Functions and config (they're application code!)
+!supabase/
+!supabase/functions/
+!supabase/functions/**/*.ts
+!supabase/functions/**/deno.json
+!supabase/functions/deno.json
+
+# Supabase - IGNORE sensitive files
+supabase/.temp/
+supabase/config.toml
+supabase/.branches/
+supabase/.gitignore
+
 #markdown and text files
 *.md
 *.mdx
 *.txt
 
-#sql files
+# Documentation (keep README.md and important guides)
+!README.md
+!CONTRIBUTING.md
+!LICENSE.md
+
+#sql files (migrations for local development)
 *.sql
 *.sqlite
 *.sqlite3
+
+# Supabase migrations (keep these if you want version control)
+# Uncomment the line below to track migration files:
+# !migrations/*.sql
+# !supabase/migrations/*.sql
 
 # Python
 **/__pycache__/
