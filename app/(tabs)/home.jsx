@@ -12,11 +12,13 @@ import Svg, { Path, Circle } from 'react-native-svg';
 import { useCustomAuth } from '../../hooks/use-custom-auth';
 import { router } from 'expo-router';
 import AuthGuard from '../../components/auth-guard';
+import NotificationDatabaseService from '../../services/notification-database-service';
 
 const Home = () => {
   const { user, customUserData } = useCustomAuth();
   const [userName, setUserName] = useState('');
   const [greeting, setGreeting] = useState('Good Morning');
+  const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
     if (customUserData?.userName) {
@@ -41,6 +43,32 @@ const Home = () => {
     const interval = setInterval(updateGreeting, 60000); // Update every minute
     return () => clearInterval(interval);
   }, []);
+
+  // Load unread notification count
+  useEffect(() => {
+    const loadUnreadCount = async () => {
+      if (user?.userID) {
+        const count = await NotificationDatabaseService.getUnreadCount(user.userID);
+        setUnreadCount(count);
+      }
+    };
+
+    loadUnreadCount();
+
+    // Subscribe to realtime updates
+    if (user?.userID) {
+      const subscription = NotificationDatabaseService.subscribeToNotifications(
+        user.userID,
+        () => {
+          loadUnreadCount(); // Reload count when new notification arrives
+        }
+      );
+
+      return () => {
+        subscription.unsubscribe();
+      };
+    }
+  }, [user]);
 
   const getGreetingIcon = () => {
     const hour = new Date().getHours();
@@ -145,11 +173,21 @@ const Home = () => {
               </View>
               <Text style={styles.userName}>{userName || 'User'}</Text>
             </View>
-            <TouchableOpacity style={styles.notificationButton}>
+            <TouchableOpacity 
+              style={styles.notificationButton}
+              onPress={() => router.push('/notifications')}
+            >
               <Svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#81A969" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <Path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
                 <Path d="M13.73 21a2 2 0 0 1-3.46 0" />
               </Svg>
+              {unreadCount > 0 && (
+                <View style={styles.notificationBadge}>
+                  <Text style={styles.notificationBadgeText}>
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </Text>
+                </View>
+              )}
             </TouchableOpacity>
           </View>
 
@@ -296,6 +334,24 @@ const styles = StyleSheet.create({
   },
   notificationButton: {
     padding: 8,
+    position: 'relative',
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: '#FF6B6B',
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  notificationBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
   section: {
     marginTop: 10,

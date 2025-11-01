@@ -24,10 +24,14 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
+      "minSdkVersion": 26,
+      "targetSdkVersion": 34,
+      "compileSdkVersion": 34,
       "permissions": [
         "RECEIVE_BOOT_COMPLETED",
         "WAKE_LOCK",
-        "VIBRATE"
+        "VIBRATE",
+        "POST_NOTIFICATIONS"
       ]
     },
     "web": {

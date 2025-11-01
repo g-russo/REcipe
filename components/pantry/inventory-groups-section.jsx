@@ -9,7 +9,8 @@ import { Ionicons } from '@expo/vector-icons';
 const InventoryGroupsSection = ({ 
   inventories, 
   onGroupPress, 
-  onCreateGroup 
+  onCreateGroup,
+  userName = 'My'
 }) => {
   if (inventories.length === 0) {
     return (
@@ -49,13 +50,13 @@ const InventoryGroupsSection = ({
           >
             <View style={styles.categoryLetterContainer}>
               <Text style={styles.categoryLetter}>
-                {inventory.inventoryName?.charAt(0).toUpperCase() || 'P'}
+                {userName?.charAt(0).toUpperCase() || 'P'}
               </Text>
             </View>
             <View style={styles.categoryDetails}>
               <View style={styles.categoryHeaderRow}>
                 <Text style={styles.categoryName}>
-                  {inventory.inventoryName || `Inventory #${inventory.inventoryID}`}
+                  {userName}'s Pantry
                 </Text>
                 <View style={styles.arrowContainer}>
                   <Ionicons name="chevron-forward" size={18} color="#fff" />

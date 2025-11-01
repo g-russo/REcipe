@@ -22,6 +22,7 @@ const SearchFilterModal = ({
   inventories,
   onItemPress,
   onGroupPress,
+  userName = 'My',
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('all'); // all, items, groups
@@ -261,7 +262,7 @@ const SearchFilterModal = ({
                   onPress={() => setSelectedInventory(selectedInventory === inv.inventoryID ? null : inv.inventoryID)}
                 >
                   <Text style={[styles.filterChipText, selectedInventory === inv.inventoryID && styles.activeFilterChipText]}>
-                    {inv.inventoryName || `Inventory #${inv.inventoryID}`}
+                    {userName}'s Pantry
                   </Text>
                 </TouchableOpacity>
               ))}

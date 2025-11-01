@@ -488,12 +488,62 @@ export function useCustomAuth() {
       // If signup verification succeeded, mark as verified in custom table
       if (type === 'signup' && data?.user?.email_confirmed_at) {
         try {
-          await supabase
+          console.log('✅ OTP verified, updating user and creating inventory...')
+          
+          // Update user verification status
+          const { data: userData, error: updateError } = await supabase
             .from('tbl_users')
             .update({ isVerified: true })
             .eq('userEmail', email)
+            .select()
+            .single()
+
+          if (updateError) {
+            console.error('❌ Error updating user verification:', updateError)
+            throw updateError
+          }
+
+          // Automatically create default inventory for verified user
+          if (userData?.userID) {
+            console.log('📦 Creating default inventory for verified user:', userData.userID)
+            
+            // Check if user already has an inventory
+            const { data: existingInventories } = await supabase
+              .from('tbl_inventories')
+              .select('"inventoryID"')
+              .eq('"userID"', userData.userID)
+              .limit(1)
+
+            if (!existingInventories || existingInventories.length === 0) {
+              console.log('📦 No inventory found, creating new one...')
+              
+              // Create default inventory with quoted column names
+              const { data: newInventory, error: invError } = await supabase
+                .from('tbl_inventories')
+                .insert([
+                  {
+                    userID: userData.userID,
+                    inventorycolor: '#8BC34A',
+                    inventorytags: [],
+                    isFull: false,
+                    itemCount: 0,
+                    maxItems: 100,
+                  },
+                ])
+                .select()
+
+              if (invError) {
+                console.error('❌ Error creating inventory:', invError)
+              } else {
+                console.log('✅ Default inventory created successfully!', newInventory)
+              }
+            } else {
+              console.log('ℹ️ User already has an inventory, skipping creation')
+            }
+          }
         } catch (e) {
-          console.log('⚠️ Could not update custom table verification status:', e?.message)
+          console.error('⚠️ Error in post-verification setup:', e?.message)
+          console.error('⚠️ Full error:', e)
         }
       }
 

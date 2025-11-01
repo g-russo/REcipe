@@ -5,6 +5,7 @@ import React, { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Font from 'expo-font';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SupabaseProvider } from '../contexts/supabase-context';
 import { 
   registerForPushNotificationsAsync, 
@@ -108,35 +109,38 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <SupabaseProvider>
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          animation: 'slide_from_right',
-          gestureEnabled: true,
-        }}
-      >
-        <Stack.Screen name="index" options={{ title: 'Welcome' }} />
-        <Stack.Screen
-          name="(tabs)"
-          options={{
-            title: 'Main',
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SupabaseProvider>
+        <Stack
+          screenOptions={{
             headerShown: false,
-            animation: 'none', // No animation for tabs
+            animation: 'slide_from_right',
+            gestureEnabled: true,
           }}
-        />
-        <Stack.Screen name="signin" options={{ title: 'Sign In' }} />
-        <Stack.Screen name="signup" options={{ title: 'Sign Up' }} />
-        <Stack.Screen name="forgot-password" options={{ title: 'Reset Password' }} />
-        <Stack.Screen name="otp-verification" options={{ title: 'Verify OTP' }} />
-        <Stack.Screen name="reset-password-otp" options={{ title: 'Reset Password' }} />
-        <Stack.Screen name="new-password" options={{ title: 'New Password' }} />
-        <Stack.Screen name="force-password-change" options={{ title: 'Update Password' }} />
-        <Stack.Screen name="recipe-detail" options={{ title: 'Recipe Details' }} />
-        <Stack.Screen name="food-recognition/upload" options={{ title: 'Food Recognition' }} />
-        <Stack.Screen name="food-recognition/result" options={{ title: 'Result' }} />
-      </Stack>
-      <StatusBar style="auto" />
-    </SupabaseProvider>
+        >
+          <Stack.Screen name="index" options={{ title: 'Welcome' }} />
+          <Stack.Screen
+            name="(tabs)"
+            options={{
+              title: 'Main',
+              headerShown: false,
+              animation: 'none', // No animation for tabs
+            }}
+          />
+          <Stack.Screen name="signin" options={{ title: 'Sign In' }} />
+          <Stack.Screen name="signup" options={{ title: 'Sign Up' }} />
+          <Stack.Screen name="forgot-password" options={{ title: 'Reset Password' }} />
+          <Stack.Screen name="otp-verification" options={{ title: 'Verify OTP' }} />
+          <Stack.Screen name="reset-password-otp" options={{ title: 'Reset Password' }} />
+          <Stack.Screen name="new-password" options={{ title: 'New Password' }} />
+          <Stack.Screen name="force-password-change" options={{ title: 'Update Password' }} />
+          <Stack.Screen name="recipe-detail" options={{ title: 'Recipe Details' }} />
+          <Stack.Screen name="food-recognition/upload" options={{ title: 'Food Recognition' }} />
+          <Stack.Screen name="food-recognition/result" options={{ title: 'Result' }} />
+          <Stack.Screen name="notifications" options={{ title: 'Notifications' }} />
+        </Stack>
+        <StatusBar style="auto" />
+      </SupabaseProvider>
+    </GestureHandlerRootView>
   );
 }

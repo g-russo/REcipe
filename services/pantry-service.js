@@ -35,21 +35,22 @@ class PantryService {
       const fileName = `${userID}_${sanitizedName}_${timestamp}.webp`;
       const filePath = `pantry-items/${userID}/${fileName}`;
 
-      // Step 3: Convert base64 to blob for upload
+      // Step 3: Convert base64 to ArrayBuffer for React Native
       const base64Data = convertedImage.base64.replace(/^data:image\/\w+;base64,/, '');
-      const binaryString = atob(base64Data);
-      const bytes = new Uint8Array(binaryString.length);
       
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
+      // For React Native, we need to upload the base64 directly or use fetch
+      // Convert base64 to binary array
+      const byteCharacters = atob(base64Data);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
       }
+      const byteArray = new Uint8Array(byteNumbers);
 
-      const blob = new Blob([bytes], { type: 'image/webp' });
-
-      // Step 4: Upload to Supabase Storage
+      // Step 4: Upload to Supabase Storage using ArrayBuffer
       const { data, error } = await supabase.storage
         .from('pantry-images')
-        .upload(filePath, blob, {
+        .upload(filePath, byteArray.buffer, {
           contentType: 'image/webp',
           upsert: false
         });
@@ -101,21 +102,20 @@ class PantryService {
       const fileName = `${userID}_${sanitizedName}_${timestamp}.webp`;
       const filePath = `groups/${userID}/${fileName}`;
 
-      // Step 3: Convert base64 to blob for upload
+      // Step 3: Convert base64 to ArrayBuffer for React Native
       const base64Data = convertedImage.base64.replace(/^data:image\/\w+;base64,/, '');
-      const binaryString = atob(base64Data);
-      const bytes = new Uint8Array(binaryString.length);
       
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
+      const byteCharacters = atob(base64Data);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
       }
+      const byteArray = new Uint8Array(byteNumbers);
 
-      const blob = new Blob([bytes], { type: 'image/webp' });
-
-      // Step 4: Upload to Supabase Storage
+      // Step 4: Upload to Supabase Storage using ArrayBuffer
       const { data, error } = await supabase.storage
         .from('pantry-images')
-        .upload(filePath, blob, {
+        .upload(filePath, byteArray.buffer, {
           contentType: 'image/webp',
           upsert: false
         });
@@ -193,16 +193,24 @@ class PantryService {
    */
   async checkUserVerified(userID) {
     try {
+      console.log('🔍 Checking verification for user:', userID);
+      
       const { data, error } = await supabase
         .from('tbl_users')
-        .select('isverified')
-        .eq('userID', userID)
+        .select('"isVerified"')
+        .eq('"userID"', userID)
         .single();
 
-      if (error) throw error;
-      return data?.isverified || false;
+      if (error) {
+        console.error('❌ Error checking verification:', error);
+        throw error;
+      }
+      
+      const isVerified = data?.isVerified || false;
+      console.log('✅ User verification status:', isVerified);
+      return isVerified;
     } catch (error) {
-      console.error('Error checking user verification:', error);
+      console.error('❌ Error checking user verification:', error);
       return false;
     }
   }
@@ -214,36 +222,50 @@ class PantryService {
    */
   async getUserTotalItemCount(userID) {
     try {
+      console.log('🔢 Counting items for user:', userID);
+      
+      // Get all user's inventories first
+      console.log('🔍 Fetching user inventories for count...');
+      const { data: inventories, error: invError } = await supabase
+        .from('tbl_inventories')
+        .select('"inventoryID"')
+        .eq('"userID"', userID);
+
+      console.log('📊 Inventories query result:', { inventories, error: invError });
+
+      if (invError) {
+        console.error('❌ Error fetching inventories:', invError);
+        throw invError;
+      }
+      
+      if (!inventories || inventories.length === 0) {
+        console.log('📦 No inventories found, count = 0');
+        return 0;
+      }
+
+      const inventoryIDs = inventories.map(inv => inv.inventoryID);
+      console.log('📦 Found inventories:', inventoryIDs);
+
+      // Count items in these inventories
+      console.log('🔢 Counting items in inventories:', inventoryIDs);
       const { count, error } = await supabase
         .from('tbl_items')
         .select('*', { count: 'exact', head: true })
-        .in('inventoryID', 
-          supabase
-            .from('tbl_inventories')
-            .select('inventoryID')
-            .eq('userID', userID)
-        );
+        .in('"inventoryID"', inventoryIDs);
 
-      if (error) throw error;
+      console.log('📊 Item count query result:', { count, error });
+
+      if (error) {
+        console.error('❌ Error counting items:', error);
+        throw error;
+      }
+      
+      console.log('✅ Total item count:', count);
       return count || 0;
     } catch (error) {
-      console.error('Error getting user item count:', error);
-      // Fallback: Count manually
-      try {
-        const inventories = await this.getUserInventories(userID);
-        const inventoryIDs = inventories.map(inv => inv.inventoryID);
-        
-        if (inventoryIDs.length === 0) return 0;
-
-        const items = await Promise.all(
-          inventoryIDs.map(id => this.getInventoryItems(id))
-        );
-        
-        return items.flat().length;
-      } catch (fallbackError) {
-        console.error('Fallback count also failed:', fallbackError);
-        return 0;
-      }
+      console.error('❌ Error getting user item count:', error);
+      console.error('❌ Full error details:', JSON.stringify(error, null, 2));
+      return 0;
     }
   }
 
@@ -254,23 +276,34 @@ class PantryService {
    */
   async getUserInventories(userID) {
     try {
+      console.log('🔍 Fetching inventories for user:', userID);
+      console.log('🔍 User ID type:', typeof userID);
+      
       const { data, error } = await supabase
         .from('tbl_inventories')
         .select('*')
-        .eq('userID', userID)
-        .order('createdAt', { ascending: false });
+        .eq('"userID"', userID)
+        .order('"createdAt"', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Supabase error fetching inventories:', error);
+        console.error('❌ Error code:', error.code);
+        console.error('❌ Error details:', error.details);
+        throw error;
+      }
+      
+      console.log('✅ Inventories fetched:', data?.length || 0, 'records');
+      console.log('📦 Inventory data:', JSON.stringify(data, null, 2));
       return data || [];
     } catch (error) {
-      console.error('Error fetching inventories:', error);
+      console.error('❌ Error fetching inventories:', error);
       throw error;
     }
   }
 
   /**
    * Create a new inventory/group
-   * @param {Object} inventoryData - { userID, inventoryName, inventoryColor, inventoryTags, maxItems, imageUri }
+   * @param {Object} inventoryData - { userID, inventoryColor, inventoryTags, maxItems, imageUri }
    * @returns {Promise<Object>} Created inventory object
    */
   async createInventory(userID, inventoryData = {}) {
@@ -282,7 +315,6 @@ class PantryService {
       }
 
       const {
-        inventoryName = 'My Pantry',
         inventoryColor = '#8BC34A',
         inventoryTags = [],
         maxItems = 100,
@@ -292,21 +324,21 @@ class PantryService {
       // Upload group image if provided
       let imageURL = null;
       if (imageUri) {
-        imageURL = await this.uploadGroupImage(imageUri, userID, inventoryName);
+        imageURL = await this.uploadGroupImage(imageUri, userID, 'pantry');
       }
 
+      // Insert with exact column names matching database schema
       const { data, error } = await supabase
         .from('tbl_inventories')
         .insert([
           {
-            userID,
-            inventoryName,
-            inventoryColor,
-            inventoryTags,
-            imageURL,
+            userID: userID,
+            inventoryColor: inventoryColor,
+            inventoryTags: inventoryTags,
+            imageURL: imageURL,
             isFull: false,
             itemCount: 0,
-            maxItems,
+            maxItems: maxItems,
           },
         ])
         .select()
@@ -330,14 +362,12 @@ class PantryService {
     try {
       // Handle image update if new imageUri provided
       if (updates.imageUri && updates.userID) {
-        // Get current inventory to check for old image
-        const { data: currentInv } = await supabase
-          .from('tbl_inventories')
-          .select('imageURL, inventoryName')
-          .eq('inventoryID', inventoryID)
-          .single();
-
-        // Delete old image if exists
+      // Get current inventory to check for old image
+      const { data: currentInv } = await supabase
+        .from('tbl_inventories')
+        .select('imageURL, inventoryName')
+        .eq('"inventoryID"', inventoryID)
+        .single();        // Delete old image if exists
         if (currentInv?.imageURL) {
           await this.deleteGroupImage(currentInv.imageURL);
         }
@@ -361,7 +391,7 @@ class PantryService {
           ...updates,
           updatedAt: new Date().toISOString(),
         })
-        .eq('inventoryID', inventoryID)
+        .eq('"inventoryID"', inventoryID)
         .select()
         .single();
 
@@ -384,7 +414,7 @@ class PantryService {
       const { data: inventory } = await supabase
         .from('tbl_inventories')
         .select('imageURL')
-        .eq('inventoryID', inventoryID)
+        .eq('"inventoryID"', inventoryID)
         .single();
 
       // Delete group image if exists
@@ -399,7 +429,7 @@ class PantryService {
       const { error } = await supabase
         .from('tbl_inventories')
         .delete()
-        .eq('inventoryID', inventoryID);
+        .eq('"inventoryID"', inventoryID);
 
       if (error) throw error;
       return true;
@@ -420,7 +450,7 @@ class PantryService {
       const { count, error: countError } = await supabase
         .from('tbl_items')
         .select('*', { count: 'exact', head: true })
-        .eq('inventoryID', inventoryID);
+        .eq('"inventoryID"', inventoryID);
 
       if (countError) throw countError;
 
@@ -428,7 +458,7 @@ class PantryService {
       const { data: inventory, error: invError } = await supabase
         .from('tbl_inventories')
         .select('maxItems')
-        .eq('inventoryID', inventoryID)
+        .eq('"inventoryID"', inventoryID)
         .single();
 
       if (invError) throw invError;
@@ -459,7 +489,7 @@ class PantryService {
       const { data, error } = await supabase
         .from('tbl_items')
         .select('*')
-        .eq('inventoryID', inventoryID)
+        .eq('"inventoryID"', inventoryID)
         .order('itemAdded', { ascending: false });
 
       if (error) throw error;
@@ -481,9 +511,9 @@ class PantryService {
         .from('tbl_items')
         .select(`
           *,
-          tbl_inventories!inner(userID)
+          tbl_inventories!inner("userID")
         `)
-        .eq('tbl_inventories.userID', userID)
+        .eq('tbl_inventories."userID"', userID)
         .order('itemAdded', { ascending: false });
 
       if (error) throw error;
@@ -520,24 +550,16 @@ class PantryService {
 
       // Check if user has reached 100-item limit
       if (userID) {
-        // Get userID from inventory if not provided
-        let userIDToCheck = userID;
-        if (!userIDToCheck) {
-          const { data: inventory } = await supabase
-            .from('tbl_inventories')
-            .select('userID')
-            .eq('inventoryID', inventoryID)
-            .single();
-          userIDToCheck = inventory?.userID;
-        }
-
-        if (userIDToCheck) {
-          const totalItems = await this.getUserTotalItemCount(userIDToCheck);
-          if (totalItems >= 100) {
-            throw new Error('You have reached the maximum limit of 100 items. Please delete some items before adding new ones.');
-          }
+        console.log('🔍 Checking 100-item limit for user:', userID);
+        const totalItems = await this.getUserTotalItemCount(userID);
+        console.log('✅ Current item count:', totalItems, '/ 100');
+        if (totalItems >= 100) {
+          throw new Error('You have reached the maximum limit of 100 items. Please delete some items before adding new ones.');
         }
       }
+
+      console.log('📝 Preparing to insert item into database...');
+      console.log('📝 Item data:', { inventoryID, itemName, quantity, unit, itemCategory });
 
       // Upload image to Supabase if provided
       let uploadedImageURL = null;
@@ -549,28 +571,35 @@ class PantryService {
         uploadedImageURL = imageURL;
       }
 
+      console.log('🚀 Executing INSERT query...');
+      // Direct insert with properly quoted column names
       const { data, error } = await supabase
         .from('tbl_items')
-        .insert([
-          {
-            inventoryID,
-            itemName,
-            quantity,
-            unit,
-            itemCategory,
-            itemDescription,
-            itemExpiration,
-            imageURL: uploadedImageURL, // Use uploaded URL
-          },
-        ])
+        .insert({
+          inventoryID: inventoryID,
+          itemName: itemName,
+          quantity: quantity,
+          unit: unit,
+          itemCategory: itemCategory,
+          itemDescription: itemDescription,
+          itemExpiration: itemExpiration,
+          imageURL: uploadedImageURL,
+        })
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Insert error details:', JSON.stringify(error, null, 2));
+        throw error;
+      }
+
+      console.log('✅ Item inserted successfully:', data);
+      console.log('🔄 Updating inventory item count...');
 
       // Update inventory item count
       await this.updateInventoryItemCount(inventoryID);
 
+      console.log('✅ Inventory count updated');
       return data;
     } catch (error) {
       console.error('Error creating item:', error);
@@ -597,7 +626,7 @@ class PantryService {
         const { data: oldItem } = await supabase
           .from('tbl_items')
           .select('imageURL')
-          .eq('itemID', itemID)
+          .eq('"itemID"', itemID)
           .single();
 
         // Upload new image
@@ -617,7 +646,7 @@ class PantryService {
           ...(uploadedImageURL && { imageURL: uploadedImageURL }),
           updatedAt: new Date().toISOString(),
         })
-        .eq('itemID', itemID)
+        .eq('"itemID"', itemID)
         .select()
         .single();
 
@@ -639,8 +668,8 @@ class PantryService {
       // Get the item first to know which inventory to update and image to delete
       const { data: item, error: fetchError } = await supabase
         .from('tbl_items')
-        .select('inventoryID, imageURL')
-        .eq('itemID', itemID)
+        .select('"inventoryID", imageURL')
+        .eq('"itemID"', itemID)
         .single();
 
       if (fetchError) throw fetchError;
@@ -653,7 +682,7 @@ class PantryService {
       const { error } = await supabase
         .from('tbl_items')
         .delete()
-        .eq('itemID', itemID);
+        .eq('"itemID"', itemID);
 
       if (error) throw error;
 
@@ -674,10 +703,10 @@ class PantryService {
    */
   async deleteAllItemsInInventory(inventoryID) {
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('tbl_items')
         .delete()
-        .eq('inventoryID', inventoryID);
+        .eq('"inventoryID"', inventoryID);
 
       if (error) throw error;
 
@@ -699,13 +728,13 @@ class PantryService {
    */
   async searchItems(userID, query) {
     try {
-      const { data, error } = await supabase
+      const { data, error} = await supabase
         .from('tbl_items')
         .select(`
           *,
-          tbl_inventories!inner(userID)
+          tbl_inventories!inner("userID")
         `)
-        .eq('tbl_inventories.userID', userID)
+        .eq('tbl_inventories."userID"', userID)
         .or(`itemName.ilike.%${query}%,itemCategory.ilike.%${query}%`)
         .order('itemAdded', { ascending: false });
 
@@ -732,9 +761,9 @@ class PantryService {
         .from('tbl_items')
         .select(`
           *,
-          tbl_inventories!inner(userID)
+          tbl_inventories!inner("userID")
         `)
-        .eq('tbl_inventories.userID', userID)
+        .eq('tbl_inventories."userID"', userID)
         .not('itemExpiration', 'is', null)
         .lte('itemExpiration', futureDate.toISOString().split('T')[0])
         .gte('itemExpiration', new Date().toISOString().split('T')[0])
@@ -759,8 +788,8 @@ class PantryService {
       // Get the item first to know the old inventory
       const { data: item, error: fetchError } = await supabase
         .from('tbl_items')
-        .select('inventoryID')
-        .eq('itemID', itemID)
+        .select('"inventoryID"')
+        .eq('"itemID"', itemID)
         .single();
 
       if (fetchError) throw fetchError;

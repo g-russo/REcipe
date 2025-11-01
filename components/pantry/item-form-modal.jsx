@@ -47,7 +47,6 @@ const ItemFormModal = ({
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
   const [unitModalVisible, setUnitModalVisible] = useState(false);
-  const [inventoryModalVisible, setInventoryModalVisible] = useState(false);
 
   // Food categories
   const foodCategories = [
@@ -157,19 +156,20 @@ const ItemFormModal = ({
 
   // Validate and save
   const handleSave = () => {
+    console.log('📋 Item Form - Validating and saving...', formData);
+    
     if (!formData.itemName.trim()) {
+      console.log('❌ Validation failed: Missing item name');
       Alert.alert('Error', 'Please enter an item name');
       return;
     }
     if (!formData.itemCategory) {
+      console.log('❌ Validation failed: Missing category');
       Alert.alert('Error', 'Please select a category');
       return;
     }
-    if (!formData.inventoryID) {
-      Alert.alert('Error', 'Please select an inventory');
-      return;
-    }
 
+    console.log('✅ Validation passed, calling onSave...');
     onSave(formData);
     handleClose();
   };
@@ -244,19 +244,6 @@ const ItemFormModal = ({
                   value={formData.itemName}
                   onChangeText={(text) => updateField('itemName', text)}
                 />
-
-                {/* Inventory Selection */}
-                <TouchableOpacity 
-                  style={styles.dropdownInput}
-                  onPress={() => setInventoryModalVisible(true)}
-                >
-                  <Text style={formData.inventoryID ? styles.dropdownSelectedText : styles.dropdownPlaceholder}>
-                    {formData.inventoryID 
-                      ? `Inventory #${formData.inventoryID}` 
-                      : 'Choose Inventory *'}
-                  </Text>
-                  <Ionicons name="chevron-down" size={20} color="#999" />
-                </TouchableOpacity>
                 
                 {/* Category */}
                 <TouchableOpacity 
@@ -427,44 +414,6 @@ const ItemFormModal = ({
                   }}
                 >
                   <Text style={styles.categoryOptionText}>{unit}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Inventory Selection Modal */}
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={inventoryModalVisible}
-        onRequestClose={() => setInventoryModalVisible(false)}
-      >
-        <View style={styles.categoryModalOverlay}>
-          <View style={styles.categoryModalContent}>
-            <View style={styles.categoryModalHeader}>
-              <Text style={styles.categoryModalTitle}>Select Inventory</Text>
-              <TouchableOpacity onPress={() => setInventoryModalVisible(false)}>
-                <Ionicons name="close" size={24} color="#555" />
-              </TouchableOpacity>
-            </View>
-            <ScrollView style={styles.categoryList}>
-              {inventories.map((inventory) => (
-                <TouchableOpacity
-                  key={inventory.inventoryID}
-                  style={styles.categoryOption}
-                  onPress={() => {
-                    updateField('inventoryID', inventory.inventoryID);
-                    setInventoryModalVisible(false);
-                  }}
-                >
-                  <Text style={styles.categoryOptionText}>
-                    Inventory #{inventory.inventoryID}
-                  </Text>
-                  <Text style={styles.inventoryDetails}>
-                    {inventory.itemCount || 0} / {inventory.maxItems} items
-                  </Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -697,11 +646,6 @@ const styles = StyleSheet.create({
   categoryOptionText: {
     fontSize: 16,
     color: '#333',
-  },
-  inventoryDetails: {
-    fontSize: 14,
-    color: '#999',
-    marginTop: 4,
   },
 });
 
