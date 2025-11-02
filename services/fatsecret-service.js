@@ -12,13 +12,8 @@ const normalizeHostForAndroid = (url) => {
   return url;
 };
 
-const getBaseUrl = () => {
-  let fromEnv = process.env.EXPO_PUBLIC_FOOD_API_URL;
-  fromEnv = normalizeHostForAndroid(fromEnv);
-  if (fromEnv) return fromEnv.replace(/\/+$/, '');
-  if (Platform.OS === 'android') return 'http://10.0.2.2:5001';
-  return 'http://127.0.0.1:5001';
-};
+const BASE = process.env.EXPO_PUBLIC_FOOD_API_URL;
+const baseUrl = BASE?.replace(/\/+$/, '') || '';
 
 /**
  * Search for foods by text query
@@ -28,16 +23,9 @@ const getBaseUrl = () => {
  * @returns {Promise<Object>} FatSecret foods.search response
  */
 export async function searchFoods(query, page = 0, maxResults = 20) {
-  const base = getBaseUrl();
-  const url = `${base}/fatsecret/foods/search?q=${encodeURIComponent(query)}&page=${page}&max_results=${maxResults}`;
-  const res = await fetch(url, {
-    method: 'GET',
-    headers: { Accept: 'application/json' },
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`FatSecret search error ${res.status}: ${text || res.statusText}`);
-  }
+  const url = `${baseUrl}/fatsecret/foods/search?q=${encodeURIComponent(query)}&page=${page}&max_results=${maxResults}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`FatSecret search error ${res.status}`);
   return res.json();
 }
 
@@ -47,16 +35,9 @@ export async function searchFoods(query, page = 0, maxResults = 20) {
  * @returns {Promise<Object>} FatSecret food.get.v2 response
  */
 export async function getFood(foodId) {
-  const base = getBaseUrl();
-  const url = `${base}/fatsecret/food?id=${encodeURIComponent(foodId)}`;
-  const res = await fetch(url, {
-    method: 'GET',
-    headers: { Accept: 'application/json' },
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`FatSecret food.get error ${res.status}: ${text || res.statusText}`);
-  }
+  const url = `${baseUrl}/fatsecret/food?food_id=${foodId}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`FatSecret food detail error ${res.status}`);
   return res.json();
 }
 
@@ -66,15 +47,11 @@ export async function getFood(foodId) {
  * @returns {Promise<Object>} FatSecret food.find_id_for_barcode.v2 response (contains food_id if found)
  */
 export async function lookupBarcode(barcode) {
-  const base = getBaseUrl();
-  const url = `${base}/fatsecret/barcode?barcode=${encodeURIComponent(barcode)}`;
-  const res = await fetch(url, {
-    method: 'GET',
-    headers: { Accept: 'application/json' },
-  });
+  const url = `${baseUrl}/fatsecret/barcode?barcode=${encodeURIComponent(barcode)}`;
+  const res = await fetch(url);
   if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`FatSecret barcode lookup error ${res.status}: ${text || res.statusText}`);
+    const errorText = await res.text();
+    throw new Error(`Barcode lookup failed: ${errorText}`);
   }
   return res.json();
 }
@@ -85,15 +62,17 @@ export async function lookupBarcode(barcode) {
  * @returns {Promise<Object>} FatSecret response (contains food_id if found)
  */
 export async function lookupQRCode(qrCode) {
-  const base = getBaseUrl();
-  const url = `${base}/fatsecret/qr?code=${encodeURIComponent(qrCode)}`;
-  const res = await fetch(url, {
-    method: 'GET',
-    headers: { Accept: 'application/json' },
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`FatSecret QR lookup error ${res.status}: ${text || res.statusText}`);
-  }
+  const url = `${baseUrl}/fatsecret/qr?qr_code=${encodeURIComponent(qrCode)}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`QR lookup error ${res.status}`);
   return res.json();
+}
+
+/**
+ * Get base URL for the current platform
+ */
+function getBaseUrl() {
+  if (fromEnv) return fromEnv.replace(/\/+$/, '');
+  if (Platform.OS === 'android') return 'http://10.0.2.2:5001';
+  return 'http://127.0.0.1:5001';
 }

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Image, ActivityIndicator, ScrollView, StyleSheet } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
-import { classifyImageAsync } from '../../services/food-recog-api';
+import { recognizeFood } from '../../services/food-recog-api'; // ✅ Changed from classifyImageAsync
 
 export default function ResultScreen() {
   const { data, uri } = useLocalSearchParams();
@@ -23,7 +23,7 @@ export default function ResultScreen() {
       (async () => {
         setLoading(true);
         try {
-          const res = await classifyImageAsync(uri);
+          const res = await recognizeFood(uri); // ✅ Changed from classifyImageAsync
           setResult(res);
         } catch (e) {
           console.error('Recognize error:', e);
@@ -202,7 +202,7 @@ export default function ResultScreen() {
 const styles = StyleSheet.create({
   title: { fontSize: 18, fontWeight: '700', marginBottom: 4 },
   meta: { fontSize: 12, color: '#666' },
-  section: { fontSize: 16, fontWeight: '600' },
+  section: { fontSize: 16, fontWeight: '600', marginTop: 12 },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',

@@ -46,7 +46,8 @@
           "color": "#FF6B6B",
           "defaultChannel": "default"
         }
-      ]
+      ],
+      "expo-barcode-scanner"
     ],
     "extra": {
       "router": {},
@@ -54,6 +55,16 @@
         "projectId": "9f749e6b-8a51-4406-8a62-cb9c19e07fbd"
       }
     },
-    "owner": "recipe.app"
+    "owner": "recipe.app",
+    "expo": {
+      "plugins": [
+        [
+          "expo-camera",
+          {
+            "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera to scan barcodes."
+          }
+        ]
+      ]
+    }
   }
 }
