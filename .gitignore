@@ -84,6 +84,8 @@ supabase/.gitignore
 .venv/
 env/
 venv/
+backend/.env
+backend/.venv/
 
 # Datasets and training outputs
 backend/datasets/
