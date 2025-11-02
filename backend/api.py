@@ -220,15 +220,38 @@ def fs_food_get(food_id: int = Query(..., alias="id")):
         raise HTTPException(status_code=502, detail=f"FatSecret food.get failed: {e}")
 
 @app.get("/fatsecret/barcode")
-async def fatsecret_barcode(barcode: str = Query(...)):  # ✅ Parameter name is 'barcode'
+async def fatsecret_barcode(barcode: str = Query(...)):
+    """Lookup food by barcode."""
     try:
-        return fatsecret_client.get_food_by_barcode(barcode)
+        # ✅ Use call_server_api (not fatsecret_client object)
+        result = call_server_api("food.find_id_for_barcode", {"barcode": barcode})
+        if not result or "error" in result:
+            return {"error": {"message": "Barcode not found"}}
+        
+        # If barcode found, get full food details
+        food_id = result.get("food_id", {}).get("value")
+        if food_id:
+            food_details = call_server_api("food.get.v2", {"food_id": food_id})
+            return {"food": food_details.get("food", {})}
+        
+        return {"error": {"message": "Invalid barcode response"}}
     except Exception as e:
         return {"error": {"message": str(e)}}
 
 @app.get("/fatsecret/qr")
-async def fatsecret_qr(qr_code: str = Query(...)):  # ✅ Parameter name is 'qr_code'
+async def fatsecret_qr(qr_code: str = Query(...)):
+    """Lookup food by QR code."""
     try:
-        return fatsecret_client.get_food_by_qr(qr_code)
+        result = call_server_api("food.find_id_for_qr", {"qr_code": qr_code})
+        if not result or "error" in result:
+            return {"error": {"message": "QR code not found"}}
+        
+        # If QR found, get full food details
+        food_id = result.get("food_id", {}).get("value")
+        if food_id:
+            food_details = call_server_api("food.get.v2", {"food_id": food_id})
+            return {"food": food_details.get("food", {})}
+        
+        return {"error": {"message": "Invalid QR code response"}}
     except Exception as e:
         return {"error": {"message": str(e)}}
