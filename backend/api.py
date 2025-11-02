@@ -220,26 +220,15 @@ def fs_food_get(food_id: int = Query(..., alias="id")):
         raise HTTPException(status_code=502, detail=f"FatSecret food.get failed: {e}")
 
 @app.get("/fatsecret/barcode")
-def fs_barcode_lookup(barcode: str):
-    """
-    Lookup food by barcode using FatSecret's food.find_id_for_barcode.v2.
-    Returns food_id if found, which you can pass to /fatsecret/food?id=<food_id>.
-    """
+async def fatsecret_barcode(barcode: str = Query(...)):  # ✅ Parameter name is 'barcode'
     try:
-        result = call_server_api("food.find_id_for_barcode.v2", {"barcode": barcode})
-        return result
+        return fatsecret_client.get_food_by_barcode(barcode)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"FatSecret barcode lookup failed: {e}")
+        return {"error": {"message": str(e)}}
 
 @app.get("/fatsecret/qr")
-def fs_qr_lookup(code: str):
-    """
-    Lookup food by QR code. 
-    FatSecret's barcode API accepts various formats; you can pass QR data here.
-    Returns food_id if found.
-    """
+async def fatsecret_qr(qr_code: str = Query(...)):  # ✅ Parameter name is 'qr_code'
     try:
-        result = call_server_api("food.find_id_for_barcode.v2", {"barcode": code})
-        return result
+        return fatsecret_client.get_food_by_qr(qr_code)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"FatSecret QR lookup failed: {e}")
+        return {"error": {"message": str(e)}}
