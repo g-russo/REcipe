@@ -12,9 +12,11 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import BarcodeScannerModal from '../../components/barcode-scanner-modal';
+import OCRScannerModal from '../../components/ocr-scanner-modal';
 
 export default function FoodRecognitionUpload() {
   const [scannerVisible, setScannerVisible] = useState(false);
+  const [ocrVisible, setOcrVisible] = useState(false);
 
   const pickImage = async (useCamera = false) => {
     const permissionMethod = useCamera
@@ -46,7 +48,6 @@ export default function FoodRecognitionUpload() {
         });
 
     if (!result.canceled && result.assets[0]) {
-      // ✅ Fixed: Use 'uri' parameter name (matching result.jsx)
       router.push({
         pathname: '/food-recognition/result',
         params: { uri: result.assets[0].uri },
@@ -57,7 +58,6 @@ export default function FoodRecognitionUpload() {
   const handleBarcodeFound = (food) => {
     console.log('Food found:', food);
     
-    // Show nutrition info alert
     Alert.alert(
       'Food Found!',
       `${food.food_name}\n\n${food.food_description || 'No description available'}`,
@@ -75,6 +75,29 @@ export default function FoodRecognitionUpload() {
           onPress: () => {
             setScannerVisible(false);
             setTimeout(() => setScannerVisible(true), 300);
+          },
+        },
+      ]
+    );
+  };
+
+  const handleTextExtracted = (text) => {
+    console.log('Text extracted:', text);
+    
+    // Search FatSecret with extracted text
+    Alert.alert(
+      'Text Extracted',
+      `Extracted text: "${text}"\n\nWould you like to search for this food?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Search',
+          onPress: () => {
+            // Navigate to recipe search with the text
+            router.push({
+              pathname: '/(tabs)/recipe-search',
+              params: { query: text },
+            });
           },
         },
       ]
@@ -101,7 +124,7 @@ export default function FoodRecognitionUpload() {
           </Text>
         </View>
 
-        {/* Options */}
+        {/* Options Grid */}
         <View style={styles.optionsContainer}>
           {/* Take Photo */}
           <TouchableOpacity
@@ -114,7 +137,7 @@ export default function FoodRecognitionUpload() {
             </View>
             <Text style={styles.optionTitle}>Take Photo</Text>
             <Text style={styles.optionDescription}>
-              Use your camera to capture food and recognize it with AI
+              Capture food and recognize with AI
             </Text>
           </TouchableOpacity>
 
@@ -129,11 +152,11 @@ export default function FoodRecognitionUpload() {
             </View>
             <Text style={styles.optionTitle}>Choose from Gallery</Text>
             <Text style={styles.optionDescription}>
-              Select an existing photo to analyze with AI recognition
+              Select photo to analyze with AI
             </Text>
           </TouchableOpacity>
 
-          {/* Scan Barcode */}
+          {/* Scan Barcode/QR */}
           <TouchableOpacity
             style={styles.optionCard}
             onPress={() => setScannerVisible(true)}
@@ -142,9 +165,24 @@ export default function FoodRecognitionUpload() {
             <View style={[styles.iconCircle, { backgroundColor: '#E8F5E9' }]}>
               <Ionicons name="barcode" size={32} color="#4CAF50" />
             </View>
-            <Text style={styles.optionTitle}>Scan Barcode</Text>
+            <Text style={styles.optionTitle}>Scan Barcode/QR</Text>
             <Text style={styles.optionDescription}>
-              Scan product barcode to get instant nutrition facts
+              Scan product code for instant info
+            </Text>
+          </TouchableOpacity>
+
+          {/* OCR Text Scanner */}
+          <TouchableOpacity
+            style={styles.optionCard}
+            onPress={() => setOcrVisible(true)}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.iconCircle, { backgroundColor: '#FFF3E0' }]}>
+              <Ionicons name="document-text" size={32} color="#FF9800" />
+            </View>
+            <Text style={styles.optionTitle}>Scan Text (OCR)</Text>
+            <Text style={styles.optionDescription}>
+              Extract text from labels and menus
             </Text>
           </TouchableOpacity>
         </View>
@@ -158,11 +196,18 @@ export default function FoodRecognitionUpload() {
         </View>
       </ScrollView>
 
-      {/* Barcode Scanner Modal */}
+      {/* Barcode/QR Scanner Modal */}
       <BarcodeScannerModal
         visible={scannerVisible}
         onClose={() => setScannerVisible(false)}
         onFoodFound={handleBarcodeFound}
+      />
+
+      {/* OCR Scanner Modal */}
+      <OCRScannerModal
+        visible={ocrVisible}
+        onClose={() => setOcrVisible(false)}
+        onTextExtracted={handleTextExtracted}
       />
     </SafeAreaView>
   );

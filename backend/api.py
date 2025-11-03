@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from PIL import Image
 from fatsecret_client import call_server_api
+import pytesseract
 
 try:
     from ultralytics import YOLO
@@ -193,6 +194,26 @@ async def recognize(file: UploadFile = File(...), k: int = Query(5, ge=1, le=50)
         filipino_topk=fil_topk,   # alias for UI compatibility
         note="; ".join(note_parts) if note_parts else None,
     )
+
+@app.post("/ocr/extract")
+async def ocr_extract_text(file: UploadFile = File(...)):
+    """Extract text from image using OCR (Tesseract)."""
+    try:
+        img = pil_from_upload(file)
+        
+        # Use Tesseract OCR to extract text
+        text = pytesseract.image_to_string(img, lang='eng')
+        
+        # Clean up text
+        text = text.strip()
+        
+        return {
+            "success": True,
+            "text": text,
+            "length": len(text),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"OCR failed: {str(e)}")
 
 # ============================================================================
 # FatSecret API Endpoints

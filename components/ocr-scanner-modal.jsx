@@ -7,65 +7,110 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
-import { lookupBarcode, lookupQRCode } from '../services/fatsecret-service';
+import * as ImageManipulator from 'expo-image-manipulator';
 
-export default function BarcodeScannerModal({ visible, onClose, onFoodFound }) {
+export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
   const [permission, requestPermission] = useCameraPermissions();
-  const [scanned, setScanned] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [extractedText, setExtractedText] = useState('');
 
   useEffect(() => {
     if (visible && !permission?.granted) {
       requestPermission();
     }
     if (visible) {
-      setScanned(false);
+      setExtractedText('');
+      setScanning(false);
     }
   }, [visible]);
 
-  const handleBarCodeScanned = async ({ type, data }) => {
-    if (scanned) return;
-
-    setScanned(true);
-    setLoading(true);
-
+  const captureAndExtractText = async (camera) => {
+    if (scanning) return;
+    
+    setScanning(true);
+    
     try {
-      console.log(`Code scanned: ${data}, Type: ${type}`);
+      // Take photo
+      const photo = await camera.takePictureAsync({
+        quality: 0.8,
+        base64: false,
+      });
 
-      let result;
-
-      // Check if it's a QR code or barcode
-      if (type === 'qr' || type === 256) {
-        // 256 is QR code type
-        result = await lookupQRCode(data);
-      } else {
-        result = await lookupBarcode(data);
-      }
-
-      if (result.error) {
-        Alert.alert(
-          'Not Found',
-          'This code is not in the FatSecret database. Try another one.',
-          [{ text: 'OK', onPress: () => setScanned(false) }]
-        );
-        return;
-      }
-
-      // Pass food data to parent
-      onFoodFound(result.food);
-      onClose();
+      // For now, we'll use a mock OCR response
+      // In production, you'd send this to your backend or use a library
+      await performOCR(photo.uri);
+      
     } catch (error) {
-      console.error('Code lookup error:', error);
+      console.error('OCR error:', error);
+      Alert.alert('Error', 'Failed to extract text. Please try again.');
+      setScanning(false);
+    }
+  };
+
+  const performOCR = async (imageUri) => {
+    try {
+      // Option 1: Send to your AWS backend
+      const formData = new FormData();
+      formData.append('file', {
+        uri: imageUri,
+        type: 'image/jpeg',
+        name: 'ocr-image.jpg',
+      });
+
+      const response = await fetch(
+        `${process.env.EXPO_PUBLIC_FOOD_API_URL}/ocr/extract`,
+        {
+          method: 'POST',
+          body: formData,
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('OCR extraction failed');
+      }
+
+      const result = await response.json();
+      const text = result.text || '';
+
+      setExtractedText(text);
+      setScanning(false);
+
+      if (text.trim()) {
+        Alert.alert(
+          'Text Extracted',
+          text,
+          [
+            { text: 'Retry', onPress: () => setExtractedText('') },
+            {
+              text: 'Use Text',
+              onPress: () => {
+                onTextExtracted(text);
+                onClose();
+              },
+            },
+          ]
+        );
+      } else {
+        Alert.alert(
+          'No Text Found',
+          'No text was detected in the image. Try again with better lighting.',
+          [{ text: 'OK', onPress: () => setScanning(false) }]
+        );
+      }
+    } catch (error) {
+      console.error('OCR processing error:', error);
       Alert.alert(
         'Error',
-        'Failed to lookup code. Please try again.',
-        [{ text: 'OK', onPress: () => setScanned(false) }]
+        'Failed to process text. Please try again.',
+        [{ text: 'OK', onPress: () => setScanning(false) }]
       );
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -81,7 +126,7 @@ export default function BarcodeScannerModal({ visible, onClose, onFoodFound }) {
             <Ionicons name="camera-off" size={64} color="#ff6b6b" />
             <Text style={styles.permissionTitle}>Camera Permission Required</Text>
             <Text style={styles.permissionText}>
-              Please allow camera access to scan barcodes
+              Please allow camera access to scan text
             </Text>
             <TouchableOpacity style={styles.closeButton} onPress={onClose}>
               <Text style={styles.closeButtonText}>Close</Text>
@@ -100,30 +145,16 @@ export default function BarcodeScannerModal({ visible, onClose, onFoodFound }) {
           <TouchableOpacity onPress={onClose} style={styles.closeIconButton}>
             <Ionicons name="close" size={28} color="#fff" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Scan Barcode</Text>
+          <Text style={styles.headerTitle}>Scan Text (OCR)</Text>
           <View style={{ width: 28 }} />
         </View>
 
         {/* Camera */}
-        <View style={styles.scannerContainer}>
+        <View style={styles.cameraContainer}>
           <CameraView
+            ref={(ref) => (cameraRef.current = ref)}
             style={StyleSheet.absoluteFillObject}
             facing="back"
-            onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
-            barcodeScannerSettings={{
-              barcodeTypes: [
-                'qr',
-                'ean13',
-                'ean8',
-                'upc_a',
-                'upc_e',
-                'code39',
-                'code128',
-                'code93',
-                'codabar',
-                'itf14',
-              ],
-            }}
           />
 
           {/* Overlay */}
@@ -132,7 +163,6 @@ export default function BarcodeScannerModal({ visible, onClose, onFoodFound }) {
             <View style={styles.middleContainer}>
               <View style={styles.unfocusedContainer} />
               <View style={styles.focusedContainer}>
-                {/* Corner brackets */}
                 <View style={[styles.corner, styles.topLeft]} />
                 <View style={[styles.corner, styles.topRight]} />
                 <View style={[styles.corner, styles.bottomLeft]} />
@@ -145,30 +175,57 @@ export default function BarcodeScannerModal({ visible, onClose, onFoodFound }) {
 
           {/* Instructions */}
           <View style={styles.instructionsContainer}>
-            <Ionicons name="barcode-outline" size={48} color="#fff" />
+            <Ionicons name="document-text-outline" size={48} color="#fff" />
             <Text style={styles.instructionsText}>
-              {loading ? 'Looking up barcode...' : 'Align barcode within frame'}
+              {scanning ? 'Extracting text...' : 'Align text within frame and tap capture'}
             </Text>
-            {loading && <ActivityIndicator size="large" color="#fff" style={{ marginTop: 10 }} />}
+            {scanning && <ActivityIndicator size="large" color="#fff" style={{ marginTop: 10 }} />}
           </View>
 
-          {/* Rescan button */}
-          {scanned && !loading && (
-            <View style={styles.rescanContainer}>
+          {/* Capture Button */}
+          {!scanning && (
+            <View style={styles.captureContainer}>
               <TouchableOpacity
-                style={styles.rescanButton}
-                onPress={() => setScanned(false)}
+                style={styles.captureButton}
+                onPress={() => captureAndExtractText(cameraRef.current)}
               >
-                <Ionicons name="refresh" size={24} color="#fff" />
-                <Text style={styles.rescanText}>Tap to Scan Again</Text>
+                <Ionicons name="camera" size={32} color="#fff" />
               </TouchableOpacity>
             </View>
           )}
         </View>
+
+        {/* Extracted Text Display */}
+        {extractedText && (
+          <View style={styles.textDisplay}>
+            <ScrollView style={styles.textScroll}>
+              <Text style={styles.textContent}>{extractedText}</Text>
+            </ScrollView>
+            <View style={styles.textActions}>
+              <TouchableOpacity
+                style={[styles.textButton, styles.retryButton]}
+                onPress={() => setExtractedText('')}
+              >
+                <Text style={styles.textButtonText}>Retry</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.textButton, styles.useButton]}
+                onPress={() => {
+                  onTextExtracted(extractedText);
+                  onClose();
+                }}
+              >
+                <Text style={styles.textButtonText}>Use Text</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
       </View>
     </Modal>
   );
 }
+
+const cameraRef = { current: null };
 
 const styles = StyleSheet.create({
   container: {
@@ -192,7 +249,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#fff',
   },
-  scannerContainer: {
+  cameraContainer: {
     flex: 1,
   },
   overlay: {
@@ -207,15 +264,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   focusedContainer: {
-    width: 250,
-    height: 250,
+    width: 300,
+    height: 200,
     position: 'relative',
   },
   corner: {
     position: 'absolute',
     width: 40,
     height: 40,
-    borderColor: '#4CAF50',
+    borderColor: '#FF9800',
     borderWidth: 4,
   },
   topLeft: {
@@ -244,7 +301,7 @@ const styles = StyleSheet.create({
   },
   instructionsContainer: {
     position: 'absolute',
-    bottom: 100,
+    bottom: 150,
     left: 0,
     right: 0,
     alignItems: 'center',
@@ -257,26 +314,63 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontWeight: '500',
   },
-  rescanContainer: {
+  captureContainer: {
     position: 'absolute',
     bottom: 40,
     left: 0,
     right: 0,
     alignItems: 'center',
   },
-  rescanButton: {
-    flexDirection: 'row',
+  captureButton: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: '#FF9800',
     alignItems: 'center',
-    backgroundColor: 'rgba(76, 175, 80, 0.9)',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 25,
+    justifyContent: 'center',
+    borderWidth: 4,
+    borderColor: '#fff',
   },
-  rescanText: {
+  textDisplay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '50%',
+    padding: 16,
+  },
+  textScroll: {
+    maxHeight: 200,
+  },
+  textContent: {
+    fontSize: 14,
+    color: '#333',
+    lineHeight: 20,
+  },
+  textActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 16,
+  },
+  textButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  retryButton: {
+    backgroundColor: '#666',
+  },
+  useButton: {
+    backgroundColor: '#FF9800',
+  },
+  textButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
-    marginLeft: 8,
   },
   permissionContainer: {
     flex: 1,
@@ -304,7 +398,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   closeButton: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: '#FF9800',
     paddingHorizontal: 32,
     paddingVertical: 12,
     borderRadius: 8,
