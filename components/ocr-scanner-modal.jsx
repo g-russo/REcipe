@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,52 +8,55 @@ import {
   Alert,
   ActivityIndicator,
   ScrollView,
+  Dimensions,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
-import * as ImageManipulator from 'expo-image-manipulator';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const FRAME_WIDTH = SCREEN_WIDTH * 0.85;
+const FRAME_HEIGHT = 200;
 
 export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanning, setScanning] = useState(false);
-  const [extractedText, setExtractedText] = useState('');
+  const [extractedLines, setExtractedLines] = useState([]);
+  const [selectedLines, setSelectedLines] = useState(new Set());
+  const cameraRef = useRef(null);
 
   useEffect(() => {
     if (visible && !permission?.granted) {
       requestPermission();
     }
     if (visible) {
-      setExtractedText('');
+      setExtractedLines([]);
+      setSelectedLines(new Set());
       setScanning(false);
     }
   }, [visible]);
 
-  const captureAndExtractText = async (camera) => {
-    if (scanning) return;
+  const captureAndExtractText = async () => {
+    if (scanning || !cameraRef.current) return;
     
     setScanning(true);
     
     try {
-      // Take photo
-      const photo = await camera.takePictureAsync({
+      const photo = await cameraRef.current.takePictureAsync({
         quality: 0.8,
         base64: false,
       });
 
-      // For now, we'll use a mock OCR response
-      // In production, you'd send this to your backend or use a library
       await performOCR(photo.uri);
       
     } catch (error) {
       console.error('OCR error:', error);
-      Alert.alert('Error', 'Failed to extract text. Please try again.');
+      Alert.alert('Error', 'Failed to capture image. Please try again.');
       setScanning(false);
     }
   };
 
   const performOCR = async (imageUri) => {
     try {
-      // Option 1: Send to your AWS backend
       const formData = new FormData();
       formData.append('file', {
         uri: imageUri,
@@ -79,29 +82,20 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
       const result = await response.json();
       const text = result.text || '';
 
-      setExtractedText(text);
+      // Split text into lines and filter empty lines
+      const lines = text
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+
+      setExtractedLines(lines);
       setScanning(false);
 
-      if (text.trim()) {
-        Alert.alert(
-          'Text Extracted',
-          text,
-          [
-            { text: 'Retry', onPress: () => setExtractedText('') },
-            {
-              text: 'Use Text',
-              onPress: () => {
-                onTextExtracted(text);
-                onClose();
-              },
-            },
-          ]
-        );
-      } else {
+      if (lines.length === 0) {
         Alert.alert(
           'No Text Found',
-          'No text was detected in the image. Try again with better lighting.',
-          [{ text: 'OK', onPress: () => setScanning(false) }]
+          'No text was detected in the image. Try again with better lighting or clearer text.',
+          [{ text: 'OK' }]
         );
       }
     } catch (error) {
@@ -109,9 +103,43 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
       Alert.alert(
         'Error',
         'Failed to process text. Please try again.',
-        [{ text: 'OK', onPress: () => setScanning(false) }]
+        [{ text: 'OK' }]
       );
+      setScanning(false);
     }
+  };
+
+  const toggleLine = (index) => {
+    const newSelected = new Set(selectedLines);
+    if (newSelected.has(index)) {
+      newSelected.delete(index);
+    } else {
+      newSelected.add(index);
+    }
+    setSelectedLines(newSelected);
+  };
+
+  const selectAll = () => {
+    setSelectedLines(new Set(extractedLines.map((_, i) => i)));
+  };
+
+  const deselectAll = () => {
+    setSelectedLines(new Set());
+  };
+
+  const useSelectedText = () => {
+    if (selectedLines.size === 0) {
+      Alert.alert('No Text Selected', 'Please select at least one line of text.');
+      return;
+    }
+
+    const selectedText = Array.from(selectedLines)
+      .sort((a, b) => a - b)
+      .map(i => extractedLines[i])
+      .join('\n');
+
+    onTextExtracted(selectedText);
+    onClose();
   };
 
   if (!permission) {
@@ -149,73 +177,132 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
           <View style={{ width: 28 }} />
         </View>
 
-        {/* Camera */}
-        <View style={styles.cameraContainer}>
-          <CameraView
-            ref={(ref) => (cameraRef.current = ref)}
-            style={StyleSheet.absoluteFillObject}
-            facing="back"
-          />
+        {/* Camera or Results */}
+        {extractedLines.length === 0 ? (
+          <View style={styles.cameraContainer}>
+            <CameraView
+              ref={cameraRef}
+              style={StyleSheet.absoluteFillObject}
+              facing="back"
+            />
 
-          {/* Overlay */}
-          <View style={styles.overlay}>
-            <View style={styles.unfocusedContainer} />
-            <View style={styles.middleContainer}>
-              <View style={styles.unfocusedContainer} />
-              <View style={styles.focusedContainer}>
-                <View style={[styles.corner, styles.topLeft]} />
-                <View style={[styles.corner, styles.topRight]} />
-                <View style={[styles.corner, styles.bottomLeft]} />
-                <View style={[styles.corner, styles.bottomRight]} />
+            {/* Overlay - only focus area visible */}
+            <View style={styles.overlay}>
+              <View style={styles.unfocusedTop} />
+              <View style={styles.middleRow}>
+                <View style={styles.unfocusedSide} />
+                <View style={styles.focusedFrame}>
+                  <View style={[styles.corner, styles.topLeft]} />
+                  <View style={[styles.corner, styles.topRight]} />
+                  <View style={[styles.corner, styles.bottomLeft]} />
+                  <View style={[styles.corner, styles.bottomRight]} />
+                  
+                  {/* Scanning line animation */}
+                  <View style={styles.scanLine} />
+                </View>
+                <View style={styles.unfocusedSide} />
               </View>
-              <View style={styles.unfocusedContainer} />
+              <View style={styles.unfocusedBottom} />
             </View>
-            <View style={styles.unfocusedContainer} />
-          </View>
 
-          {/* Instructions */}
-          <View style={styles.instructionsContainer}>
-            <Ionicons name="document-text-outline" size={48} color="#fff" />
-            <Text style={styles.instructionsText}>
-              {scanning ? 'Extracting text...' : 'Align text within frame and tap capture'}
-            </Text>
-            {scanning && <ActivityIndicator size="large" color="#fff" style={{ marginTop: 10 }} />}
-          </View>
-
-          {/* Capture Button */}
-          {!scanning && (
-            <View style={styles.captureContainer}>
-              <TouchableOpacity
-                style={styles.captureButton}
-                onPress={() => captureAndExtractText(cameraRef.current)}
-              >
-                <Ionicons name="camera" size={32} color="#fff" />
-              </TouchableOpacity>
+            {/* Instructions */}
+            <View style={styles.instructionsContainer}>
+              <Ionicons name="document-text-outline" size={48} color="#fff" />
+              <Text style={styles.instructionsText}>
+                {scanning ? 'Extracting text...' : 'Position text within the frame'}
+              </Text>
+              <Text style={styles.instructionsSubtext}>
+                Only text inside the frame will be scanned
+              </Text>
+              {scanning && <ActivityIndicator size="large" color="#fff" style={{ marginTop: 10 }} />}
             </View>
-          )}
-        </View>
 
-        {/* Extracted Text Display */}
-        {extractedText && (
-          <View style={styles.textDisplay}>
-            <ScrollView style={styles.textScroll}>
-              <Text style={styles.textContent}>{extractedText}</Text>
+            {/* Capture Button */}
+            {!scanning && (
+              <View style={styles.captureContainer}>
+                <TouchableOpacity
+                  style={styles.captureButton}
+                  onPress={captureAndExtractText}
+                >
+                  <Ionicons name="camera" size={32} color="#fff" />
+                </TouchableOpacity>
+                <Text style={styles.captureHint}>Tap to scan</Text>
+              </View>
+            )}
+          </View>
+        ) : (
+          /* Results View */
+          <View style={styles.resultsContainer}>
+            <View style={styles.resultsHeader}>
+              <Text style={styles.resultsTitle}>Select Text Lines</Text>
+              <Text style={styles.resultsSubtitle}>
+                {selectedLines.size} of {extractedLines.length} selected
+              </Text>
+              <View style={styles.selectButtons}>
+                <TouchableOpacity style={styles.selectAllButton} onPress={selectAll}>
+                  <Text style={styles.selectButtonText}>Select All</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.deselectButton} onPress={deselectAll}>
+                  <Text style={styles.selectButtonText}>Deselect All</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <ScrollView style={styles.linesScroll}>
+              {extractedLines.map((line, index) => {
+                const isSelected = selectedLines.has(index);
+                return (
+                  <TouchableOpacity
+                    key={index}
+                    style={[
+                      styles.lineItem,
+                      isSelected && styles.lineItemSelected,
+                    ]}
+                    onPress={() => toggleLine(index)}
+                  >
+                    <View style={[
+                      styles.checkbox,
+                      isSelected && styles.checkboxSelected
+                    ]}>
+                      {isSelected && (
+                        <Ionicons name="checkmark" size={18} color="#fff" />
+                      )}
+                    </View>
+                    <Text
+                      style={[
+                        styles.lineText,
+                        isSelected && styles.lineTextSelected,
+                      ]}
+                    >
+                      {line}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </ScrollView>
-            <View style={styles.textActions}>
+
+            <View style={styles.resultsActions}>
               <TouchableOpacity
-                style={[styles.textButton, styles.retryButton]}
-                onPress={() => setExtractedText('')}
-              >
-                <Text style={styles.textButtonText}>Retry</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.textButton, styles.useButton]}
+                style={[styles.actionButton, styles.retryButton]}
                 onPress={() => {
-                  onTextExtracted(extractedText);
-                  onClose();
+                  setExtractedLines([]);
+                  setSelectedLines(new Set());
                 }}
               >
-                <Text style={styles.textButtonText}>Use Text</Text>
+                <Ionicons name="camera" size={20} color="#fff" />
+                <Text style={styles.actionButtonText}>Rescan</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.actionButton,
+                  styles.useButton,
+                  selectedLines.size === 0 && styles.useButtonDisabled,
+                ]}
+                onPress={useSelectedText}
+                disabled={selectedLines.size === 0}
+              >
+                <Ionicons name="checkmark" size={20} color="#fff" />
+                <Text style={styles.actionButtonText}>Use Text</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -224,8 +311,6 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
     </Modal>
   );
 }
-
-const cameraRef = { current: null };
 
 const styles = StyleSheet.create({
   container: {
@@ -239,7 +324,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 50,
     paddingBottom: 16,
-    backgroundColor: 'rgba(0,0,0,0.8)',
+    backgroundColor: 'rgba(0,0,0,0.9)',
   },
   closeIconButton: {
     padding: 8,
@@ -254,50 +339,68 @@ const styles = StyleSheet.create({
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    justifyContent: 'space-between',
   },
-  unfocusedContainer: {
+  unfocusedTop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.7)',
   },
-  middleContainer: {
+  middleRow: {
     flexDirection: 'row',
+    height: FRAME_HEIGHT,
   },
-  focusedContainer: {
-    width: 300,
-    height: 200,
+  unfocusedSide: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+  },
+  focusedFrame: {
+    width: FRAME_WIDTH,
+    height: FRAME_HEIGHT,
     position: 'relative',
+    borderWidth: 2,
+    borderColor: '#FF9800',
+  },
+  unfocusedBottom: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
   },
   corner: {
     position: 'absolute',
-    width: 40,
-    height: 40,
+    width: 30,
+    height: 30,
     borderColor: '#FF9800',
     borderWidth: 4,
   },
   topLeft: {
-    top: 0,
-    left: 0,
+    top: -2,
+    left: -2,
     borderBottomWidth: 0,
     borderRightWidth: 0,
   },
   topRight: {
-    top: 0,
-    right: 0,
+    top: -2,
+    right: -2,
     borderBottomWidth: 0,
     borderLeftWidth: 0,
   },
   bottomLeft: {
-    bottom: 0,
-    left: 0,
+    bottom: -2,
+    left: -2,
     borderTopWidth: 0,
     borderRightWidth: 0,
   },
   bottomRight: {
-    bottom: 0,
-    right: 0,
+    bottom: -2,
+    right: -2,
     borderTopWidth: 0,
     borderLeftWidth: 0,
+  },
+  scanLine: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 2,
+    backgroundColor: '#FF9800',
+    top: '50%',
   },
   instructionsContainer: {
     position: 'absolute',
@@ -312,7 +415,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginTop: 10,
     textAlign: 'center',
-    fontWeight: '500',
+    fontWeight: '600',
+  },
+  instructionsSubtext: {
+    color: '#fff',
+    fontSize: 13,
+    marginTop: 4,
+    textAlign: 'center',
+    opacity: 0.8,
   },
   captureContainer: {
     position: 'absolute',
@@ -330,36 +440,123 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 4,
     borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
-  textDisplay: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
+  captureHint: {
+    color: '#fff',
+    fontSize: 14,
+    marginTop: 8,
+    fontWeight: '500',
+  },
+  resultsContainer: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+  },
+  resultsHeader: {
+    padding: 16,
     backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: '50%',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  resultsTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#333',
+    marginBottom: 4,
+  },
+  resultsSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 12,
+  },
+  selectButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  selectAllButton: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: '#FF9800',
+    borderRadius: 6,
+    alignItems: 'center',
+  },
+  deselectButton: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: '#666',
+    borderRadius: 6,
+    alignItems: 'center',
+  },
+  selectButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  linesScroll: {
+    flex: 1,
     padding: 16,
   },
-  textScroll: {
-    maxHeight: 200,
+  lineItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    padding: 12,
+    marginBottom: 8,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#e0e0e0',
   },
-  textContent: {
-    fontSize: 14,
+  lineItemSelected: {
+    borderColor: '#FF9800',
+    backgroundColor: '#FFF8E1',
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: '#bbb',
+    marginRight: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+  },
+  checkboxSelected: {
+    backgroundColor: '#FF9800',
+    borderColor: '#FF9800',
+  },
+  lineText: {
+    flex: 1,
+    fontSize: 15,
     color: '#333',
     lineHeight: 20,
   },
-  textActions: {
+  lineTextSelected: {
+    fontWeight: '500',
+    color: '#000',
+  },
+  resultsActions: {
     flexDirection: 'row',
     gap: 12,
-    marginTop: 16,
+    padding: 16,
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
   },
-  textButton: {
+  actionButton: {
     flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 8,
+    gap: 8,
   },
   retryButton: {
     backgroundColor: '#666',
@@ -367,7 +564,10 @@ const styles = StyleSheet.create({
   useButton: {
     backgroundColor: '#FF9800',
   },
-  textButtonText: {
+  useButtonDisabled: {
+    backgroundColor: '#ccc',
+  },
+  actionButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',

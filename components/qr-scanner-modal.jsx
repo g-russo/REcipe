@@ -10,9 +10,9 @@ import {
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
-import { lookupBarcode } from '../services/fatsecret-service';
+import { lookupQRCode } from '../services/fatsecret-service';
 
-export default function BarcodeScannerModal({ visible, onClose, onFoodFound }) {
+export default function QRScannerModal({ visible, onClose, onFoodFound }) {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -26,10 +26,10 @@ export default function BarcodeScannerModal({ visible, onClose, onFoodFound }) {
     }
   }, [visible]);
 
-  const handleBarCodeScanned = async ({ type, data }) => {
-    // Ignore QR codes (only process barcodes)
-    if (type === 'qr' || type === 256) {
-      return;
+  const handleQRScanned = async ({ type, data }) => {
+    // Only process QR codes
+    if (type !== 'qr' && type !== 256) {
+      return; // Ignore non-QR codes
     }
 
     if (scanned) return;
@@ -38,13 +38,13 @@ export default function BarcodeScannerModal({ visible, onClose, onFoodFound }) {
     setLoading(true);
 
     try {
-      console.log(`Barcode scanned: ${data}, Type: ${type}`);
-      const result = await lookupBarcode(data);
+      console.log(`QR code scanned: ${data}`);
+      const result = await lookupQRCode(data);
 
       if (result.error) {
         Alert.alert(
           'Not Found',
-          'This barcode is not in the FatSecret database. Try another one.',
+          'This QR code is not in the FatSecret database. Try another one.',
           [{ text: 'OK', onPress: () => setScanned(false) }]
         );
         return;
@@ -53,10 +53,10 @@ export default function BarcodeScannerModal({ visible, onClose, onFoodFound }) {
       onFoodFound(result.food);
       onClose();
     } catch (error) {
-      console.error('Barcode lookup error:', error);
+      console.error('QR lookup error:', error);
       Alert.alert(
         'Error',
-        'Failed to lookup barcode. Please try again.',
+        'Failed to lookup QR code. Please try again.',
         [{ text: 'OK', onPress: () => setScanned(false) }]
       );
     } finally {
@@ -76,7 +76,7 @@ export default function BarcodeScannerModal({ visible, onClose, onFoodFound }) {
             <Ionicons name="camera-off" size={64} color="#ff6b6b" />
             <Text style={styles.permissionTitle}>Camera Permission Required</Text>
             <Text style={styles.permissionText}>
-              Please allow camera access to scan barcodes
+              Please allow camera access to scan QR codes
             </Text>
             <TouchableOpacity style={styles.closeButton} onPress={onClose}>
               <Text style={styles.closeButtonText}>Close</Text>
@@ -95,32 +95,22 @@ export default function BarcodeScannerModal({ visible, onClose, onFoodFound }) {
           <TouchableOpacity onPress={onClose} style={styles.closeIconButton}>
             <Ionicons name="close" size={28} color="#fff" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Scan Barcode</Text>
+          <Text style={styles.headerTitle}>Scan QR Code</Text>
           <View style={{ width: 28 }} />
         </View>
 
         {/* Scanner */}
         <View style={styles.scannerContainer}>
           <CameraView
-            onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
+            onBarcodeScanned={scanned ? undefined : handleQRScanned}
             style={StyleSheet.absoluteFillObject}
             facing="back"
             barcodeScannerSettings={{
-              barcodeTypes: [
-                'ean13',
-                'ean8',
-                'upc_a',
-                'upc_e',
-                'code39',
-                'code128',
-                'code93',
-                'codabar',
-                'itf14',
-              ],
+              barcodeTypes: ['qr'], // Only QR codes
             }}
           />
 
-          {/* Overlay with horizontal rectangle for barcode */}
+          {/* Overlay with square frame for QR */}
           <View style={styles.overlay}>
             <View style={styles.unfocusedContainer} />
             <View style={styles.middleContainer}>
@@ -138,9 +128,9 @@ export default function BarcodeScannerModal({ visible, onClose, onFoodFound }) {
 
           {/* Instructions */}
           <View style={styles.instructionsContainer}>
-            <Ionicons name="barcode-outline" size={48} color="#fff" />
+            <Ionicons name="qr-code-outline" size={48} color="#fff" />
             <Text style={styles.instructionsText}>
-              {loading ? 'Looking up barcode...' : 'Align barcode within frame'}
+              {loading ? 'Looking up QR code...' : 'Align QR code within frame'}
             </Text>
             {loading && <ActivityIndicator size="large" color="#fff" style={{ marginTop: 10 }} />}
           </View>
@@ -200,15 +190,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   focusedContainer: {
-    width: 280,
-    height: 120,
+    width: 250,
+    height: 250,
     position: 'relative',
   },
   corner: {
     position: 'absolute',
     width: 40,
     height: 40,
-    borderColor: '#4CAF50',
+    borderColor: '#2196F3',
     borderWidth: 4,
   },
   topLeft: {
@@ -260,7 +250,7 @@ const styles = StyleSheet.create({
   rescanButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(76, 175, 80, 0.9)',
+    backgroundColor: 'rgba(33, 150, 243, 0.9)',
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 25,
@@ -297,7 +287,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   closeButton: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: '#2196F3',
     paddingHorizontal: 32,
     paddingVertical: 12,
     borderRadius: 8,
