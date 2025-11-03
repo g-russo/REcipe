@@ -16,6 +16,8 @@
     "bcryptjs": "^3.0.2",
     "expo": "~54.0.10",
     "expo-background-fetch": "~14.0.7",
+    "expo-barcode-scanner": "^13.0.1",
+    "expo-camera": "~17.0.8",
     "expo-constants": "~18.0.9",
     "expo-crypto": "~15.0.7",
     "expo-device": "~8.0.9",
@@ -40,7 +42,9 @@
     "react-native-screens": "~4.16.0",
     "react-native-svg": "^15.14.0",
     "react-native-url-polyfill": "^2.0.0",
-    "react-native-web": "^0.21.0"
+    "react-native-vision-camera": "^4.7.2",
+    "react-native-web": "^0.21.0",
+    "vision-camera-ocr": "^1.0.0"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",

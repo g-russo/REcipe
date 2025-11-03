@@ -1,19 +1,26 @@
 import { Platform } from 'react-native';
 
-const getBaseUrl = () => {
-  const fromEnv = process.env.EXPO_PUBLIC_FOOD_API_URL;
-  if (fromEnv) return fromEnv;
-  if (Platform.OS === 'android') return 'http://10.0.2.2:5001';
-  return 'http://127.0.0.1:5001';
-};
+const API_BASE_URL = process.env.EXPO_PUBLIC_FOOD_API_URL || 'http://127.0.0.1:5001';
 
-export async function classifyImageAsync(uri) {
-  const form = new FormData();
-  form.append('file', { uri, name: 'image.jpg', type: 'image/jpeg' });
+export async function recognizeFood(imageUri) {
+  const formData = new FormData();
+  formData.append('file', {
+    uri: imageUri,
+    type: 'image/jpeg',
+    name: 'food.jpg',
+  });
 
-  const base = getBaseUrl();
-  console.log('Food API URL:', base);
-  const res = await fetch(`${base}/recognize`, { method: 'POST', body: form, headers: { Accept: 'application/json' } });
-  if (!res.ok) throw new Error(`Food API error ${res.status}: ${await res.text().catch(() => '')}`);
-  return res.json();
+  const response = await fetch(`${API_BASE_URL}/recognize`, {
+    method: 'POST',
+    body: formData,
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Recognition failed: ${response.status}`);
+  }
+
+  return response.json();
 }

@@ -1,66 +1,320 @@
 import React, { useState } from 'react';
-import { View, Text, Button, Image, ActivityIndicator, Alert } from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  SafeAreaView,
+  Alert,
+  ScrollView,
+} from 'react-native';
+import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { useRouter } from 'expo-router';
-import { classifyImageAsync } from '../../services/food-recog-api';
+import BarcodeScannerModal from '../../components/barcode-scanner-modal';
+import QRScannerModal from '../../components/qr-scanner-modal';
+import OCRScannerModal from '../../components/ocr-scanner-modal';
 
-export default function UploadScreen() {
-  const router = useRouter();
-  const [image, setImage] = useState(null);
-  const [busy, setBusy] = useState(false);
+export default function FoodRecognitionUpload() {
+  const [barcodeScannerVisible, setBarcodeScannerVisible] = useState(false);
+  const [qrScannerVisible, setQrScannerVisible] = useState(false);
+  const [ocrVisible, setOcrVisible] = useState(false);
 
-  const pickImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  const pickImage = async (useCamera = false) => {
+    const permissionMethod = useCamera
+      ? ImagePicker.requestCameraPermissionsAsync
+      : ImagePicker.requestMediaLibraryPermissionsAsync;
+
+    const { status } = await permissionMethod();
+
     if (status !== 'granted') {
-      Alert.alert('Permission required', 'Please allow photo library access.');
+      Alert.alert(
+        'Permission Required',
+        `Please allow ${useCamera ? 'camera' : 'photo library'} access to continue.`
+      );
       return;
     }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: false,
-      quality: 0.9,
-    });
-    if (!result.canceled) {
-      setImage(result.assets[0]);
-    }
-  };
 
-  const takePhoto = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission required', 'Please allow camera access.');
-      return;
-    }
-    const result = await ImagePicker.launchCameraAsync({ quality: 0.9 });
-    if (!result.canceled) {
-      setImage(result.assets[0]);
-    }
-  };
+    const result = useCamera
+      ? await ImagePicker.launchCameraAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true,
+          aspect: [4, 3],
+          quality: 0.8,
+        })
+      : await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true,
+          aspect: [4, 3],
+          quality: 0.8,
+        });
 
-  const analyze = async () => {
-    if (!image) return;
-    setBusy(true);
-    try {
-      const data = await classifyImageAsync(image.uri);
+    if (!result.canceled && result.assets[0]) {
       router.push({
         pathname: '/food-recognition/result',
-        params: { data: JSON.stringify(data), uri: image.uri },
+        params: { uri: result.assets[0].uri },
       });
-    } catch (e) {
-      Alert.alert('Analysis failed', e.message);
-    } finally {
-      setBusy(false);
     }
+  };
+
+  const handleFoodFound = (food) => {
+    console.log('Food found:', food);
+    
+    Alert.alert(
+      'Food Found!',
+      `${food.food_name}\n\n${food.food_description || 'No description available'}`,
+      [
+        {
+          text: 'Close',
+          style: 'cancel',
+          onPress: () => router.back(),
+        },
+        {
+          text: 'View Details',
+          onPress: () => {
+            // TODO: Navigate to food detail screen
+            router.back();
+          },
+        },
+      ]
+    );
+  };
+
+  const handleTextExtracted = (text) => {
+    console.log('Text extracted:', text);
+    
+    Alert.alert(
+      'Text Extracted',
+      `"${text}"\n\nSearch for this food?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Search',
+          onPress: () => {
+            router.push({
+              pathname: '/(tabs)/recipe-search',
+              params: { query: text },
+            });
+          },
+        },
+      ]
+    );
   };
 
   return (
-    <View style={{ flex: 1, padding: 16, gap: 12, justifyContent: 'center' }}>
-      <Text style={{ fontSize: 22, fontWeight: '600', textAlign: 'center' }}>Food Recognition</Text>
-      {image && <Image source={{ uri: image.uri }} style={{ width: '100%', height: 240, borderRadius: 8 }} />}
-      <Button title="Pick from gallery" onPress={pickImage} />
-      <Button title="Take a photo" onPress={takePhoto} />
-      <Button title="Analyze" onPress={analyze} disabled={!image || busy} />
-      {busy && <ActivityIndicator size="large" />}
-    </View>
+    <SafeAreaView style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={24} color="#333" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Add Food</Text>
+        <View style={{ width: 24 }} />
+      </View>
+
+      <ScrollView contentContainerStyle={styles.content}>
+        {/* Title */}
+        <View style={styles.titleContainer}>
+          <Text style={styles.title}>How would you like to add food?</Text>
+          <Text style={styles.subtitle}>
+            Choose a method to identify your food and get nutrition information
+          </Text>
+        </View>
+
+        {/* Options */}
+        <View style={styles.optionsContainer}>
+          {/* Take Photo */}
+          <TouchableOpacity
+            style={styles.optionCard}
+            onPress={() => pickImage(true)}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.iconCircle, { backgroundColor: '#E3F2FD' }]}>
+              <Ionicons name="camera" size={32} color="#2196F3" />
+            </View>
+            <Text style={styles.optionTitle}>Take Photo</Text>
+            <Text style={styles.optionDescription}>
+              Capture food and recognize with AI
+            </Text>
+          </TouchableOpacity>
+
+          {/* Upload from Gallery */}
+          <TouchableOpacity
+            style={styles.optionCard}
+            onPress={() => pickImage(false)}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.iconCircle, { backgroundColor: '#F3E5F5' }]}>
+              <Ionicons name="images" size={32} color="#9C27B0" />
+            </View>
+            <Text style={styles.optionTitle}>Choose from Gallery</Text>
+            <Text style={styles.optionDescription}>
+              Select photo to analyze with AI
+            </Text>
+          </TouchableOpacity>
+
+          {/* Scan Barcode */}
+          <TouchableOpacity
+            style={styles.optionCard}
+            onPress={() => setBarcodeScannerVisible(true)}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.iconCircle, { backgroundColor: '#E8F5E9' }]}>
+              <Ionicons name="barcode" size={32} color="#4CAF50" />
+            </View>
+            <Text style={styles.optionTitle}>Scan Barcode</Text>
+            <Text style={styles.optionDescription}>
+              Scan product barcode (UPC, EAN, etc.)
+            </Text>
+          </TouchableOpacity>
+
+          {/* Scan QR Code */}
+          <TouchableOpacity
+            style={styles.optionCard}
+            onPress={() => setQrScannerVisible(true)}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.iconCircle, { backgroundColor: '#E3F2FD' }]}>
+              <Ionicons name="qr-code" size={32} color="#2196F3" />
+            </View>
+            <Text style={styles.optionTitle}>Scan QR Code</Text>
+            <Text style={styles.optionDescription}>
+              Scan food product QR code
+            </Text>
+          </TouchableOpacity>
+
+          {/* OCR Text Scanner */}
+          <TouchableOpacity
+            style={styles.optionCard}
+            onPress={() => setOcrVisible(true)}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.iconCircle, { backgroundColor: '#FFF3E0' }]}>
+              <Ionicons name="document-text" size={32} color="#FF9800" />
+            </View>
+            <Text style={styles.optionTitle}>Scan Text (OCR)</Text>
+            <Text style={styles.optionDescription}>
+              Extract text from labels and menus
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Info */}
+        <View style={styles.infoContainer}>
+          <Ionicons name="information-circle-outline" size={20} color="#666" />
+          <Text style={styles.infoText}>
+            All methods provide detailed nutrition information
+          </Text>
+        </View>
+      </ScrollView>
+
+      {/* Modals */}
+      <BarcodeScannerModal
+        visible={barcodeScannerVisible}
+        onClose={() => setBarcodeScannerVisible(false)}
+        onFoodFound={handleFoodFound}
+      />
+
+      <QRScannerModal
+        visible={qrScannerVisible}
+        onClose={() => setQrScannerVisible(false)}
+        onFoodFound={handleFoodFound}
+      />
+
+      <OCRScannerModal
+        visible={ocrVisible}
+        onClose={() => setOcrVisible(false)}
+        onTextExtracted={handleTextExtracted}
+      />
+    </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f8f9fa',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  backButton: {
+    padding: 8,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+  },
+  content: {
+    padding: 20,
+  },
+  titleContainer: {
+    marginBottom: 32,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#333',
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: '#666',
+    lineHeight: 20,
+  },
+  optionsContainer: {
+    gap: 16,
+  },
+  optionCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  iconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  optionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  optionDescription: {
+    fontSize: 14,
+    color: '#666',
+    lineHeight: 20,
+  },
+  infoContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#fff3cd',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 24,
+    gap: 12,
+  },
+  infoText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#856404',
+    lineHeight: 18,
+  },
+});
