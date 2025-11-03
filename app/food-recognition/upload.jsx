@@ -12,10 +12,12 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import BarcodeScannerModal from '../../components/barcode-scanner-modal';
+import QRScannerModal from '../../components/qr-scanner-modal';
 import OCRScannerModal from '../../components/ocr-scanner-modal';
 
 export default function FoodRecognitionUpload() {
-  const [scannerVisible, setScannerVisible] = useState(false);
+  const [barcodeScannerVisible, setBarcodeScannerVisible] = useState(false);
+  const [qrScannerVisible, setQrScannerVisible] = useState(false);
   const [ocrVisible, setOcrVisible] = useState(false);
 
   const pickImage = async (useCamera = false) => {
@@ -55,7 +57,7 @@ export default function FoodRecognitionUpload() {
     }
   };
 
-  const handleBarcodeFound = (food) => {
+  const handleFoodFound = (food) => {
     console.log('Food found:', food);
     
     Alert.alert(
@@ -65,16 +67,13 @@ export default function FoodRecognitionUpload() {
         {
           text: 'Close',
           style: 'cancel',
-          onPress: () => {
-            setScannerVisible(false);
-            router.back();
-          },
+          onPress: () => router.back(),
         },
         {
-          text: 'Scan Another',
+          text: 'View Details',
           onPress: () => {
-            setScannerVisible(false);
-            setTimeout(() => setScannerVisible(true), 300);
+            // TODO: Navigate to food detail screen
+            router.back();
           },
         },
       ]
@@ -84,16 +83,14 @@ export default function FoodRecognitionUpload() {
   const handleTextExtracted = (text) => {
     console.log('Text extracted:', text);
     
-    // Search FatSecret with extracted text
     Alert.alert(
       'Text Extracted',
-      `Extracted text: "${text}"\n\nWould you like to search for this food?`,
+      `"${text}"\n\nSearch for this food?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Search',
           onPress: () => {
-            // Navigate to recipe search with the text
             router.push({
               pathname: '/(tabs)/recipe-search',
               params: { query: text },
@@ -124,7 +121,7 @@ export default function FoodRecognitionUpload() {
           </Text>
         </View>
 
-        {/* Options Grid */}
+        {/* Options */}
         <View style={styles.optionsContainer}>
           {/* Take Photo */}
           <TouchableOpacity
@@ -156,18 +153,33 @@ export default function FoodRecognitionUpload() {
             </Text>
           </TouchableOpacity>
 
-          {/* Scan Barcode/QR */}
+          {/* Scan Barcode */}
           <TouchableOpacity
             style={styles.optionCard}
-            onPress={() => setScannerVisible(true)}
+            onPress={() => setBarcodeScannerVisible(true)}
             activeOpacity={0.7}
           >
             <View style={[styles.iconCircle, { backgroundColor: '#E8F5E9' }]}>
               <Ionicons name="barcode" size={32} color="#4CAF50" />
             </View>
-            <Text style={styles.optionTitle}>Scan Barcode/QR</Text>
+            <Text style={styles.optionTitle}>Scan Barcode</Text>
             <Text style={styles.optionDescription}>
-              Scan product code for instant info
+              Scan product barcode (UPC, EAN, etc.)
+            </Text>
+          </TouchableOpacity>
+
+          {/* Scan QR Code */}
+          <TouchableOpacity
+            style={styles.optionCard}
+            onPress={() => setQrScannerVisible(true)}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.iconCircle, { backgroundColor: '#E3F2FD' }]}>
+              <Ionicons name="qr-code" size={32} color="#2196F3" />
+            </View>
+            <Text style={styles.optionTitle}>Scan QR Code</Text>
+            <Text style={styles.optionDescription}>
+              Scan food product QR code
             </Text>
           </TouchableOpacity>
 
@@ -191,19 +203,24 @@ export default function FoodRecognitionUpload() {
         <View style={styles.infoContainer}>
           <Ionicons name="information-circle-outline" size={20} color="#666" />
           <Text style={styles.infoText}>
-            All methods provide detailed nutrition information and ingredient lists
+            All methods provide detailed nutrition information
           </Text>
         </View>
       </ScrollView>
 
-      {/* Barcode/QR Scanner Modal */}
+      {/* Modals */}
       <BarcodeScannerModal
-        visible={scannerVisible}
-        onClose={() => setScannerVisible(false)}
-        onFoodFound={handleBarcodeFound}
+        visible={barcodeScannerVisible}
+        onClose={() => setBarcodeScannerVisible(false)}
+        onFoodFound={handleFoodFound}
       />
 
-      {/* OCR Scanner Modal */}
+      <QRScannerModal
+        visible={qrScannerVisible}
+        onClose={() => setQrScannerVisible(false)}
+        onFoodFound={handleFoodFound}
+      />
+
       <OCRScannerModal
         visible={ocrVisible}
         onClose={() => setOcrVisible(false)}
