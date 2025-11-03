@@ -47,7 +47,8 @@
           "defaultChannel": "default"
         }
       ],
-      "expo-barcode-scanner"
+      "expo-barcode-scanner",
+      "react-native-vision-camera"
     ],
     "extra": {
       "router": {},
