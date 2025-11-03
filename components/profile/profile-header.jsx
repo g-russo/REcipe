@@ -14,15 +14,15 @@ export default function ProfileHeader({ profileData }) {
       </View>
       
       <View style={styles.profileInfo}>
-        <Text style={styles.profileName}>{profileData.name}</Text>
-        <View style={styles.emailContainer}>
-          <Text style={styles.profileEmail}>{profileData.email}</Text>
+        <View style={styles.nameContainer}>
+          <Text style={styles.profileName}>{profileData.name}</Text>
           {profileData.verified && (
             <View style={styles.verifiedBadge}>
               <Ionicons name="checkmark" size={12} color="#fff" />
             </View>
           )}
         </View>
+        <Text style={styles.profileEmail}>{profileData.email}</Text>
       </View>
     </View>
   );
@@ -53,11 +53,16 @@ const styles = StyleSheet.create({
   profileInfo: {
     alignItems: 'center',
   },
+  nameContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
   profileName: {
     fontSize: 20,
     fontWeight: '600',
     color: '#333',
-    marginBottom: 4,
+    marginRight: 6,
   },
   emailContainer: {
     flexDirection: 'row',

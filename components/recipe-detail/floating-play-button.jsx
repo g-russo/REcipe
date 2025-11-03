@@ -2,7 +2,11 @@ import React, { useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, Animated, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-export default function FloatingPlayButton({ onStartRecipe, onScheduleRecipe }) {
+export default function FloatingPlayButton({ 
+  onStartRecipe, 
+  onScheduleRecipe,
+  hasMissingIngredients = false 
+}) {
   const [isExpanded, setIsExpanded] = useState(false);
   
   const playButtonScale = useRef(new Animated.Value(1)).current;
@@ -88,7 +92,12 @@ export default function FloatingPlayButton({ onStartRecipe, onScheduleRecipe }) 
             <View style={styles.menuIconContainer}>
               <Ionicons name="play-circle" size={24} color="#fff" />
             </View>
-            <Text style={styles.menuButtonText}>Start Recipe</Text>
+            <View style={styles.menuTextContainer}>
+              <Text style={styles.menuButtonText}>Start Recipe</Text>
+              {hasMissingIngredients && (
+                <Text style={styles.warningText}>Missing ingredients</Text>
+              )}
+            </View>
           </TouchableOpacity>
 
           <TouchableOpacity 
@@ -168,9 +177,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 12,
   },
+  menuTextContainer: {
+    flex: 1,
+  },
   menuButtonText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#6FA36D',
+  },
+  warningText: {
+    fontSize: 12,
+    color: '#FF9800',
+    marginTop: 2,
   },
 });

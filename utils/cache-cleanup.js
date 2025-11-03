@@ -76,17 +76,49 @@ export const getStorageInfo = async () => {
     let totalSize = 0;
     const keyDetails = [];
     
-    for (const key of allKeys) {
-      const value = await AsyncStorage.getItem(key);
-      const size = value ? new Blob([value]).size : 0;
-      totalSize += size;
+    // Process keys in batches to avoid CursorWindow overflow
+    const batchSize = 10;
+    for (let i = 0; i < allKeys.length; i += batchSize) {
+      const batch = allKeys.slice(i, i + batchSize);
       
-      keyDetails.push({
-        key,
-        size,
-        sizeKB: (size / 1024).toFixed(2),
-        preview: value ? value.substring(0, 100) : ''
-      });
+      for (const key of batch) {
+        try {
+          const value = await AsyncStorage.getItem(key);
+          
+          // Skip very large values that might cause CursorWindow errors
+          if (!value) {
+            keyDetails.push({
+              key,
+              size: 0,
+              sizeKB: '0.00',
+              preview: '',
+              error: false
+            });
+            continue;
+          }
+          
+          // Estimate size without creating Blob (Android-specific issue)
+          const size = value.length * 2; // Approximate size in bytes (UTF-16)
+          totalSize += size;
+          
+          keyDetails.push({
+            key,
+            size,
+            sizeKB: (size / 1024).toFixed(2),
+            preview: value.substring(0, 50), // Reduced preview size
+            error: false
+          });
+        } catch (keyError) {
+          console.warn(`⚠️ Skipping key ${key} due to size:`, keyError.message);
+          keyDetails.push({
+            key,
+            size: 0,
+            sizeKB: 'Too large',
+            preview: 'Error: Row too large',
+            error: true
+          });
+        }
+      }
     }
     
     return {
@@ -98,7 +130,15 @@ export const getStorageInfo = async () => {
     };
   } catch (error) {
     console.error('❌ Failed to get storage info:', error);
-    return null;
+    // Return partial info instead of null
+    return {
+      totalKeys: 0,
+      totalSize: 0,
+      totalSizeKB: '0.00',
+      totalSizeMB: '0.00',
+      keys: [],
+      error: error.message
+    };
   }
 };
 

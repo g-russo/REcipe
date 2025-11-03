@@ -26,11 +26,13 @@ import IngredientsTab from '../components/recipe-detail/ingredients-tab';
 import InstructionsTab from '../components/recipe-detail/instructions-tab';
 import SimilarRecipes from '../components/recipe-detail/similar-recipes';
 import FloatingPlayButton from '../components/recipe-detail/floating-play-button';
+import { useIngredientSubstitution } from '../hooks/use-ingredient-substitution';
+import IngredientSubstitutionModal from '../components/substitution/ingredient-substitution-modal';
 
 const RecipeDetail = () => {
   const router = useRouter();
   const { recipeData } = useLocalSearchParams();
-  const { user } = useCustomAuth();
+  const { user, customUserData } = useCustomAuth();
   
   const [recipe, setRecipe] = useState(null);
   const [similarRecipes, setSimilarRecipes] = useState([]);
@@ -43,6 +45,30 @@ const RecipeDetail = () => {
   const [isFavorite, setIsFavorite] = useState(false);
   const [loadingSimilar, setLoadingSimilar] = useState(false);
   const [savingFavorite, setSavingFavorite] = useState(false);
+  const [displayRecipe, setDisplayRecipe] = useState(null); // Recipe to display (may have substitutions)
+  const [showSubstitutionModal, setShowSubstitutionModal] = useState(false);
+  const [substitutionMode, setSubstitutionMode] = useState('manual'); // 'manual' or 'auto'
+
+  // Use the substitution hook
+  const {
+    missingIngredients,
+    availableIngredients,
+    modifiedRecipe,
+    showMissingIngredientsAlert,
+    applySubstitutions,
+    showIngredientUsageConfirmation,
+    hasMissingIngredients,
+    hasSubstitutions,
+  } = useIngredientSubstitution(displayRecipe || recipe, customUserData?.userID);
+
+  // Update display recipe when modifications are applied
+  useEffect(() => {
+    if (modifiedRecipe) {
+      setDisplayRecipe(modifiedRecipe);
+    } else if (recipe && !displayRecipe) {
+      setDisplayRecipe(recipe);
+    }
+  }, [modifiedRecipe, recipe]);
 
   // Debug user state on component mount and when it changes
   useEffect(() => {
@@ -340,13 +366,103 @@ const RecipeDetail = () => {
   };
 
   const handleStartRecipe = () => {
-    // TODO: Implement start recipe functionality
-    Alert.alert('Start Recipe', 'Starting recipe mode...');
+    const currentRecipe = displayRecipe || recipe;
+    
+    // Ensure recipe has instructions before navigating
+    const recipeWithInstructions = {
+      ...currentRecipe,
+      instructions: instructions.length > 0 ? instructions : currentRecipe.instructions || []
+    };
+    
+    if (!currentRecipe?.ingredientLines || currentRecipe.ingredientLines.length === 0) {
+      // No ingredients, just go to cooking steps
+      router.push({
+        pathname: '/cooking-steps',
+        params: {
+          recipeData: JSON.stringify(recipeWithInstructions),
+          hasSubstitutions: hasSubstitutions,
+        }
+      });
+      return;
+    }
+
+    // Check for missing ingredients
+    if (hasMissingIngredients) {
+      // Show alert with options
+      showMissingIngredientsAlert(
+        // Option 1: "No, Proceed" - Go to cooking without substitution
+        () => {
+          router.push({
+            pathname: '/cooking-steps',
+            params: {
+              recipeData: JSON.stringify(recipeWithInstructions),
+              hasSubstitutions: hasSubstitutions,
+            }
+          });
+        },
+        // Option 2: "Yes" - Open substitution modal
+        () => {
+          setSubstitutionMode('auto');
+          setShowSubstitutionModal(true);
+        }
+      );
+    } else {
+      // All ingredients available, proceed directly
+      router.push({
+        pathname: '/cooking-steps',
+        params: {
+          recipeData: JSON.stringify(recipeWithInstructions),
+          hasSubstitutions: hasSubstitutions,
+        }
+      });
+    }
   };
 
   const handleScheduleRecipe = () => {
-    // TODO: Implement schedule recipe functionality
-    Alert.alert('Schedule Recipe', 'Opening schedule options...');
+    Alert.alert(
+      'Schedule Recipe',
+      'This feature is coming soon! You\'ll be able to schedule recipes for specific dates and times.',
+      [{ text: 'OK' }]
+    );
+  };
+
+  const handleManualSubstitute = () => {
+    const currentRecipe = displayRecipe || recipe;
+    
+    if (!currentRecipe?.ingredientLines || currentRecipe.ingredientLines.length === 0) {
+      Alert.alert('No Ingredients', 'This recipe has no ingredients to substitute');
+      return;
+    }
+
+    setSubstitutionMode('manual');
+    setShowSubstitutionModal(true);
+  };
+
+  const handleSubstitutionConfirm = (substitutions) => {
+    // Apply substitutions to create modified recipe
+    const modified = applySubstitutions(substitutions);
+    
+    // Ensure modified recipe has instructions
+    const modifiedWithInstructions = {
+      ...modified,
+      instructions: instructions.length > 0 ? instructions : modified.instructions || []
+    };
+    
+    setDisplayRecipe(modifiedWithInstructions);
+    
+    // Close modal
+    setShowSubstitutionModal(false);
+    
+    // If in auto mode (from Start Recipe), proceed to cooking
+    if (substitutionMode === 'auto') {
+      router.push({
+        pathname: '/cooking-steps',
+        params: {
+          recipeData: JSON.stringify(modifiedWithInstructions),
+          hasSubstitutions: true,
+        }
+      });
+    }
   };
 
   const getNutritionInfo = () => {
@@ -467,7 +583,11 @@ const RecipeDetail = () => {
           {/* Tab Content */}
           <View style={styles.tabContentWrapper}>
             {activeTab === 'ingredients' && (
-              <IngredientsTab ingredients={recipe.ingredientLines} />
+              <IngredientsTab 
+                ingredients={(displayRecipe || recipe).ingredientLines}
+                onSubstitutePress={handleManualSubstitute}
+                hasSubstitutions={hasSubstitutions}
+              />
             )}
 
             {activeTab === 'instructions' && (
@@ -477,6 +597,7 @@ const RecipeDetail = () => {
                 instructionsSource={instructionsSource}
                 recipeUrl={recipe?.url}
                 onOpenUrl={openRecipeUrl}
+                hasSubstitutions={hasSubstitutions}
               />
             )}
           </View>
@@ -501,6 +622,20 @@ const RecipeDetail = () => {
       <FloatingPlayButton
         onStartRecipe={handleStartRecipe}
         onScheduleRecipe={handleScheduleRecipe}
+        hasMissingIngredients={hasMissingIngredients}
+      />
+
+      {/* Ingredient Substitution Modal */}
+      <IngredientSubstitutionModal
+        visible={showSubstitutionModal}
+        onClose={() => setShowSubstitutionModal(false)}
+        onConfirm={handleSubstitutionConfirm}
+        missingIngredients={
+          substitutionMode === 'auto' 
+            ? missingIngredients // Only missing ingredients
+            : ((displayRecipe || recipe)?.ingredientLines || []) // All ingredients for manual
+        }
+        userID={customUserData?.userID}
       />
     </SafeAreaView>
     </AuthGuard>
