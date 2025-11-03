@@ -416,6 +416,7 @@ Return ONLY valid JSON:
           aiRecipeID,
           edamamRecipeURI,
           recipeSource,
+          recipeData,
           isFavorited,
           notes,
           lastViewed,

@@ -8,21 +8,23 @@ import {
   StatusBar,
   Alert,
   StyleSheet,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useCustomAuth } from '../../hooks/use-custom-auth';
 import RecipeMatcherService from '../../services/recipe-matcher-service';
+import RecipeHistoryService from '../../services/recipe-history-service';
 import AuthGuard from '../../components/auth-guard';
-import CacheClearButton from '../../components/cache-clear-button';
 import ProfileHeader from '../../components/profile/profile-header';
 import ProfileTabs from '../../components/profile/profile-tabs';
 import FavoritesTab from '../../components/profile/favorites-tab';
+import HistoryTab from '../../components/profile/history-tab';
 import EmptyState from '../../components/profile/empty-state';
 import ProfileActions from '../../components/profile/profile-actions';
 
 const Profile = () => {
-  const { user, customUserData, signOut } = useCustomAuth();
+  const { user, customUserData, signOut, fetchCustomUserData } = useCustomAuth();
   const [activeTab, setActiveTab] = useState('scheduled');
   const [profileData, setProfileData] = useState({
     name: 'User',
@@ -31,6 +33,9 @@ const Profile = () => {
   });
   const [savedRecipes, setSavedRecipes] = useState([]);
   const [loadingRecipes, setLoadingRecipes] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [recipeHistory, setRecipeHistory] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   useEffect(() => {
     // Update profile data if user information is available
@@ -62,12 +67,54 @@ const Profile = () => {
     }
   };
 
+  const loadRecipeHistory = async () => {
+    if (!customUserData?.userID) return;
+    
+    try {
+      setLoadingHistory(true);
+      const history = await RecipeHistoryService.getRecipeHistory(customUserData.userID);
+      setRecipeHistory(history);
+    } catch (error) {
+      console.error('❌ Error loading recipe history:', error);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
   const handleTabChange = (tab) => {
     setActiveTab(tab);
     
     // Load recipes when favorites tab is selected
     if (tab === 'favorites' && savedRecipes.length === 0 && !loadingRecipes) {
       loadSavedRecipes();
+    }
+    
+    // Load history when history tab is selected
+    if (tab === 'history' && recipeHistory.length === 0 && !loadingHistory) {
+      loadRecipeHistory();
+    }
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    
+    try {
+      // Refresh user data
+      if (user?.email) {
+        await fetchCustomUserData(user.email);
+      }
+      
+      // Refresh current tab content
+      if (activeTab === 'favorites') {
+        await loadSavedRecipes();
+      } else if (activeTab === 'history') {
+        await loadRecipeHistory();
+      }
+      
+    } catch (error) {
+      console.error('Error refreshing profile:', error);
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -161,6 +208,44 @@ const Profile = () => {
     );
   };
 
+  const handleHistoryRecipePress = (historyItem) => {
+    const recipe = historyItem.recipeData;
+    
+    router.push({
+      pathname: '/recipe-detail',
+      params: { recipeData: JSON.stringify(recipe) }
+    });
+  };
+
+  const handleRemoveHistory = async (historyItem) => {
+    Alert.alert(
+      'Remove from History',
+      'Are you sure you want to remove this from your cooking history?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const result = await RecipeHistoryService.deleteRecipeFromHistory(historyItem.historyID);
+              
+              if (result.success) {
+                setRecipeHistory(prev => prev.filter(h => h.historyID !== historyItem.historyID));
+                Alert.alert('Removed', 'Recipe removed from history');
+              } else {
+                Alert.alert('Error', 'Failed to remove recipe from history');
+              }
+            } catch (error) {
+              console.error('Error removing history:', error);
+              Alert.alert('Error', 'Something went wrong');
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const renderRecipeCard = ({ item }) => {
     const recipe = item.recipe;
     const isAI = item.recipeSource === 'ai';
@@ -235,10 +320,11 @@ const Profile = () => {
       case 'history':
         return (
           <View style={styles.tabContent}>
-            <EmptyState
-              icon="time-outline"
-              title="No history"
-              subtitle="Your recipe history will appear here"
+            <HistoryTab
+              history={recipeHistory}
+              loading={loadingHistory}
+              onRecipePress={handleHistoryRecipePress}
+              onRemoveHistory={handleRemoveHistory}
             />
           </View>
         );
@@ -264,7 +350,16 @@ const Profile = () => {
         <View style={styles.placeholderRight} />
       </View>
       
-      <ScrollView style={styles.scrollView}>
+      <ScrollView 
+        style={styles.scrollView}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            colors={['#4CAF50']} // Android spinner color
+          />
+        }
+      >
         {/* Profile Section */}
         <ProfileHeader profileData={profileData} />
         
@@ -273,9 +368,6 @@ const Profile = () => {
         
         {/* Tab Content */}
         {renderTabContent()}
-        
-        {/* Cache Management (Emergency Fix for Storage Full Error) */}
-        <CacheClearButton />
         
         {/* Account Actions */}
         <ProfileActions />
