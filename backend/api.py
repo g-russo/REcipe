@@ -6,6 +6,8 @@ from fastapi import FastAPI, File, UploadFile, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from PIL import Image
+from fatsecret_client import call_server_api
+import pytesseract
 
 try:
     from ultralytics import YOLO
@@ -192,3 +194,85 @@ async def recognize(file: UploadFile = File(...), k: int = Query(5, ge=1, le=50)
         filipino_topk=fil_topk,   # alias for UI compatibility
         note="; ".join(note_parts) if note_parts else None,
     )
+
+@app.post("/ocr/extract")
+async def ocr_extract_text(file: UploadFile = File(...)):
+    """Extract text from image using OCR (Tesseract)."""
+    try:
+        img = pil_from_upload(file)
+        
+        # Use Tesseract OCR to extract text
+        text = pytesseract.image_to_string(img, lang='eng')
+        
+        # Clean up text
+        text = text.strip()
+        
+        return {
+            "success": True,
+            "text": text,
+            "length": len(text),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"OCR failed: {str(e)}")
+
+# ============================================================================
+# FatSecret API Endpoints
+# ============================================================================
+
+@app.get("/fatsecret/foods/search")
+def fs_foods_search(q: str, page: int = Query(0, ge=0), max_results: int = Query(20, ge=1, le=50)):
+    """Search for foods by text query."""
+    try:
+        result = call_server_api(
+            "foods.search",
+            {"search_expression": q, "page_number": page, "max_results": max_results},
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"FatSecret search failed: {e}")
+
+@app.get("/fatsecret/food")
+def fs_food_get(food_id: int = Query(..., alias="id")):
+    """Get detailed food information by food_id."""
+    try:
+        result = call_server_api("food.get.v2", {"food_id": food_id})
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"FatSecret food.get failed: {e}")
+
+@app.get("/fatsecret/barcode")
+async def fatsecret_barcode(barcode: str = Query(...)):
+    """Lookup food by barcode."""
+    try:
+        # ✅ Use call_server_api (not fatsecret_client object)
+        result = call_server_api("food.find_id_for_barcode", {"barcode": barcode})
+        if not result or "error" in result:
+            return {"error": {"message": "Barcode not found"}}
+        
+        # If barcode found, get full food details
+        food_id = result.get("food_id", {}).get("value")
+        if food_id:
+            food_details = call_server_api("food.get.v2", {"food_id": food_id})
+            return {"food": food_details.get("food", {})}
+        
+        return {"error": {"message": "Invalid barcode response"}}
+    except Exception as e:
+        return {"error": {"message": str(e)}}
+
+@app.get("/fatsecret/qr")
+async def fatsecret_qr(qr_code: str = Query(...)):
+    """Lookup food by QR code."""
+    try:
+        result = call_server_api("food.find_id_for_qr", {"qr_code": qr_code})
+        if not result or "error" in result:
+            return {"error": {"message": "QR code not found"}}
+        
+        # If QR found, get full food details
+        food_id = result.get("food_id", {}).get("value")
+        if food_id:
+            food_details = call_server_api("food.get.v2", {"food_id": food_id})
+            return {"food": food_details.get("food", {})}
+        
+        return {"error": {"message": "Invalid QR code response"}}
+    except Exception as e:
+        return {"error": {"message": str(e)}}
