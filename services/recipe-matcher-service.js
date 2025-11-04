@@ -407,7 +407,7 @@ Return ONLY valid JSON:
         return [];
       }
 
-      // ⚡ OPTIMIZED: Select only essential fields to avoid "Row too big" error
+      // OPTIMIZED: Select only essential fields to avoid "Row too big" error
       const { data } = await supabase
         .from('tbl_favorites')
         .select(`

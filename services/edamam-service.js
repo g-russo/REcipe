@@ -436,6 +436,14 @@ class EdamamService {
       return this.parseSeriousEats(htmlContent);
     } else if (domain.includes('food.com')) {
       return this.parseFoodDotCom(htmlContent);
+    } else if (domain.includes('food52')) {
+      return this.parseFood52(htmlContent);
+    } else if (domain.includes('marthastewart')) {
+      return this.parseMarthaStewart(htmlContent);
+    } else if (domain.includes('simplyrecipes')) {
+      return this.parseSimplyRecipes(htmlContent);
+    } else if (domain.includes('foodandwine')) {
+      return this.parseFoodAndWine(htmlContent);
     } else {
       return this.parseGenericRecipe(htmlContent);
     }
@@ -966,7 +974,7 @@ class EdamamService {
             }
           } else {
             const cleaned = this.cleanInstructionText(match[1]);
-            if (cleaned.length > 10 && this.isValidInstruction(cleaned)) {
+            if (this.isValidInstruction(cleaned)) {
               instructions.push(cleaned);
             }
           }
@@ -1008,7 +1016,8 @@ class EdamamService {
         
         for (const match of matches) {
           const cleaned = this.cleanInstructionText(match[1]);
-          if (cleaned.length > 15 && this.isValidInstruction(cleaned)) {
+          // isValidInstruction already checks length, no need for redundant check
+          if (this.isValidInstruction(cleaned)) {
             instructions.push(cleaned);
           }
         }
@@ -1049,7 +1058,7 @@ class EdamamService {
         
         for (const match of matches) {
           const cleaned = this.cleanInstructionText(match[1]);
-          if (cleaned.length > 15 && this.isValidInstruction(cleaned)) {
+          if (this.isValidInstruction(cleaned)) {
             instructions.push(cleaned);
           }
         }
@@ -1079,10 +1088,24 @@ class EdamamService {
     const instructions = [];
     
     try {
+      // Try JSON-LD first (most reliable for Serious Eats)
+      const jsonLdInstructions = this.extractJsonLdInstructions(htmlContent);
+      if (jsonLdInstructions.length > 0) {
+        console.log(`✅ Extracted ${jsonLdInstructions.length} instructions from Serious Eats JSON-LD`);
+        return {
+          success: true,
+          instructions: jsonLdInstructions,
+          source: 'seriouseats-jsonld'
+        };
+      }
+      
+      // Fallback to HTML patterns (updated for current Serious Eats structure)
       const patterns = [
         /<li[^>]*class[^>]*structured-method__list-item[^>]*>(.*?)<\/li>/gi,
+        /<li[^>]*class[^>]*mntl-sc-block-html[^>]*>(.*?)<\/li>/gi,
         /<div[^>]*class[^>]*recipe-procedure-text[^>]*>(.*?)<\/div>/gi,
-        /<p[^>]*class[^>]*recipe-instruction[^>]*>(.*?)<\/p>/gi
+        /<p[^>]*class[^>]*recipe-instruction[^>]*>(.*?)<\/p>/gi,
+        /<li[^>]*class[^>]*comp[^>]*mntl-sc-block[^>]*>(.*?)<\/li>/gi
       ];
 
       for (const pattern of patterns) {
@@ -1090,7 +1113,7 @@ class EdamamService {
         
         for (const match of matches) {
           const cleaned = this.cleanInstructionText(match[1]);
-          if (cleaned.length > 15 && this.isValidInstruction(cleaned)) {
+          if (this.isValidInstruction(cleaned)) {
             instructions.push(cleaned);
           }
         }
@@ -1101,7 +1124,7 @@ class EdamamService {
       return {
         success: instructions.length > 0,
         instructions: instructions.slice(0, 20),
-        source: 'seriouseats'
+        source: 'seriouseats-html'
       };
     } catch (error) {
       console.log('❌ Serious Eats parsing failed:', error.message);
@@ -1131,7 +1154,7 @@ class EdamamService {
         
         for (const match of matches) {
           const cleaned = this.cleanInstructionText(match[1]);
-          if (cleaned.length > 15 && this.isValidInstruction(cleaned)) {
+          if (this.isValidInstruction(cleaned)) {
             instructions.push(cleaned);
           }
         }
@@ -1146,6 +1169,223 @@ class EdamamService {
       };
     } catch (error) {
       console.log('❌ Food.com parsing failed:', error.message);
+      return { success: false };
+    }
+  }
+
+  /**
+   * Parse Food52 specifically
+   * @param {string} htmlContent - HTML content
+   * @returns {Object} Parsing result
+   */
+  static parseFood52(htmlContent) {
+    console.log('🍽️ Parsing Food52...');
+    
+    const instructions = [];
+    
+    try {
+      // Try JSON-LD first (most reliable for Food52)
+      const jsonLdInstructions = this.extractJsonLdInstructions(htmlContent);
+      if (jsonLdInstructions.length > 0) {
+        console.log(`✅ Extracted ${jsonLdInstructions.length} instructions from Food52 JSON-LD`);
+        return {
+          success: true,
+          instructions: jsonLdInstructions,
+          source: 'food52-jsonld'
+        };
+      }
+      
+      // Fallback to HTML patterns
+      const patterns = [
+        /<li[^>]*class[^>]*recipe__list-step[^>]*>(.*?)<\/li>/gi,
+        /<div[^>]*class[^>]*recipe-step[^>]*>(.*?)<\/div>/gi,
+        /<p[^>]*class[^>]*step-text[^>]*>(.*?)<\/p>/gi,
+        /<div[^>]*data-test[^>]*="recipe-step"[^>]*>(.*?)<\/div>/gi
+      ];
+
+      for (const pattern of patterns) {
+        const matches = [...htmlContent.matchAll(pattern)];
+        
+        for (const match of matches) {
+          const cleaned = this.cleanInstructionText(match[1]);
+          if (this.isValidInstruction(cleaned)) {
+            instructions.push(cleaned);
+          }
+        }
+        
+        if (instructions.length > 0) break;
+      }
+      
+      return {
+        success: instructions.length > 0,
+        instructions: instructions.slice(0, 20),
+        source: 'food52-html'
+      };
+    } catch (error) {
+      console.log('❌ Food52 parsing failed:', error.message);
+      return { success: false };
+    }
+  }
+
+  /**
+   * Parse Martha Stewart specifically
+   * @param {string} htmlContent - HTML content
+   * @returns {Object} Parsing result
+   */
+  static parseMarthaStewart(htmlContent) {
+    console.log('👩‍🍳 Parsing Martha Stewart...');
+    
+    const instructions = [];
+    
+    try {
+      // Try JSON-LD first (most reliable for Martha Stewart)
+      const jsonLdInstructions = this.extractJsonLdInstructions(htmlContent);
+      if (jsonLdInstructions.length > 0) {
+        console.log(`✅ Extracted ${jsonLdInstructions.length} instructions from Martha Stewart JSON-LD`);
+        return {
+          success: true,
+          instructions: jsonLdInstructions,
+          source: 'marthastewart-jsonld'
+        };
+      }
+      
+      // Fallback to HTML patterns
+      const patterns = [
+        /<li[^>]*class[^>]*step[^>]*>(.*?)<\/li>/gi,
+        /<div[^>]*class[^>]*recipe-step[^>]*>(.*?)<\/div>/gi,
+        /<p[^>]*class[^>]*direction[^>]*>(.*?)<\/p>/gi,
+        /<li[^>]*class[^>]*direction-item[^>]*>(.*?)<\/li>/gi,
+        /<div[^>]*class[^>]*direction__text[^>]*>(.*?)<\/div>/gi
+      ];
+
+      for (const pattern of patterns) {
+        const matches = [...htmlContent.matchAll(pattern)];
+        
+        for (const match of matches) {
+          const cleaned = this.cleanInstructionText(match[1]);
+          if (this.isValidInstruction(cleaned)) {
+            instructions.push(cleaned);
+          }
+        }
+        
+        if (instructions.length > 0) break;
+      }
+      
+      return {
+        success: instructions.length > 0,
+        instructions: instructions.slice(0, 20),
+        source: 'marthastewart-html'
+      };
+    } catch (error) {
+      console.log('❌ Martha Stewart parsing failed:', error.message);
+      return { success: false };
+    }
+  }
+
+  /**
+   * Parse Simply Recipes specifically
+   * @param {string} htmlContent - HTML content
+   * @returns {Object} Parsing result
+   */
+  static parseSimplyRecipes(htmlContent) {
+    console.log('📖 Parsing Simply Recipes...');
+    
+    const instructions = [];
+    
+    try {
+      // Try JSON-LD first
+      const jsonLdInstructions = this.extractJsonLdInstructions(htmlContent);
+      if (jsonLdInstructions.length > 0) {
+        console.log(`✅ Extracted ${jsonLdInstructions.length} instructions from Simply Recipes JSON-LD`);
+        return {
+          success: true,
+          instructions: jsonLdInstructions,
+          source: 'simplyrecipes-jsonld'
+        };
+      }
+      
+      // Fallback to HTML patterns
+      const patterns = [
+        /<li[^>]*class[^>]*structured-project__steps__list-item[^>]*>(.*?)<\/li>/gi,
+        /<li[^>]*class[^>]*comp[^>]*mntl-sc-block[^>]*>(.*?)<\/li>/gi,
+        /<div[^>]*class[^>]*entry-details[^>]*instruction[^>]*>(.*?)<\/div>/gi,
+        /<p[^>]*class[^>]*direction[^>]*>(.*?)<\/p>/gi
+      ];
+
+      for (const pattern of patterns) {
+        const matches = [...htmlContent.matchAll(pattern)];
+        
+        for (const match of matches) {
+          const cleaned = this.cleanInstructionText(match[1]);
+          if (this.isValidInstruction(cleaned)) {
+            instructions.push(cleaned);
+          }
+        }
+        
+        if (instructions.length > 0) break;
+      }
+      
+      return {
+        success: instructions.length > 0,
+        instructions: instructions.slice(0, 20),
+        source: 'simplyrecipes-html'
+      };
+    } catch (error) {
+      console.log('❌ Simply Recipes parsing failed:', error.message);
+      return { success: false };
+    }
+  }
+
+  /**
+   * Parse Food & Wine specifically
+   * @param {string} htmlContent - HTML content
+   * @returns {Object} Parsing result
+   */
+  static parseFoodAndWine(htmlContent) {
+    console.log('🍷 Parsing Food & Wine...');
+    
+    const instructions = [];
+    
+    try {
+      // Try JSON-LD first
+      const jsonLdInstructions = this.extractJsonLdInstructions(htmlContent);
+      if (jsonLdInstructions.length > 0) {
+        console.log(`✅ Extracted ${jsonLdInstructions.length} instructions from Food & Wine JSON-LD`);
+        return {
+          success: true,
+          instructions: jsonLdInstructions,
+          source: 'foodandwine-jsonld'
+        };
+      }
+      
+      // Fallback to HTML patterns
+      const patterns = [
+        /<li[^>]*class[^>]*instructions__item[^>]*>(.*?)<\/li>/gi,
+        /<div[^>]*class[^>]*recipe-step[^>]*>(.*?)<\/div>/gi,
+        /<p[^>]*class[^>]*step-text[^>]*>(.*?)<\/p>/gi,
+        /<li[^>]*class[^>]*comp[^>]*mntl-sc-block[^>]*>(.*?)<\/li>/gi
+      ];
+
+      for (const pattern of patterns) {
+        const matches = [...htmlContent.matchAll(pattern)];
+        
+        for (const match of matches) {
+          const cleaned = this.cleanInstructionText(match[1]);
+          if (this.isValidInstruction(cleaned)) {
+            instructions.push(cleaned);
+          }
+        }
+        
+        if (instructions.length > 0) break;
+      }
+      
+      return {
+        success: instructions.length > 0,
+        instructions: instructions.slice(0, 20),
+        source: 'foodandwine-html'
+      };
+    } catch (error) {
+      console.log('❌ Food & Wine parsing failed:', error.message);
       return { success: false };
     }
   }
@@ -1199,7 +1439,7 @@ class EdamamService {
   }
 
   /**
-   * Aggressive JSON-LD extraction that tries harder
+   * Aggressive JSON-LD extraction that tries harder (with STRICT validation)
    * @param {string} htmlContent - HTML content
    * @returns {Array} Instructions
    */
@@ -1230,9 +1470,12 @@ class EdamamService {
                           item.recipe;
             
             if (recipe?.recipeInstructions) {
-              console.log(`📋 Found ${recipe.recipeInstructions.length} instructions in JSON-LD`);
+              console.log(`📋 Found ${recipe.recipeInstructions.length || 1} instructions in JSON-LD`);
+              const instructionData = Array.isArray(recipe.recipeInstructions)
+                ? recipe.recipeInstructions
+                : [recipe.recipeInstructions];
               
-              for (const instruction of recipe.recipeInstructions) {
+              for (const instruction of instructionData) {
                 let text = '';
                 
                 if (typeof instruction === 'string') {
@@ -1243,23 +1486,42 @@ class EdamamService {
                   text = instruction.name;
                 } else if (instruction['@type'] === 'HowToStep' && instruction.text) {
                   text = instruction.text;
+                } else if (instruction['@type'] === 'HowToSection') {
+                  // Handle sections with multiple steps
+                  const steps = instruction.itemListElement || [];
+                  for (const step of steps) {
+                    const stepText = step.text || step.name || '';
+                    if (stepText && stepText.length > 10) {
+                      const cleaned = this.cleanInstructionText(stepText);
+                      // STRICT validation
+                      if (this.isValidInstruction(cleaned)) {
+                        instructions.push(cleaned);
+                      }
+                    }
+                  }
+                  continue;
                 }
                 
                 if (text && text.length > 5) {
                   const cleaned = this.cleanInstructionText(text);
+                  // STRICT validation - must be actual cooking instruction
                   if (cleaned.length > 10 && this.isValidInstruction(cleaned)) {
                     instructions.push(cleaned);
+                    console.log(`✅ Valid instruction: ${cleaned.substring(0, 60)}...`);
+                  } else {
+                    console.log(`🚫 Rejected: ${cleaned.substring(0, 60)}...`);
                   }
                 }
               }
               
               if (instructions.length > 0) {
-                return instructions.slice(0, 20);
+                console.log(`✅ Aggressive JSON-LD: ${instructions.length} validated instructions`);
+                return instructions.slice(0, 25);
               }
             }
           }
         } catch (e) {
-          console.log('JSON parsing failed for script, continuing...');
+          console.log('⚠️ JSON parsing failed for script, continuing...');
           continue;
         }
       }
@@ -1271,7 +1533,7 @@ class EdamamService {
   }
 
   /**
-   * Aggressive HTML pattern extraction
+   * Aggressive HTML pattern extraction (with STRICT validation)
    * @param {string} htmlContent - HTML content
    * @returns {Array} Instructions
    */
@@ -1279,31 +1541,33 @@ class EdamamService {
     const instructions = [];
     
     try {
-      // Much more comprehensive pattern list
+      // Much more comprehensive pattern list BUT with strict validation
       const patterns = [
-        // Common instruction containers
-        /<ol[^>]*class[^>]*(?:instructions|directions|method|steps|recipe-instructions)[^>]*>(.*?)<\/ol>/gi,
+        // Common instruction containers (MOST SPECIFIC FIRST)
+        /<ol[^>]*class[^>]*(?:instructions|directions|method|steps|recipe-instructions|recipe-directions)[^>]*>(.*?)<\/ol>/gi,
         /<ul[^>]*class[^>]*(?:instructions|directions|method|steps|recipe-instructions)[^>]*>(.*?)<\/ul>/gi,
         /<div[^>]*class[^>]*(?:instructions|directions|method|steps|recipe-instructions|instruction-list)[^>]*>(.*?)<\/div>/gi,
         
-        // Numbered steps
-        /<div[^>]*class[^>]*step[^>]*>(.*?)<\/div>/gi,
-        /<p[^>]*class[^>]*step[^>]*>(.*?)<\/p>/gi,
-        
-        // Generic lists that might contain instructions
-        /<ol[^>]*>(.*?)<\/ol>/gi,
+        // Numbered steps (specific classes)
+        /<div[^>]*class[^>]*(?:step|instruction-step|recipe-step)[^>]*>(.*?)<\/div>/gi,
+        /<p[^>]*class[^>]*(?:step|instruction-step|recipe-step)[^>]*>(.*?)<\/p>/gi,
         
         // Individual instruction items
-        /<li[^>]*(?:class[^>]*(?:instruction|step|direction))?[^>]*>(.*?)<\/li>/gi,
-        /<p[^>]*(?:class[^>]*(?:instruction|step|direction))?[^>]*>(.*?)<\/p>/gi
+        /<li[^>]*class[^>]*(?:instruction|step|direction)[^>]*>(.*?)<\/li>/gi
       ];
 
       for (const pattern of patterns) {
         const matches = [...htmlContent.matchAll(pattern)];
-        console.log(`🔍 Pattern found ${matches.length} matches`);
+        console.log(`🔍 Aggressive pattern found ${matches.length} matches`);
         
         for (const match of matches) {
           const content = match[1];
+          
+          // Skip sections that look like ingredient lists
+          if (/(?:ingredients?|what you need|shopping list)/i.test(content.substring(0, 100))) {
+            console.log('🚫 Skipping - looks like ingredient section');
+            continue;
+          }
           
           // Extract list items if this is a list container
           if (pattern.source.includes('<ol') || pattern.source.includes('<ul') || pattern.source.includes('<div')) {
@@ -1312,6 +1576,7 @@ class EdamamService {
             if (listItems.length > 0) {
               for (const item of listItems) {
                 const text = this.cleanInstructionText(item[1]);
+                // STRICT validation - must have action verbs, not be ingredients
                 if (text.length > 15 && text.length < 800 && this.isValidInstruction(text)) {
                   instructions.push(text);
                 }
@@ -1335,13 +1600,17 @@ class EdamamService {
           }
         }
         
-        if (instructions.length >= 3) {
-          console.log(`✅ Found ${instructions.length} instructions with current pattern`);
+        // If we found enough good instructions (at least 4), stop searching
+        if (instructions.length >= 4) {
+          console.log(`✅ Found ${instructions.length} validated instructions - stopping`);
           break;
         }
       }
       
-      return instructions.slice(0, 20);
+      // Deduplicate and limit
+      const uniqueInstructions = [...new Set(instructions)];
+      console.log(`📊 Aggressive extraction: ${uniqueInstructions.length} unique instructions`);
+      return uniqueInstructions.slice(0, 25);
       
     } catch (error) {
       console.log('HTML aggressive extraction failed:', error.message);
@@ -1442,7 +1711,7 @@ class EdamamService {
   }
 
   /**
-   * Extract instructions from JSON-LD structured data
+   * Extract instructions from JSON-LD structured data (STRICT)
    * @param {string} htmlContent - HTML content
    * @returns {Array} Instructions array
    */
@@ -1453,6 +1722,8 @@ class EdamamService {
       const jsonLdRegex = /<script[^>]*type[^>]*application\/ld\+json[^>]*>([\s\S]*?)<\/script>/gi;
       const scripts = [...htmlContent.matchAll(jsonLdRegex)];
       
+      console.log(`🔍 Found ${scripts.length} JSON-LD scripts to parse`);
+      
       for (const script of scripts) {
         try {
           const jsonContent = script[1].trim();
@@ -1461,23 +1732,65 @@ class EdamamService {
           const recipes = Array.isArray(data) ? data : [data];
           
           for (const item of recipes) {
+            // Handle different JSON-LD structures
             const recipe = item['@type'] === 'Recipe' ? item : 
                           item['@graph']?.find(g => g['@type'] === 'Recipe');
             
             if (recipe?.recipeInstructions) {
-              for (const instruction of recipe.recipeInstructions) {
-                const text = typeof instruction === 'string' ? instruction : instruction.text;
+              console.log(`📋 Found recipeInstructions in JSON-LD`);
+              const instructionData = Array.isArray(recipe.recipeInstructions) 
+                ? recipe.recipeInstructions 
+                : [recipe.recipeInstructions];
+              
+              for (const instruction of instructionData) {
+                let text = '';
+                
+                // Handle different instruction formats
+                if (typeof instruction === 'string') {
+                  text = instruction;
+                } else if (instruction.text) {
+                  text = instruction.text;
+                } else if (instruction.name) {
+                  text = instruction.name;
+                } else if (instruction['@type'] === 'HowToStep') {
+                  text = instruction.text || instruction.name || '';
+                } else if (instruction['@type'] === 'HowToSection') {
+                  // Handle sections with multiple steps
+                  const steps = instruction.itemListElement || [];
+                  for (const step of steps) {
+                    const stepText = step.text || step.name || '';
+                    if (stepText && stepText.length > 10) {
+                      const cleaned = this.cleanInstructionText(stepText);
+                      if (this.isValidInstruction(cleaned)) {
+                        instructions.push(cleaned);
+                      }
+                    }
+                  }
+                  continue; // Skip to next iteration
+                }
+                
                 if (text && text.length > 10) {
-                  instructions.push(this.cleanInstructionText(text));
+                  const cleaned = this.cleanInstructionText(text);
+                  
+                  // Strict validation - must be actual instruction
+                  if (this.isValidInstruction(cleaned)) {
+                    instructions.push(cleaned);
+                    console.log(`✅ Valid JSON-LD instruction: ${cleaned.substring(0, 60)}...`);
+                  } else {
+                    console.log(`🚫 Rejected JSON-LD text: ${cleaned.substring(0, 60)}...`);
+                  }
                 }
               }
               
+              // If we found instructions in this recipe object, we're done
               if (instructions.length > 0) {
-                return instructions;
+                console.log(`✅ Extracted ${instructions.length} instructions from JSON-LD`);
+                return instructions.slice(0, 25); // Max 25 steps
               }
             }
           }
         } catch (e) {
+          console.log('⚠️ JSON parsing failed for one script, continuing...');
           continue;
         }
       }
@@ -1485,11 +1798,12 @@ class EdamamService {
       console.error('JSON-LD extraction error:', error);
     }
     
+    console.log(`📊 Total JSON-LD instructions found: ${instructions.length}`);
     return instructions;
   }
 
   /**
-   * Extract instructions from HTML patterns
+   * Extract instructions from HTML patterns (STRICT - only instructions for THIS recipe)
    * @param {string} htmlContent - HTML content
    * @returns {Array} Instructions array
    */
@@ -1497,58 +1811,107 @@ class EdamamService {
     const instructions = [];
     
     try {
+      // STRICT patterns - target ONLY instruction sections, not ingredients or other recipes
       const patterns = [
-        // Ordered lists with instruction classes
-        /<ol[^>]*class[^>]*(?:recipe-instructions|instructions|directions|method|steps)[^>]*>([\s\S]*?)<\/ol>/gi,
-        // Div containers with instruction classes
-        /<div[^>]*class[^>]*(?:recipe-instructions|instructions|directions|method|steps|instruction-list)[^>]*>([\s\S]*?)<\/div>/gi,
-        // Unordered lists with instruction classes
-        /<ul[^>]*class[^>]*(?:recipe-instructions|instructions|directions|method|steps)[^>]*>([\s\S]*?)<\/ul>/gi,
-        // General ordered lists (last resort)
-        /<ol[^>]*>([\s\S]*?)<\/ol>/gi,
-        // Section tags with instruction content
-        /<section[^>]*class[^>]*(?:instructions|directions|method)[^>]*>([\s\S]*?)<\/section>/gi
+        // Most specific first - ordered lists with instruction-specific classes
+        /<ol[^>]*class[^>]*(?:recipe-instructions|instructions|recipe-directions|directions|method|recipe-method|recipe-steps|preparation-steps)[^>]*>([\s\S]*?)<\/ol>/gi,
+        
+        // Div containers specifically for instructions (not ingredients)
+        /<div[^>]*class[^>]*(?:recipe-instructions|instructions-section|directions-section|method-section|recipe-method|preparation)[^>]*>([\s\S]*?)<\/div>/gi,
+        
+        // Section tags for instructions
+        /<section[^>]*class[^>]*(?:recipe-instructions|instructions|directions|method|preparation)[^>]*>([\s\S]*?)<\/section>/gi,
+        
+        // Unordered lists (only if they have instruction-specific classes)
+        /<ul[^>]*class[^>]*(?:recipe-instructions|instructions|directions|method|recipe-steps)[^>]*>([\s\S]*?)<\/ul>/gi
       ];
 
       for (const pattern of patterns) {
         const matches = [...htmlContent.matchAll(pattern)];
+        console.log(`🔍 Strict pattern found ${matches.length} potential instruction sections`);
         
         for (const match of matches) {
           const content = match[1];
+          
+          // Check if this section contains "Ingredients" header - if so, SKIP IT
+          if (/(?:ingredients?|what you(?:'ll)? need|shopping list)/i.test(content.substring(0, 200))) {
+            console.log('🚫 Skipping section - contains ingredient markers');
+            continue;
+          }
+          
+          // Extract list items from this section
           const listItems = [...content.matchAll(/<li[^>]*>([\s\S]*?)<\/li>/gi)];
           
-          // Also try to extract from paragraphs if no list items found
-          if (listItems.length === 0) {
-            const paragraphs = [...content.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/gi)];
-            for (const para of paragraphs) {
-              const text = this.cleanInstructionText(para[1]);
-              if (text.length > 15 && text.length < 500 && this.isValidInstruction(text)) {
-                instructions.push(text);
-              }
-            }
-          } else {
+          if (listItems.length > 0) {
+            console.log(`📋 Found ${listItems.length} list items in section`);
+            let validCount = 0;
+            
             for (const item of listItems) {
               const text = this.cleanInstructionText(item[1]);
-              if (text.length > 15 && text.length < 500 && this.isValidInstruction(text)) {
+              
+              // Very strict validation - must be real instructions
+              if (text.length > 15 && 
+                  text.length < 500 && 
+                  this.isValidInstruction(text)) {
                 instructions.push(text);
+                validCount++;
+                console.log(`✅ Valid instruction ${validCount}: ${text.substring(0, 60)}...`);
+              } else {
+                console.log(`🚫 Rejected: ${text.substring(0, 60)}...`);
               }
             }
-          }
-          
-          if (instructions.length > 0) {
-            return instructions;
+            
+            // If we found at least 3 valid instructions in this section, we're done
+            if (validCount >= 3) {
+              console.log(`✅ Found ${validCount} valid instructions in section - stopping search`);
+              break;
+            } else if (validCount > 0) {
+              // Found some but not enough, keep searching
+              console.log(`⚠️ Only found ${validCount} instructions, continuing search...`);
+            }
+          } else {
+            // No list items, try paragraphs
+            const paragraphs = [...content.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/gi)];
+            console.log(`📝 No list items, trying ${paragraphs.length} paragraphs`);
+            
+            for (const para of paragraphs) {
+              const text = this.cleanInstructionText(para[1]);
+              if (text.length > 15 && 
+                  text.length < 500 && 
+                  this.isValidInstruction(text)) {
+                instructions.push(text);
+                console.log(`✅ Valid paragraph: ${text.substring(0, 60)}...`);
+              }
+            }
+            
+            if (instructions.length >= 3) {
+              console.log(`✅ Found ${instructions.length} instructions from paragraphs`);
+              break;
+            }
           }
         }
+        
+        // If we found instructions with this pattern, don't try more generic ones
+        if (instructions.length >= 3) {
+          console.log(`✅ Stopping - found ${instructions.length} instructions`);
+          break;
+        }
       }
+      
+      // Return only unique instructions (deduplicate)
+      const uniqueInstructions = [...new Set(instructions)];
+      console.log(`📊 Returning ${uniqueInstructions.length} unique instructions`);
+      
+      return uniqueInstructions.slice(0, 25); // Max 25 steps
+      
     } catch (error) {
       console.error('HTML extraction error:', error);
+      return [];
     }
-    
-    return instructions;
   }
 
   /**
-   * Check if text looks like a valid cooking instruction (AGGRESSIVE VERSION)
+   * Check if text looks like a valid cooking instruction (NOT an ingredient)
    * @param {string} text - Text to validate
    * @returns {boolean} Whether text is a valid instruction
    */
@@ -1556,13 +1919,29 @@ class EdamamService {
     const lowerText = text.toLowerCase().trim();
     
     // Reject very short or very long text
-    if (lowerText.length < 10 || lowerText.length > 1000) {
+    // RELAXED: Allow shorter instructions (e.g., "Mix well", "Stir in salt")
+    if (lowerText.length < 8 || lowerText.length > 1000) {
       return false;
     }
     
-    // Aggressive cooking vocabulary - much more comprehensive
-    const cookingTerms = [
-      // Actions
+    // ❌ REJECT if it looks like an ingredient (just a list item with measurements)
+    const ingredientPatterns = [
+      /^\d+\s*(cup|cups|tablespoon|tbsp|teaspoon|tsp|pound|lb|ounce|oz|gram|g|kg|ml|l)\s+/i,
+      /^\d+\/\d+\s*(cup|cups|tablespoon|tbsp|teaspoon|tsp|pound|lb|ounce|oz)\s+/i,
+      /^\d+\s+to\s+\d+\s+/i, // "2 to 3 cups"
+      /^(one|two|three|four|five|six|seven|eight|nine|ten)\s+(cup|tablespoon|teaspoon|pound|ounce)/i,
+      // Reject if it's ONLY ingredient-like (no verbs)
+      /^[\d\s\/\-]*(cup|tablespoon|teaspoon|pound|ounce|gram|ml|pinch|dash|can|package|pkg|lb|oz|tsp|tbsp)s?\s+[\w\s,\(\)]+$/i
+    ];
+    
+    const looksLikeIngredient = ingredientPatterns.some(pattern => pattern.test(lowerText));
+    if (looksLikeIngredient) {
+      console.log('🚫 Rejected as ingredient:', text.substring(0, 50));
+      return false;
+    }
+    
+    // ✅ REQUIRE action verbs for instructions (must have at least one)
+    const actionVerbs = [
       'heat', 'cook', 'bake', 'fry', 'saute', 'sauté', 'boil', 'simmer', 'mix', 'stir', 'combine',
       'add', 'pour', 'season', 'chop', 'dice', 'slice', 'mince', 'preheat', 'serve', 'whip',
       'remove', 'place', 'put', 'set', 'whisk', 'beat', 'fold', 'sprinkle', 'garnish', 'grill',
@@ -1571,62 +1950,54 @@ class EdamamService {
       'strain', 'cut', 'trim', 'peel', 'core', 'seed', 'zest', 'juice', 'squeeze', 'crush',
       'knead', 'roll', 'shape', 'form', 'wrap', 'cover', 'uncover', 'flip', 'turn', 'toss',
       'baste', 'brush', 'coat', 'dust', 'drizzle', 'spoon', 'ladle', 'scoop', 'transfer',
-      
-      // Equipment
-      'oven', 'pan', 'pot', 'bowl', 'skillet', 'saucepan', 'baking', 'sheet', 'dish',
-      'mixer', 'blender', 'processor', 'knife', 'cutting', 'board', 'spatula', 'whisk',
-      
-      // Measurements & Time
-      'cup', 'cups', 'tablespoon', 'teaspoon', 'pound', 'ounce', 'gram', 'liter', 'quart',
-      'minute', 'minutes', 'hour', 'hours', 'second', 'seconds', 'until', 'degrees',
-      'temperature', 'tender', 'golden', 'brown', 'bubbling', 'thick', 'smooth',
-      
-      // Common recipe words
-      'ingredient', 'ingredients', 'mixture', 'batter', 'dough', 'sauce', 'marinade',
-      'topping', 'filling', 'seasoning', 'spice', 'herb', 'salt', 'pepper', 'oil',
-      'butter', 'onion', 'garlic', 'water', 'milk', 'egg', 'flour', 'sugar'
+      'bring', 'let', 'allow', 'continue', 'repeat', 'adjust', 'taste', 'check'
     ];
     
-    // Check for cooking terms
-    const hasCookingTerm = cookingTerms.some(term => lowerText.includes(term));
+    // Must have at least one action verb
+    const hasActionVerb = actionVerbs.some(verb => {
+      const verbPattern = new RegExp(`\\b${verb}\\b`, 'i');
+      return verbPattern.test(lowerText);
+    });
     
-    // Instruction patterns
-    const instructionPatterns = [
-      /\b(step|steps?)\s*\d+/i,
-      /^\d+[\.\)]\s/,  // Numbered steps
-      /\b(first|second|third|then|next|finally|meanwhile|while|after|before)\b/i,
-      /(heat|cook|bake|add|mix|stir|combine|place|put|remove)/i,
-      /\d+\s*(minutes?|hours?|seconds?)/i,
-      /\d+\s*(degrees?|°[fc]?)/i,
-      /(until|when|once)\s+\w+/i
-    ];
+    if (!hasActionVerb) {
+      console.log('🚫 Rejected (no action verb):', text.substring(0, 50));
+      return false;
+    }
     
-    const hasInstructionPattern = instructionPatterns.some(pattern => pattern.test(lowerText));
-    
-    // Reject obvious non-instructions
+    // ❌ Reject obvious non-instructions
     const rejectPatterns = [
       /^(recipe|print|save|share|comment|rate|review|photo|image|video)/i,
       /^(copyright|©|all rights|terms|privacy|policy)/i,
       /^(advertisement|ads|sponsor|affiliate)/i,
       /^(sign up|subscribe|newsletter|email)/i,
       /^(facebook|twitter|instagram|pinterest|social)/i,
-      /^(related|similar|more recipes|you might like)/i,
-      /^(nutritional|nutrition facts|calories per)/i,
-      /^(prep time|cook time|total time|servings|yield)/i,
+      /^(related|similar|more recipes|you might like|recommended|trending)/i,
+      /^(nutritional|nutrition facts|calories per|servings|prep time|cook time|total time)/i,
+      /^(ingredients|ingredient list|you will need|what you need)/i, // Ingredient section headers
       /^\s*\d+\s*$/, // Just numbers
       /^[^a-zA-Z]*$/, // No letters at all
-      /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i // Dates
+      /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i, // Dates
+      /^(watch|read|see|view|click|learn|discover|find out)/i, // Call to action
+      /^(equipment|tools|you need|required)/i, // Equipment lists
+      /^(notes?|tips?|tricks?|variations?|substitutions?)/i // Meta content
     ];
     
     const shouldReject = rejectPatterns.some(pattern => pattern.test(lowerText));
+    if (shouldReject) {
+      console.log('🚫 Rejected (non-instruction pattern):', text.substring(0, 50));
+      return false;
+    }
     
-    // Final decision - much more aggressive acceptance
-    const isValid = (hasCookingTerm || hasInstructionPattern) && 
-                   !shouldReject && 
-                   /[a-zA-Z]/.test(text) && // Has letters
-                   text.split(' ').length >= 3; // At least 3 words
+    // ✅ Must have reasonable word count (instructions are usually sentences)
+    // RELAXED: Allow shorter instructions (2+ words)
+    const wordCount = text.split(/\s+/).length;
+    if (wordCount < 2 || wordCount > 200) {
+      console.log('🚫 Rejected (word count):', text.substring(0, 50));
+      return false;
+    }
     
-    return isValid;
+    // ✅ PASSED all checks
+    return true;
   }
 
   /**

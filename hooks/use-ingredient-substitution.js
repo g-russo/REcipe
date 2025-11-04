@@ -11,9 +11,11 @@ export const useIngredientSubstitution = (recipe, userID) => {
   const [pantryItems, setPantryItems] = useState([]);
   const [missingIngredients, setMissingIngredients] = useState([]);
   const [availableIngredients, setAvailableIngredients] = useState([]);
+  const [insufficientIngredients, setInsufficientIngredients] = useState([]); // NEW
   const [substitutionMap, setSubstitutionMap] = useState({});
   const [modifiedRecipe, setModifiedRecipe] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [usingPantryIngredients, setUsingPantryIngredients] = useState(false); // Track if user wants to use pantry
 
   // Check ingredient availability when recipe or userID changes
   useEffect(() => {
@@ -41,6 +43,7 @@ export const useIngredientSubstitution = (recipe, userID) => {
         );
         setAvailableIngredients(result.available);
         setMissingIngredients(result.missing);
+        setInsufficientIngredients(result.insufficient || []); // NEW
       }
     } catch (error) {
       console.error('Error checking ingredient availability:', error);
@@ -50,24 +53,85 @@ export const useIngredientSubstitution = (recipe, userID) => {
   };
 
   /**
+   * Show alert asking if user wants to use available pantry ingredients
+   * @param {Function} onYes - Callback when user chooses to use pantry ingredients
+   * @param {Function} onNo - Callback when user chooses not to use pantry ingredients
+   */
+  const showUsePantryIngredientsAlert = (onYes, onNo) => {
+    if (availableIngredients.length === 0) {
+      // No pantry ingredients available
+      onNo();
+      return;
+    }
+
+    const availableList = availableIngredients
+      .map(ing => `• ${ing.text || ing}`)
+      .join('\n');
+
+    Alert.alert(
+      'Available Ingredients',
+      `The following ingredients are available in your pantry:\n\n${availableList}\n\nWould you like to use them for this recipe?`,
+      [
+        {
+          text: 'No',
+          onPress: () => {
+            setUsingPantryIngredients(false);
+            onNo();
+          },
+          style: 'cancel'
+        },
+        {
+          text: 'Yes',
+          onPress: () => {
+            setUsingPantryIngredients(true);
+            onYes();
+          }
+        }
+      ]
+    );
+  };
+
+  /**
    * Show alert for missing ingredients
    * @param {Function} onProceed - Callback when user chooses to proceed
    * @param {Function} onSubstitute - Callback when user chooses to substitute
    */
   const showMissingIngredientsAlert = (onProceed, onSubstitute) => {
-    if (missingIngredients.length === 0) {
-      // All ingredients available
+    // Combine missing and insufficient ingredients
+    const allMissing = [...missingIngredients];
+    const allInsufficient = [...insufficientIngredients];
+    
+    if (allMissing.length === 0 && allInsufficient.length === 0) {
+      // All ingredients available in sufficient quantities
       onProceed();
       return;
     }
 
-    const missingList = missingIngredients
-      .map(ing => `• ${ing.text || ing}`)
-      .join('\n');
+    let message = '';
+    
+    // Add missing ingredients
+    if (allMissing.length > 0) {
+      const missingList = allMissing
+        .map(ing => `• ${ing.text || ing}`)
+        .join('\n');
+      message += `You are missing the following ingredients:\n\n${missingList}`;
+    }
+    
+    // Add insufficient ingredients
+    if (allInsufficient.length > 0) {
+      const insufficientList = allInsufficient
+        .map(ing => `• ${ing.text || ing} (need ${ing.required} ${ing.requiredUnit}, have ${ing.available} ${ing.availableUnit})`)
+        .join('\n');
+      
+      if (message) message += '\n\n';
+      message += `Insufficient quantities:\n\n${insufficientList}`;
+    }
+    
+    message += '\n\nWould you like to substitute them with ingredients from your pantry?';
 
     Alert.alert(
       'Missing Ingredients',
-      `You are missing the following ingredients:\n\n${missingList}\n\nWould you like to substitute them with ingredients from your pantry?`,
+      message,
       [
         {
           text: 'No, Proceed',
@@ -101,6 +165,13 @@ export const useIngredientSubstitution = (recipe, userID) => {
    * @param {Function} onConfirm - Callback when user confirms usage
    */
   const showIngredientUsageConfirmation = (onConfirm) => {
+    // Only show if user said they want to use pantry ingredients
+    if (!usingPantryIngredients) {
+      // User didn't want to use pantry ingredients, just save to history
+      saveRecipeToHistory(onConfirm);
+      return;
+    }
+
     const recipeToUse = modifiedRecipe || recipe;
     const ingredientsToUse = recipeToUse.ingredients || recipeToUse.ingredientLines || [];
     
@@ -184,18 +255,78 @@ export const useIngredientSubstitution = (recipe, userID) => {
       const recipeToUse = modifiedRecipe || recipe;
       const ingredientsList = recipeToUse.ingredients || recipeToUse.ingredientLines || [];
       
-      const ingredientsToSubtract = ingredientsList.map(ing => ({
-        text: typeof ing === 'string' ? ing : (ing.text || ing),
-        name: typeof ing === 'string' ? ing : (ing.text || ing),
-        quantity: 1 // Default quantity if not specified
-      }));
+      // Build list of ingredients to subtract with proper quantities
+      const ingredientsToSubtract = ingredientsList
+        .filter(ing => {
+          // Only include ingredients that are from pantry
+          const ingredientText = typeof ing === 'string' ? ing : (ing.text || ing);
+          
+          // Check if ingredient is available in pantry OR is a substitution
+          const isAvailable = availableIngredients.some(a => {
+            const availableText = typeof a === 'string' ? a : (a.text || a);
+            return availableText === ingredientText;
+          });
+          
+          const isSubstituted = ing.isSubstituted && substitutionMap[ing.originalText];
+          
+          return isAvailable || isSubstituted;
+        })
+        .map(ing => {
+          const ingredientData = typeof ing === 'string' ? { text: ing } : ing;
+          
+          // If it's a substituted ingredient, use the substitute's data
+          if (ingredientData.isSubstituted && substitutionMap[ingredientData.originalText]) {
+            const substitute = substitutionMap[ingredientData.originalText];
+            console.log('📝 Substituted ingredient:', {
+              original: ingredientData.originalText,
+              substitute: substitute.name,
+              quantity: substitute.quantity,
+              unit: substitute.unit
+            });
+            return {
+              text: ingredientData.text,
+              name: substitute.name || ingredientData.text,
+              quantity: substitute.quantity || 1,
+              unit: substitute.unit || '',
+              // Pass original pantry info for matching
+              originalQuantityInPantry: substitute.originalQuantityInPantry,
+              originalUnitInPantry: substitute.originalUnitInPantry
+            };
+          }
+          
+          // Regular ingredient from pantry - parse quantity from text
+          const ingredientText = ingredientData.text || ing;
+          const parsedQuantity = IngredientSubstitutionService.parseQuantityFromText(ingredientText);
+          
+          console.log('📝 Regular pantry ingredient:', {
+            text: ingredientText,
+            parsedQuantity: parsedQuantity
+          });
+          
+          return {
+            text: ingredientText,
+            name: ingredientText,
+            quantity: parsedQuantity?.value || 1,
+            unit: parsedQuantity?.unit || ''
+          };
+        });
 
+      if (ingredientsToSubtract.length === 0) {
+        // No pantry ingredients to subtract, just save to history
+        console.log('ℹ️ No pantry ingredients to subtract');
+        await saveRecipeToHistory(onComplete);
+        return;
+      }
+
+      console.log(`🔄 Subtracting ${ingredientsToSubtract.length} ingredients from pantry...`);
+      
       const result = await IngredientSubstitutionService.subtractIngredientsFromPantry(
         userID,
         ingredientsToSubtract
       );
 
       if (result.success) {
+        console.log(`✅ Successfully subtracted ${result.updatedCount} ingredients from pantry`);
         // Save to history after subtracting ingredients
         await saveRecipeToHistory(onComplete);
         
@@ -223,19 +354,23 @@ export const useIngredientSubstitution = (recipe, userID) => {
     pantryItems,
     missingIngredients,
     availableIngredients,
+    insufficientIngredients, // NEW
     substitutionMap,
     modifiedRecipe,
     loading,
+    usingPantryIngredients,
 
     // Methods
     checkIngredientAvailability,
+    showUsePantryIngredientsAlert,
     showMissingIngredientsAlert,
     applySubstitutions,
     showIngredientUsageConfirmation,
     resetSubstitutions,
 
     // Computed
-    hasMissingIngredients: missingIngredients.length > 0,
+    hasMissingIngredients: missingIngredients.length > 0 || insufficientIngredients.length > 0, // Updated
+    hasAvailableIngredients: availableIngredients.length > 0,
     hasSubstitutions: Object.keys(substitutionMap).length > 0,
   };
 };

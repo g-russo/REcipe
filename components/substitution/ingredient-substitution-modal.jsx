@@ -46,6 +46,20 @@ const IngredientSubstitutionModal = ({
     setSelectedIngredient(ingredient);
   };
 
+  // Parse quantity and unit from ingredient string using the service
+  const parseIngredientQuantity = (ingredient) => {
+    const text = typeof ingredient === 'string' ? ingredient : (ingredient.text || ingredient);
+    
+    // Use the service's parseQuantityFromText which has priority-based measurement parsing
+    const parsed = IngredientSubstitutionService.parseQuantityFromText(text);
+    
+    if (parsed) {
+      return { quantity: parsed.value, unit: parsed.unit };
+    }
+    
+    return { quantity: 1, unit: 'pcs' };
+  };
+
   // Handle "Continue" from ingredient selection
   const handleContinueFromStep1 = async () => {
     if (!selectedIngredient) {
@@ -60,7 +74,8 @@ const IngredientSubstitutionModal = ({
       
       // Get smart substitutions for the selected ingredient
       const ingredientName = IngredientSubstitutionService.normalizeIngredientName(selectedIngredient);
-      const suggestions = IngredientSubstitutionService.findSubstitutes(ingredientName, pantryItems);
+      const originalText = typeof selectedIngredient === 'string' ? selectedIngredient : (selectedIngredient.text || selectedIngredient);
+      const suggestions = IngredientSubstitutionService.findSubstitutes(ingredientName, pantryItems, originalText);
 
       if (suggestions.length === 0) {
         Alert.alert(
@@ -179,6 +194,8 @@ const IngredientSubstitutionModal = ({
               <>
                 <SubstituteSelector
                   originalIngredient={selectedIngredient}
+                  originalQuantity={parseIngredientQuantity(selectedIngredient).quantity}
+                  originalUnit={parseIngredientQuantity(selectedIngredient).unit}
                   substitutes={substitutes}
                   selectedSubstitute={selectedSubstitute}
                   onSelectSubstitute={setSelectedSubstitute}

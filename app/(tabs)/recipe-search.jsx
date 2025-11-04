@@ -501,9 +501,21 @@ const RecipeSearch = () => {
             difficulty: recipe.difficulty
           }));
           
-          // ✅ Merge: AI recipes FIRST, then Edamam recipes
-          allRecipes = [...formattedDbRecipes, ...result.data.recipes];
-          console.log(`🍽️ Total recipes: ${allRecipes.length} (AI: ${formattedDbRecipes.length}, Edamam: ${result.data.recipes.length})`);
+          // ✅ Merge: AI recipes FIRST, then Edamam recipes (remove duplicates)
+          const combined = [...formattedDbRecipes, ...result.data.recipes];
+          
+          // Remove duplicates based on recipeID or URI
+          const seenIds = new Set();
+          
+          combined.forEach(recipe => {
+            const recipeId = recipe.recipeID || recipe.uri;
+            if (recipeId && !seenIds.has(recipeId)) {
+              seenIds.add(recipeId);
+              allRecipes.push(recipe);
+            }
+          });
+          
+          console.log(`🍽️ Total unique recipes: ${allRecipes.length} (AI: ${formattedDbRecipes.length}, Edamam: ${result.data.recipes.length}, Duplicates removed: ${combined.length - allRecipes.length})`);
         } else {
           // No AI recipes found, just show Edamam results
           allRecipes = [...result.data.recipes];
@@ -703,8 +715,22 @@ const RecipeSearch = () => {
           difficulty: aiResult.recipe.difficulty
         };
 
-        // Add to existing recipes
-        setRecipes(prevRecipes => [...prevRecipes, formattedRecipe]);
+        // Add to existing recipes (check for duplicates first)
+        setRecipes(prevRecipes => {
+          // Check if recipe already exists by recipeID or URI
+          const exists = prevRecipes.some(r => 
+            (r.recipeID && r.recipeID === formattedRecipe.recipeID) ||
+            (r.uri && r.uri === formattedRecipe.uri)
+          );
+          
+          if (exists) {
+            console.log('⚠️ Recipe already exists, not adding duplicate');
+            return prevRecipes;
+          }
+          
+          return [...prevRecipes, formattedRecipe];
+        });
+        
         const newAiCount = aiRecipeCount + 1;
         setAiRecipeCount(newAiCount);
         

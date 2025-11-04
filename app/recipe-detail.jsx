@@ -53,11 +53,14 @@ const RecipeDetail = () => {
   const {
     missingIngredients,
     availableIngredients,
+    insufficientIngredients, // NEW
     modifiedRecipe,
+    showUsePantryIngredientsAlert,
     showMissingIngredientsAlert,
     applySubstitutions,
     showIngredientUsageConfirmation,
     hasMissingIngredients,
+    hasAvailableIngredients,
     hasSubstitutions,
   } = useIngredientSubstitution(displayRecipe || recipe, customUserData?.userID);
 
@@ -190,14 +193,24 @@ const RecipeDetail = () => {
       });
       
       // Use Supabase cache service for similar recipes (automatically cached)
+      console.log('🔍 Calling cacheService.getSimilarRecipes...');
       const similarRecipesData = await cacheService.getSimilarRecipes(currentRecipe, 12);
-      const result = { success: true, data: { recipes: similarRecipesData } };
+      console.log('📦 Received similar recipes data:', similarRecipesData?.length || 0, 'recipes');
+      
+      const result = { success: true, data: { recipes: similarRecipesData || [] } };
       
       console.log('📊 SMART similar recipes result:', result);
       
-      if (result.success) {
-        setSimilarRecipes(result.data.recipes);
-        console.log(`✅ Successfully set ${result.data.recipes.length} similar recipes`);
+      if (result.success && result.data.recipes.length > 0) {
+        // Filter out the current recipe from similar recipes to avoid duplicates
+        const currentRecipeId = currentRecipe.uri || currentRecipe.recipeID;
+        const filteredRecipes = result.data.recipes.filter(r => {
+          const similarRecipeId = r.uri || r.recipeID;
+          return similarRecipeId !== currentRecipeId;
+        });
+        
+        setSimilarRecipes(filteredRecipes);
+        console.log(`✅ Successfully set ${filteredRecipes.length} similar recipes (filtered from ${result.data.recipes.length})`);
         
         if (result.data.analysis) {
           console.log('🧬 Recipe analysis:', result.data.analysis);
@@ -209,13 +222,16 @@ const RecipeDetail = () => {
           console.log(`🔍 Similar recipes found using ${result.data.strategiesUsed} search strategies`);
         }
       } else {
-        console.log('❌ Failed to get similar recipes:', result.error);
+        console.log('❌ No similar recipes found');
         setSimilarRecipes([]);
       }
     } catch (error) {
       console.error('💥 Error in fetchSimilarRecipes:', error);
+      console.error('Error details:', error.message);
+      console.error('Error stack:', error.stack);
       setSimilarRecipes([]);
     } finally {
+      console.log('✅ Setting loadingSimilar to false');
       setLoadingSimilar(false);
     }
   };
@@ -386,28 +402,8 @@ const RecipeDetail = () => {
       return;
     }
 
-    // Check for missing ingredients
-    if (hasMissingIngredients) {
-      // Show alert with options
-      showMissingIngredientsAlert(
-        // Option 1: "No, Proceed" - Go to cooking without substitution
-        () => {
-          router.push({
-            pathname: '/cooking-steps',
-            params: {
-              recipeData: JSON.stringify(recipeWithInstructions),
-              hasSubstitutions: hasSubstitutions,
-            }
-          });
-        },
-        // Option 2: "Yes" - Open substitution modal
-        () => {
-          setSubstitutionMode('auto');
-          setShowSubstitutionModal(true);
-        }
-      );
-    } else {
-      // All ingredients available, proceed directly
+    // Function to proceed to cooking
+    const proceedToCooking = () => {
       router.push({
         pathname: '/cooking-steps',
         params: {
@@ -415,6 +411,40 @@ const RecipeDetail = () => {
           hasSubstitutions: hasSubstitutions,
         }
       });
+    };
+
+    // Function to handle the flow after user decides about pantry ingredients
+    const handleAfterPantryDecision = () => {
+      // Check for missing ingredients (only if there are missing ones)
+      if (hasMissingIngredients) {
+        // Show alert with options to substitute
+        showMissingIngredientsAlert(
+          // Option 1: "No, Proceed" - Go to cooking without substitution
+          proceedToCooking,
+          // Option 2: "Yes" - Open substitution modal
+          () => {
+            setSubstitutionMode('auto');
+            setShowSubstitutionModal(true);
+          }
+        );
+      } else {
+        // No missing ingredients, proceed to cooking
+        proceedToCooking();
+      }
+    };
+
+    // First check if there are available pantry ingredients
+    if (hasAvailableIngredients) {
+      // Show alert asking if user wants to use pantry ingredients
+      showUsePantryIngredientsAlert(
+        // User said "Yes" - will track for subtraction at the end
+        handleAfterPantryDecision,
+        // User said "No" - won't ask for subtraction at the end
+        handleAfterPantryDecision
+      );
+    } else {
+      // No available pantry ingredients, just check for missing ones
+      handleAfterPantryDecision();
     }
   };
 
@@ -632,7 +662,7 @@ const RecipeDetail = () => {
         onConfirm={handleSubstitutionConfirm}
         missingIngredients={
           substitutionMode === 'auto' 
-            ? missingIngredients // Only missing ingredients
+            ? [...missingIngredients, ...insufficientIngredients] // Include both missing and insufficient
             : ((displayRecipe || recipe)?.ingredientLines || []) // All ingredients for manual
         }
         userID={customUserData?.userID}
