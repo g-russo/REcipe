@@ -7,6 +7,48 @@ import { supabase } from '../lib/supabase';
 
 class IngredientSubstitutionService {
   /**
+   * Conversion map for whole items to their component parts
+   * Example: 1 whole garlic ≈ 10-12 cloves
+   */
+  wholeToPartConversions = {
+    // Garlic conversions
+    'garlic': { part: 'clove', ratio: 10 }, // 1 whole garlic ≈ 10 cloves
+    'whole garlic': { part: 'clove', ratio: 10 },
+    'garlic bulb': { part: 'clove', ratio: 10 },
+    'garlic head': { part: 'clove', ratio: 10 },
+    
+    // Herb conversions (whole plant to sprigs/leaves)
+    'rosemary': { part: 'sprig', ratio: 6 }, // 1 whole rosemary ≈ 6 sprigs
+    'whole rosemary': { part: 'sprig', ratio: 6 },
+    'rosemary bunch': { part: 'sprig', ratio: 6 },
+    
+    'thyme': { part: 'sprig', ratio: 8 }, // 1 whole thyme ≈ 8 sprigs
+    'whole thyme': { part: 'sprig', ratio: 8 },
+    'thyme bunch': { part: 'sprig', ratio: 8 },
+    
+    'basil': { part: 'leaf', ratio: 20 }, // 1 whole basil ≈ 20 leaves
+    'whole basil': { part: 'leaf', ratio: 20 },
+    'basil bunch': { part: 'leaf', ratio: 20 },
+    
+    'cilantro': { part: 'sprig', ratio: 10 }, // 1 whole cilantro ≈ 10 sprigs
+    'whole cilantro': { part: 'sprig', ratio: 10 },
+    'cilantro bunch': { part: 'sprig', ratio: 10 },
+    'coriander': { part: 'sprig', ratio: 10 },
+    
+    'parsley': { part: 'sprig', ratio: 10 }, // 1 whole parsley ≈ 10 sprigs
+    'whole parsley': { part: 'sprig', ratio: 10 },
+    'parsley bunch': { part: 'sprig', ratio: 10 },
+    
+    // Onion family
+    'ginger': { part: 'inch', ratio: 4 }, // 1 whole ginger ≈ 4 inches
+    'whole ginger': { part: 'inch', ratio: 4 },
+    'ginger root': { part: 'inch', ratio: 4 },
+    
+    'lemongrass': { part: 'stalk', ratio: 3 }, // 1 whole lemongrass ≈ 3 stalks
+    'whole lemongrass': { part: 'stalk', ratio: 3 },
+  };
+
+  /**
    * Get user's pantry items
    * @param {number} userID - User's ID
    * @returns {Promise<Array>} Array of pantry items
@@ -41,26 +83,183 @@ class IngredientSubstitutionService {
    * Check which ingredients are missing from pantry
    * @param {Array} recipeIngredients - Recipe ingredients list
    * @param {Array} pantryItems - User's pantry items
-   * @returns {Object} { available, missing }
+   * @returns {Object} { available, missing, insufficient }
    */
   checkIngredientAvailability(recipeIngredients, pantryItems) {
     const available = [];
     const missing = [];
+    const insufficient = []; // NEW: Ingredients in pantry but not enough quantity
 
     recipeIngredients.forEach(ingredient => {
-      const ingredientName = this.normalizeIngredientName(ingredient.text || ingredient);
-      const found = pantryItems.some(item => 
+      const ingredientText = ingredient.text || ingredient;
+      const ingredientName = this.normalizeIngredientName(ingredientText);
+      
+      // Find matching pantry item
+      const pantryItem = pantryItems.find(item => 
         this.fuzzyMatch(this.normalizeIngredientName(item.itemName), ingredientName)
       );
 
-      if (found) {
-        available.push(ingredient);
+      if (pantryItem) {
+        // Parse required quantity from ingredient text
+        const requiredQuantity = this.parseQuantityFromText(ingredientText);
+        
+        // Check if pantry has enough quantity
+        if (requiredQuantity && pantryItem.quantity < requiredQuantity.value) {
+          insufficient.push({
+            ...ingredient,
+            text: ingredientText,
+            required: requiredQuantity.value,
+            requiredUnit: requiredQuantity.unit,
+            available: pantryItem.quantity,
+            availableUnit: pantryItem.unit,
+            pantryItemName: pantryItem.itemName
+          });
+        } else {
+          available.push(ingredient);
+        }
       } else {
         missing.push(ingredient);
       }
     });
 
-    return { available, missing };
+    return { available, missing, insufficient };
+  }
+
+  /**
+   * Parse quantity from ingredient text with smart defaults
+   * @param {string} text - Ingredient text (e.g., "2 cups flour", "2 chicken", "salt")
+   * @returns {Object|null} { value, unit, descriptors } or null
+   */
+  parseQuantityFromText(text) {
+    if (!text) return null;
+    
+    let lowerText = text.toLowerCase().trim();
+    
+    // Extract and remove non-standard descriptors (skin-on, boneless, seedless, etc.)
+    const nonStandardDescriptors = [
+      'skin-on', 'skinless', 'skin on', 'boneless', 'bone-in', 'bone in',
+      'seedless', 'seeded', 'pitted', 'unpitted', 'shelled', 'unshelled',
+      'peeled', 'unpeeled', 'trimmed', 'untrimmed', 'halved', 'quartered',
+      'cubed', 'diced', 'sliced', 'chopped', 'minced', 'ground', 'shredded',
+      'fresh', 'frozen', 'canned', 'dried', 'raw', 'cooked', 'roasted',
+      'organic', 'free-range', 'wild-caught', 'farm-raised'
+    ];
+    
+    const foundDescriptors = [];
+    nonStandardDescriptors.forEach(descriptor => {
+      const pattern = new RegExp(`\\b${descriptor.replace('-', '[- ]')}\\b`, 'gi');
+      if (pattern.test(lowerText)) {
+        foundDescriptors.push(descriptor);
+        lowerText = lowerText.replace(pattern, '').trim();
+      }
+    });
+    
+    if (foundDescriptors.length > 0) {
+      console.log(`📋 Found descriptors in "${text}": [${foundDescriptors.join(', ')}]`);
+      console.log(`📋 Cleaned text: "${lowerText}"`);
+    }
+    
+    // Special handling: If no quantity specified for certain ingredients, assume 1/2 tbsp
+    const defaultHalfTbspIngredients = [
+      'salt', 'pepper', 'black pepper', 'white pepper', 'ground pepper',
+      'freshly ground pepper', 'freshly ground black pepper',
+      'butter', 'oil', 'olive oil', 'vegetable oil', 'canola oil',
+      'coconut oil', 'sesame oil', 'avocado oil', 'cooking oil'
+    ];
+    
+    // Check if this ingredient should default to 1/2 tbsp
+    const needsDefaultQuantity = defaultHalfTbspIngredients.some(ingredient => 
+      lowerText.includes(ingredient) && !/^\d/.test(lowerText) // No number at start
+    );
+    
+    if (needsDefaultQuantity) {
+      console.log(`📊 No quantity for "${text}", defaulting to 0.5 tbsp`);
+      return { value: 0.5, unit: 'tbsp', descriptors: foundDescriptors };
+    }
+    
+    // PRIORITY 1: Check for measurement units anywhere in the text (g, kg, oz, lb, ml, etc.)
+    // Examples: "2 chicken breast, around 400g" → should use 400g, not 2 pcs
+    const measurementPattern = /(\d+(?:\.\d+)?)\s*(g|kg|lb|lbs|pound|pounds|oz|ounce|ounces|ml|l|liter|liters|cup|cups|tbsp|tsp|tablespoon|tablespoons|teaspoon|teaspoons)\b/i;
+    const measurementMatch = lowerText.match(measurementPattern);
+    
+    if (measurementMatch) {
+      const value = parseFloat(measurementMatch[1]);
+      let unit = measurementMatch[2].toLowerCase();
+      
+      // Normalize unit variations to standard forms
+      if (unit === 'pound' || unit === 'pounds') unit = 'lb';
+      if (unit === 'ounce' || unit === 'ounces') unit = 'oz';
+      if (unit === 'liter' || unit === 'liters') unit = 'l';
+      if (unit === 'tablespoon' || unit === 'tablespoons') unit = 'tbsp';
+      if (unit === 'teaspoon' || unit === 'teaspoons') unit = 'tsp';
+      
+      console.log(`📊 Parsed quantity from "${text}": ${value} ${unit} (measurement unit found) [descriptors: ${foundDescriptors.join(', ') || 'none'}]`);
+      return { value, unit, descriptors: foundDescriptors };
+    }
+    
+    // PRIORITY 2: Standard pattern for quantity at the beginning
+    // Examples: "2 cups flour", "1/2 tsp salt", "2 chicken", "3 pieces"
+    const pattern = /^(\d+(?:\/\d+)?(?:\.\d+)?)\s*([a-zA-Z]+)?/;
+    const match = lowerText.match(pattern);
+    
+    if (match) {
+      let value = match[1];
+      // Convert fractions to decimal
+      if (value.includes('/')) {
+        const [num, denom] = value.split('/');
+        value = parseFloat(num) / parseFloat(denom);
+      } else {
+        value = parseFloat(value);
+      }
+      
+      let unit = match[2] || ''; // Empty string if no unit (e.g., "2 chicken")
+      
+      // Define all recognized units (measurement + counting)
+      const measurementUnits = ['g', 'kg', 'lb', 'lbs', 'pound', 'pounds', 'oz', 'ounce', 'ounces',
+                                'ml', 'l', 'liter', 'liters', 'cup', 'cups',
+                                'tbsp', 'tsp', 'tablespoon', 'tablespoons', 'teaspoon', 'teaspoons',
+                                'fl', 'floz', 'gallon', 'quart', 'pint'];
+      
+      const countingUnits = ['pcs', 'pieces', 'piece', 'pc', 'each', 'whole', 'item', 'items',
+                             'sprig', 'sprigs', 'clove', 'cloves', 'stalk', 'stalks',
+                             'leaf', 'leaves', 'pod', 'pods', 'bulb', 'bulbs', 'head', 'heads'];
+      
+      const allRecognizedUnits = [...measurementUnits, ...countingUnits];
+      
+      // Check if the captured "unit" is actually a recognized unit
+      // If not (e.g., "chicken", "tomato"), treat as no unit → default to pcs
+      if (unit === '' || !allRecognizedUnits.includes(unit.toLowerCase())) {
+        // This means we have a number but no explicit/recognized unit (e.g., "2 chicken", "3 eggs")
+        // Treat this as pieces/count
+        if (unit !== '') {
+          console.log(`📊 Parsed quantity from "${text}": ${value} pcs (unrecognized unit "${unit}", defaulting to pcs) [descriptors: ${foundDescriptors.join(', ') || 'none'}]`);
+        } else {
+          console.log(`📊 Parsed quantity from "${text}": ${value} pcs (implied count) [descriptors: ${foundDescriptors.join(', ') || 'none'}]`);
+        }
+        unit = 'pcs';
+      } else if (countingUnits.includes(unit.toLowerCase())) {
+        // Normalize all counting units to 'pcs'
+        console.log(`📊 Parsed quantity from "${text}": ${value} pcs (normalized from ${match[2]}) [descriptors: ${foundDescriptors.join(', ') || 'none'}]`);
+        unit = 'pcs';
+      } else {
+        // It's a recognized measurement unit, normalize variations to standard forms
+        const unitLower = unit.toLowerCase();
+        if (unitLower === 'pound' || unitLower === 'pounds') unit = 'lb';
+        else if (unitLower === 'ounce' || unitLower === 'ounces') unit = 'oz';
+        else if (unitLower === 'liter' || unitLower === 'liters') unit = 'l';
+        else if (unitLower === 'tablespoon' || unitLower === 'tablespoons') unit = 'tbsp';
+        else if (unitLower === 'teaspoon' || unitLower === 'teaspoons') unit = 'tsp';
+        else unit = unitLower; // Keep other recognized units in lowercase
+        
+        console.log(`📊 Parsed quantity from "${text}": ${value} ${unit} [descriptors: ${foundDescriptors.join(', ') || 'none'}]`);
+      }
+      
+      return { value, unit, descriptors: foundDescriptors };
+    }
+    
+    // If no quantity found, default to 1 pcs
+    console.log(`⚠️ No quantity found in "${text}", defaulting to 1 pcs (count)`);
+    return { value: 1, unit: 'pcs', descriptors: foundDescriptors };
   }
 
   /**
@@ -71,9 +270,56 @@ class IngredientSubstitutionService {
   normalizeIngredientName(name) {
     return name
       .toLowerCase()
-      .replace(/[^a-z\s]/g, '') // Remove non-alphabetic characters
+      .replace(/[^a-z\s]/g, '') // Remove non-alphabetic characters (numbers, punctuation)
       .replace(/\b(fresh|dried|chopped|minced|sliced|diced|ground|whole|organic)\b/g, '') // Remove descriptors
+      .replace(/\b(g|kg|lb|lbs|oz|ounce|ounces|ml|l|liter|liters|cup|cups|tbsp|tsp|tablespoon|tablespoons|teaspoon|teaspoons|pcs|pieces|piece|pc)\b/g, '') // Remove measurement units
+      .replace(/\s+/g, ' ') // Collapse multiple spaces
       .trim();
+  }
+
+  /**
+   * Convert whole items to their component parts or vice versa
+   * @param {number} quantity - Quantity to convert
+   * @param {string} fromItem - Source item name (e.g., "whole garlic")
+   * @param {string} toItem - Target item name (e.g., "garlic clove")
+   * @returns {number|null} Converted quantity or null if no conversion available
+   */
+  convertWholeToComponent(quantity, fromItem, toItem) {
+    const normalizedFrom = this.normalizeIngredientName(fromItem);
+    const normalizedTo = this.normalizeIngredientName(toItem);
+    
+    console.log(`🔄 Checking whole→component conversion:`);
+    console.log(`   From: "${normalizedFrom}" (${quantity})`);
+    console.log(`   To: "${normalizedTo}"`);
+    
+    // Check if converting FROM whole TO component (e.g., whole garlic → cloves)
+    for (const [wholeName, conversion] of Object.entries(this.wholeToPartConversions)) {
+      const matchesWhole = normalizedFrom.includes(wholeName) || wholeName.includes(normalizedFrom);
+      const matchesPart = normalizedTo.includes(conversion.part) || conversion.part.includes(normalizedTo);
+      
+      if (matchesWhole && matchesPart) {
+        const converted = quantity * conversion.ratio;
+        console.log(`   ✅ Found conversion: 1 ${wholeName} = ${conversion.ratio} ${conversion.part}`);
+        console.log(`   ✅ Result: ${quantity} whole → ${converted} ${conversion.part}`);
+        return converted;
+      }
+    }
+    
+    // Check if converting FROM component TO whole (e.g., cloves → whole garlic)
+    for (const [wholeName, conversion] of Object.entries(this.wholeToPartConversions)) {
+      const matchesPart = normalizedFrom.includes(conversion.part) || conversion.part.includes(normalizedFrom);
+      const matchesWhole = normalizedTo.includes(wholeName) || wholeName.includes(normalizedTo);
+      
+      if (matchesPart && matchesWhole) {
+        const converted = quantity / conversion.ratio;
+        console.log(`   ✅ Found conversion: ${conversion.ratio} ${conversion.part} = 1 ${wholeName}`);
+        console.log(`   ✅ Result: ${quantity} ${conversion.part} → ${converted} whole`);
+        return converted;
+      }
+    }
+    
+    console.log(`   ⚠️ No whole↔component conversion found`);
+    return null;
   }
 
   /**
@@ -116,14 +362,25 @@ class IngredientSubstitutionService {
   }
 
   /**
-   * Find substitute ingredients from pantry
+   * Find substitute ingredients from pantry (PREFERS measured over counted items)
    * @param {string} ingredientName - Ingredient to substitute
    * @param {Array} pantryItems - User's pantry items
-   * @returns {Array} Suggested substitutes
+   * @param {string} originalIngredientText - Original ingredient text to detect measurement system
+   * @returns {Array} Suggested substitutes (sorted by preference, with proper unit conversion)
    */
-  findSubstitutes(ingredientName, pantryItems) {
+  findSubstitutes(ingredientName, pantryItems, originalIngredientText = '') {
     const substitutionRules = this.getSubstitutionRules();
     const suggestions = [];
+
+    // Detect recipe's preferred measurement system from original ingredient
+    let preferredSystem = 'none';
+    if (originalIngredientText) {
+      const parsedOriginal = this.parseQuantityFromText(originalIngredientText);
+      if (parsedOriginal && parsedOriginal.unit) {
+        preferredSystem = this.detectMeasurementSystem(parsedOriginal.unit);
+        console.log(`🌍 Recipe prefers "${preferredSystem}" system (from "${originalIngredientText}")`);
+      }
+    }
 
     // Check predefined substitution rules
     for (const [category, items] of Object.entries(substitutionRules)) {
@@ -135,13 +392,36 @@ class IngredientSubstitutionService {
           )
         );
 
-        suggestions.push(...categorySubstitutes.map(item => ({
-          name: item.itemName,
-          category: category,
-          quantity: item.quantity,
-          unit: item.unit,
-          confidence: 'high'
-        })));
+        suggestions.push(...categorySubstitutes.map(item => {
+          const hasMeasurement = this.hasMeasurementUnit(item.unit);
+          const pantrySystem = this.detectMeasurementSystem(item.unit);
+          
+          // Determine target unit for substitution display
+          let targetUnit = item.unit;
+          let targetQuantity = item.quantity;
+          
+          // If recipe prefers a specific system and pantry uses different system, convert
+          if (preferredSystem !== 'none' && pantrySystem !== 'none' && 
+              preferredSystem !== pantrySystem && hasMeasurement) {
+            targetUnit = this.getTargetUnitInSystem(item.unit, preferredSystem);
+            if (targetUnit !== item.unit) {
+              targetQuantity = this.convertUnit(item.quantity, item.unit, targetUnit);
+              console.log(`   🔄 Converting pantry item "${item.itemName}": ${item.quantity} ${item.unit} → ${targetQuantity} ${targetUnit} (for ${preferredSystem} recipe)`);
+            }
+          }
+          
+          return {
+            name: item.itemName,
+            category: category,
+            quantity: targetQuantity, // Display quantity in recipe's preferred system
+            unit: targetUnit, // Display unit in recipe's preferred system
+            originalQuantityInPantry: item.quantity, // Store original for subtraction
+            originalUnitInPantry: item.unit, // Store original for subtraction
+            confidence: 'high',
+            hasMeasurement: hasMeasurement,
+            conversionApplied: targetUnit !== item.unit
+          };
+        }));
       }
     }
 
@@ -152,18 +432,140 @@ class IngredientSubstitutionService {
           const itemName = this.normalizeIngredientName(item.itemName);
           return itemName.length > 3 && ingredientName.includes(itemName.substring(0, 3));
         })
-        .map(item => ({
-          name: item.itemName,
-          category: 'similar',
-          quantity: item.quantity,
-          unit: item.unit,
-          confidence: 'medium'
-        }));
+        .map(item => {
+          const hasMeasurement = this.hasMeasurementUnit(item.unit);
+          const pantrySystem = this.detectMeasurementSystem(item.unit);
+          
+          // Apply same conversion logic for similar items
+          let targetUnit = item.unit;
+          let targetQuantity = item.quantity;
+          
+          if (preferredSystem !== 'none' && pantrySystem !== 'none' && 
+              preferredSystem !== pantrySystem && hasMeasurement) {
+            targetUnit = this.getTargetUnitInSystem(item.unit, preferredSystem);
+            if (targetUnit !== item.unit) {
+              targetQuantity = this.convertUnit(item.quantity, item.unit, targetUnit);
+              console.log(`   🔄 Converting similar item "${item.itemName}": ${item.quantity} ${item.unit} → ${targetQuantity} ${targetUnit}`);
+            }
+          }
+          
+          return {
+            name: item.itemName,
+            category: 'similar',
+            quantity: targetQuantity,
+            unit: targetUnit,
+            originalQuantityInPantry: item.quantity,
+            originalUnitInPantry: item.unit,
+            confidence: 'medium',
+            hasMeasurement: hasMeasurement,
+            conversionApplied: targetUnit !== item.unit
+          };
+        });
 
       suggestions.push(...similar);
     }
 
+    // PRIORITY SORT: Prefer measured items (kg, g, lb, oz) over counted items (pcs, pieces)
+    suggestions.sort((a, b) => {
+      // First priority: items with measurements
+      if (a.hasMeasurement && !b.hasMeasurement) return -1;
+      if (!a.hasMeasurement && b.hasMeasurement) return 1;
+      
+      // Second priority: confidence level
+      const confidenceOrder = { high: 0, medium: 1, low: 2 };
+      return confidenceOrder[a.confidence] - confidenceOrder[b.confidence];
+    });
+
+    console.log(`🔄 Substitutes for "${ingredientName}":`, suggestions.map(s => 
+      `${s.name} (${s.quantity} ${s.unit || 'count'}) ${s.hasMeasurement ? '✅ measured' : '⚠️ counted'}`
+    ));
+
     return suggestions.slice(0, 10); // Limit to 10 suggestions
+  }
+
+  /**
+   * Check if a unit represents a measurement (weight/volume) rather than counting
+   * @param {string} unit - Unit to check
+   * @returns {boolean} True if measurement unit
+   */
+  hasMeasurementUnit(unit) {
+    if (!unit || unit.trim() === '') return false;
+    
+    const measurementUnits = [
+      // Weight
+      'kg', 'g', 'gram', 'grams', 'kilogram', 'kilograms',
+      'lb', 'lbs', 'pound', 'pounds', 'oz', 'ounce', 'ounces',
+      // Volume
+      'l', 'liter', 'liters', 'ml', 'milliliter', 'milliliters',
+      'cup', 'cups', 'tbsp', 'tablespoon', 'tablespoons',
+      'tsp', 'teaspoon', 'teaspoons', 'fl oz', 'gallon', 'quart', 'pint'
+    ];
+    
+    const lowerUnit = unit.toLowerCase().trim();
+    return measurementUnits.includes(lowerUnit);
+  }
+
+  /**
+   * Detect if a unit is metric or imperial
+   * @param {string} unit - Unit to check
+   * @returns {string} 'metric', 'imperial', or 'none'
+   */
+  detectMeasurementSystem(unit) {
+    if (!unit || unit.trim() === '') return 'none';
+    
+    const lowerUnit = unit.toLowerCase().trim();
+    
+    // Counting units (pcs, etc.) are not metric or imperial
+    if (lowerUnit === 'pcs') return 'none';
+    
+    const metricUnits = ['kg', 'g', 'gram', 'grams', 'kilogram', 'kilograms', 
+                          'l', 'liter', 'liters', 'ml', 'milliliter', 'milliliters'];
+    
+    const imperialUnits = ['lb', 'lbs', 'pound', 'pounds', 'oz', 'ounce', 'ounces',
+                           'cup', 'cups', 'tbsp', 'tablespoon', 'tablespoons',
+                           'tsp', 'teaspoon', 'teaspoons', 'fl oz', 'gallon', 'quart', 'pint'];
+    
+    if (metricUnits.includes(lowerUnit)) return 'metric';
+    if (imperialUnits.includes(lowerUnit)) return 'imperial';
+    return 'none';
+  }
+
+  /**
+   * Get a suitable target unit in the recipe's preferred system
+   * @param {string} pantryUnit - Unit from pantry
+   * @param {string} preferredSystem - 'metric' or 'imperial'
+   * @returns {string} Target unit to convert to
+   */
+  getTargetUnitInSystem(pantryUnit, preferredSystem) {
+    if (!pantryUnit || pantryUnit.trim() === '') return '';
+    
+    const lowerUnit = pantryUnit.toLowerCase().trim();
+    
+    // If pantry already uses preferred system, keep it
+    const pantrySystem = this.detectMeasurementSystem(pantryUnit);
+    if (pantrySystem === preferredSystem) return pantryUnit;
+    
+    // Weight conversions
+    const weightUnits = ['kg', 'g', 'gram', 'grams', 'kilogram', 'kilograms', 
+                         'lb', 'lbs', 'pound', 'pounds', 'oz', 'ounce', 'ounces'];
+    
+    // Volume conversions  
+    const volumeUnits = ['l', 'liter', 'liters', 'ml', 'milliliter', 'milliliters',
+                         'cup', 'cups', 'tbsp', 'tablespoon', 'tablespoons',
+                         'tsp', 'teaspoon', 'teaspoons', 'fl oz', 'gallon', 'quart', 'pint'];
+    
+    const isWeight = weightUnits.includes(lowerUnit);
+    const isVolume = volumeUnits.includes(lowerUnit);
+    
+    if (preferredSystem === 'metric') {
+      if (isWeight) return 'g'; // Convert imperial weight to grams
+      if (isVolume) return 'ml'; // Convert imperial volume to ml
+    } else if (preferredSystem === 'imperial') {
+      if (isWeight) return 'oz'; // Convert metric weight to oz
+      if (isVolume) return 'cup'; // Convert metric volume to cups
+    }
+    
+    return pantryUnit; // Fallback to original unit
   }
 
   /**
@@ -207,16 +609,27 @@ class IngredientSubstitutionService {
   /**
    * Subtract used ingredients from pantry
    * @param {number} userID - User's ID
-   * @param {Array} usedIngredients - Ingredients used (with quantities)
+   * @param {Array} usedIngredients - Ingredients used (with quantities and units)
    * @returns {Promise<Object>} Update result
    */
   async subtractIngredientsFromPantry(userID, usedIngredients) {
     try {
+      console.log('🔄 Starting pantry subtraction...');
+      console.log('📦 Ingredients to subtract:', usedIngredients.map(i => ({
+        name: i.name,
+        quantity: i.quantity,
+        unit: i.unit
+      })));
+      
       const pantryItems = await this.getUserPantryItems(userID);
+      console.log(`📋 Found ${pantryItems.length} pantry items`);
       const updates = [];
 
       for (const ingredient of usedIngredients) {
         const ingredientName = this.normalizeIngredientName(ingredient.text || ingredient.name);
+        console.log(`\n🔍 Processing ingredient: "${ingredient.text || ingredient.name}"`);
+        console.log(`   Normalized name: "${ingredientName}"`);
+        console.log(`   Quantity: ${ingredient.quantity || 1}, Unit: "${ingredient.unit || 'none'}"`);
         
         // Find matching pantry item
         const pantryItem = pantryItems.find(item => 
@@ -224,12 +637,112 @@ class IngredientSubstitutionService {
         );
 
         if (pantryItem) {
-          const newQuantity = Math.max(0, pantryItem.quantity - (ingredient.quantity || 1));
+          console.log(`   ✓ Found in pantry: "${pantryItem.itemName}"`);
+          console.log(`   Pantry quantity: ${pantryItem.quantity}, Unit: "${pantryItem.unit || 'none'}"`);
+          
+          let quantityToSubtract = ingredient.quantity || 1;
+          let conversionApplied = false;
+          
+          // If units are provided and different, convert back to pantry units
+          if (ingredient.unit && pantryItem.unit && ingredient.unit.trim() !== '' && pantryItem.unit.trim() !== '') {
+            const pantryUnit = ingredient.originalUnitInPantry || pantryItem.unit;
+            const usedUnit = ingredient.unit;
+            
+            console.log(`   Units check: pantry="${pantryUnit}", used="${usedUnit}"`);
+            
+            if (pantryUnit.toLowerCase() !== usedUnit.toLowerCase()) {
+              console.log(`   🔄 Converting ${quantityToSubtract} ${usedUnit} to ${pantryUnit}...`);
+              // Convert used quantity back to pantry units
+              const converted = this.convertUnit(
+                quantityToSubtract,
+                usedUnit,
+                pantryUnit
+              );
+              
+              // Only use converted value if conversion was successful (not same as input)
+              if (converted !== quantityToSubtract || usedUnit.toLowerCase() === pantryUnit.toLowerCase()) {
+                console.log(`   ✓ Converted: ${quantityToSubtract} → ${converted}`);
+                quantityToSubtract = converted;
+                conversionApplied = true;
+              } else {
+                console.log(`   ⚠️ Conversion not available, using original value`);
+              }
+            } else {
+              console.log(`   ✓ Units match, no conversion needed`);
+            }
+          } else {
+            console.log(`   ℹ️ No unit conversion (ingredient unit: "${ingredient.unit || 'none'}", pantry unit: "${pantryItem.unit || 'none'}")`);
+          }
+          
+          // If no standard unit conversion worked, try whole↔component conversion
+          // Example: Recipe needs "3 cloves garlic", pantry has "1 whole garlic"
+          // This applies to counting units (pcs) or items without measurement units
+          if (!conversionApplied && (ingredient.unit === 'pcs' || pantryItem.unit === 'pcs' || 
+                                      !this.hasMeasurementUnit(ingredient.unit) || 
+                                      !this.hasMeasurementUnit(pantryItem.unit))) {
+            const usedItemName = ingredient.name || ingredient.text || '';
+            const pantryItemName = pantryItem.itemName || '';
+            
+            console.log(`   🔍 Checking whole↔component conversion...`);
+            const wholeToPartQty = this.convertWholeToComponent(
+              pantryItem.quantity,
+              pantryItemName,
+              usedItemName
+            );
+            
+            if (wholeToPartQty !== null) {
+              // Pantry has whole, recipe needs parts (e.g., 1 whole garlic → 10 cloves)
+              // Check if we have enough
+              if (wholeToPartQty >= quantityToSubtract) {
+                // Calculate how many "whole" items to subtract
+                const conversion = Object.entries(this.wholeToPartConversions).find(([wholeName, conv]) => {
+                  const normalizedPantry = this.normalizeIngredientName(pantryItemName);
+                  return normalizedPantry.includes(wholeName) || wholeName.includes(normalizedPantry);
+                });
+                
+                if (conversion) {
+                  const [wholeName, convData] = conversion;
+                  // How many whole items do we need to use?
+                  quantityToSubtract = quantityToSubtract / convData.ratio;
+                  console.log(`   ✅ Whole→Component: Subtracting ${quantityToSubtract} whole (equivalent to ${ingredient.quantity} ${convData.part})`);
+                  conversionApplied = true;
+                }
+              } else {
+                console.log(`   ⚠️ Not enough: Pantry has ${wholeToPartQty} parts, need ${quantityToSubtract}`);
+              }
+            } else {
+              // Try the reverse: Recipe needs whole, pantry has parts
+              const partToWholeQty = this.convertWholeToComponent(
+                quantityToSubtract,
+                usedItemName,
+                pantryItemName
+              );
+              
+              if (partToWholeQty !== null) {
+                // Recipe needs whole, pantry has parts (e.g., recipe needs 1 whole garlic, pantry has 10 cloves)
+                quantityToSubtract = partToWholeQty;
+                console.log(`   ✅ Component→Whole: Subtracting ${quantityToSubtract} parts from pantry`);
+                conversionApplied = true;
+              }
+            }
+          }
+          
+          // Calculate new quantity (don't go below 0)
+          const newQuantity = Math.max(0, pantryItem.quantity - quantityToSubtract);
+          console.log(`   ➖ Subtraction: ${pantryItem.quantity} - ${quantityToSubtract} = ${newQuantity}`);
           
           updates.push({
             itemID: pantryItem.itemID,
-            newQuantity: newQuantity
+            itemName: pantryItem.itemName,
+            oldQuantity: pantryItem.quantity,
+            subtracted: quantityToSubtract,
+            newQuantity: newQuantity,
+            hadUnit: !!(ingredient.unit && ingredient.unit.trim()),
+            conversionType: conversionApplied ? 'whole-component' : 'standard'
           });
+        } else {
+          console.log(`   ❌ Not found in pantry`);
+          console.log(`⚠️ Pantry item not found for: ${ingredient.name || ingredient.text}`);
         }
       }
 
@@ -242,12 +755,15 @@ class IngredientSubstitutionService {
 
         if (error) {
           console.error('Error updating pantry item:', error);
+        } else {
+          console.log(`✓ Updated ${update.itemName}: ${update.oldQuantity} → ${update.newQuantity} (subtracted ${update.subtracted})`);
         }
       }
 
       return {
         success: true,
-        updatedCount: updates.length
+        updatedCount: updates.length,
+        updates: updates
       };
     } catch (error) {
       console.error('Error subtracting ingredients:', error);
@@ -256,6 +772,52 @@ class IngredientSubstitutionService {
         error: error.message
       };
     }
+  }
+
+  /**
+   * Convert units (same as in substitute-selector)
+   * @param {number} value - Quantity to convert
+   * @param {string} fromUnit - Source unit
+   * @param {string} toUnit - Target unit
+   * @returns {number} Converted value
+   */
+  convertUnit(value, fromUnit, toUnit) {
+    // Normalize units
+    const from = fromUnit?.toLowerCase().trim() || '';
+    const to = toUnit?.toLowerCase().trim() || '';
+
+    if (from === to) return value;
+
+    // Weight conversions
+    const weightConversions = {
+      'g': { 'kg': 0.001, 'oz': 0.035274, 'lb': 0.00220462, 'g': 1 },
+      'kg': { 'g': 1000, 'oz': 35.274, 'lb': 2.20462, 'kg': 1 },
+      'oz': { 'g': 28.3495, 'kg': 0.0283495, 'lb': 0.0625, 'oz': 1 },
+      'lb': { 'g': 453.592, 'kg': 0.453592, 'oz': 16, 'lb': 1 },
+    };
+
+    // Volume conversions
+    const volumeConversions = {
+      'ml': { 'l': 0.001, 'cup': 0.00422675, 'tbsp': 0.067628, 'tsp': 0.202884, 'fl oz': 0.033814, 'ml': 1 },
+      'l': { 'ml': 1000, 'cup': 4.22675, 'tbsp': 67.628, 'tsp': 202.884, 'fl oz': 33.814, 'l': 1 },
+      'cup': { 'ml': 236.588, 'l': 0.236588, 'tbsp': 16, 'tsp': 48, 'fl oz': 8, 'cup': 1 },
+      'tbsp': { 'ml': 14.7868, 'l': 0.0147868, 'cup': 0.0625, 'tsp': 3, 'fl oz': 0.5, 'tbsp': 1 },
+      'tsp': { 'ml': 4.92892, 'l': 0.00492892, 'cup': 0.0208333, 'tbsp': 0.333333, 'fl oz': 0.166667, 'tsp': 1 },
+      'fl oz': { 'ml': 29.5735, 'l': 0.0295735, 'cup': 0.125, 'tbsp': 2, 'tsp': 6, 'fl oz': 1 },
+    };
+
+    // Try weight conversion
+    if (weightConversions[from]?.[to]) {
+      return parseFloat((value * weightConversions[from][to]).toFixed(2));
+    }
+
+    // Try volume conversion
+    if (volumeConversions[from]?.[to]) {
+      return parseFloat((value * volumeConversions[from][to]).toFixed(2));
+    }
+
+    // No conversion available, return original value
+    return value;
   }
 
   /**
@@ -282,26 +844,45 @@ class IngredientSubstitutionService {
       const ingredientText = typeof ingredient === 'string' ? ingredient : (ingredient.text || ingredient);
       
       if (substitutions[ingredientText]) {
+        const substitute = substitutions[ingredientText];
+        
+        // Build the display text with quantity and unit
+        let displayText = substitute.name;
+        if (substitute.quantity && substitute.unit) {
+          displayText = `${substitute.quantity} ${substitute.unit} ${substitute.name}`;
+        } else if (substitute.quantity) {
+          displayText = `${substitute.quantity} ${substitute.name}`;
+        }
+        
         // For string ingredients, return an object
         if (typeof ingredient === 'string') {
           return {
-            text: substitutions[ingredientText].name,
+            text: displayText,
             originalText: ingredientText,
             isSubstituted: true,
-            substitutionReason: substitutions[ingredientText].category
+            substitutionReason: substitute.category,
+            quantity: substitute.quantity,
+            unit: substitute.unit,
+            // Store original pantry info for subtraction
+            originalQuantityInPantry: substitute.originalQuantityInPantry,
+            originalUnitInPantry: substitute.originalUnitInPantry
           };
         }
         // For object ingredients, merge properties
         return {
           ...ingredient,
-          text: substitutions[ingredientText].name,
+          text: displayText,
           originalText: ingredientText,
           isSubstituted: true,
-          substitutionReason: substitutions[ingredientText].category
+          substitutionReason: substitute.category,
+          quantity: substitute.quantity,
+          unit: substitute.unit,
+          // Store original pantry info for subtraction
+          originalQuantityInPantry: substitute.originalQuantityInPantry,
+          originalUnitInPantry: substitute.originalUnitInPantry
         };
       }
       
-      // Return original ingredient (as string or object)
       return ingredient;
     });
 

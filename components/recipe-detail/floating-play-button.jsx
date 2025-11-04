@@ -117,14 +117,18 @@ export default function FloatingPlayButton({
       <Animated.View style={{ transform: [{ scale: playButtonScale }] }}>
         <TouchableOpacity
           style={styles.playButton}
-          onLongPress={handleLongPress}
           onPress={() => {
             if (isExpanded) {
+              // If menu is expanded, collapse it
               handleLongPress();
+            } else {
+              // Single tap - start recipe directly
+              onStartRecipe();
             }
           }}
+          onLongPress={handleLongPress}
           activeOpacity={0.9}
-          delayLongPress={300}
+          delayLongPress={500}
         >
           <Ionicons name="play" size={32} color="#fff" />
         </TouchableOpacity>
