@@ -29,6 +29,7 @@ const IngredientSubstitutionModal = ({
   const [substitutes, setSubstitutes] = useState([]);
   const [loading, setLoading] = useState(false);
   const [substitutionMap, setSubstitutionMap] = useState({});
+  const [pantryItems, setPantryItems] = useState([]); // Store pantry items for parsing
 
   useEffect(() => {
     if (visible) {
@@ -38,8 +39,19 @@ const IngredientSubstitutionModal = ({
       setSelectedSubstitute(null);
       setSubstitutes([]);
       setSubstitutionMap({});
+      
+      // Fetch pantry items early for better parsing
+      const fetchPantry = async () => {
+        try {
+          const items = await IngredientSubstitutionService.getUserPantryItems(userID);
+          setPantryItems(items);
+        } catch (error) {
+          console.error('Error fetching pantry items:', error);
+        }
+      };
+      fetchPantry();
     }
-  }, [visible]);
+  }, [visible, userID]);
 
   // Handle ingredient selection and fetch substitutes
   const handleSelectIngredient = async (ingredient) => {
@@ -51,13 +63,18 @@ const IngredientSubstitutionModal = ({
     const text = typeof ingredient === 'string' ? ingredient : (ingredient.text || ingredient);
     
     // Use the service's parseQuantityFromText which has priority-based measurement parsing
-    const parsed = IngredientSubstitutionService.parseQuantityFromText(text);
+    // Pass pantryItems for better unit detection (prioritizes pantry's unit over pcs)
+    const parsed = IngredientSubstitutionService.parseQuantityFromText(text, pantryItems);
     
     if (parsed) {
-      return { quantity: parsed.value, unit: parsed.unit };
+      return { 
+        quantity: parsed.value, 
+        unit: parsed.unit,
+        isVague: parsed.isVague || false
+      };
     }
     
-    return { quantity: 1, unit: 'pcs' };
+    return { quantity: 1, unit: 'pcs', isVague: false };
   };
 
   // Handle "Continue" from ingredient selection
@@ -69,10 +86,7 @@ const IngredientSubstitutionModal = ({
 
     setLoading(true);
     try {
-      // Get user's pantry items
-      const pantryItems = await IngredientSubstitutionService.getUserPantryItems(userID);
-      
-      // Get smart substitutions for the selected ingredient
+      // Get smart substitutions for the selected ingredient (use already-fetched pantryItems)
       const ingredientName = IngredientSubstitutionService.normalizeIngredientName(selectedIngredient);
       const originalText = typeof selectedIngredient === 'string' ? selectedIngredient : (selectedIngredient.text || selectedIngredient);
       const suggestions = IngredientSubstitutionService.findSubstitutes(ingredientName, pantryItems, originalText);
@@ -196,6 +210,7 @@ const IngredientSubstitutionModal = ({
                   originalIngredient={selectedIngredient}
                   originalQuantity={parseIngredientQuantity(selectedIngredient).quantity}
                   originalUnit={parseIngredientQuantity(selectedIngredient).unit}
+                  isVagueUnit={parseIngredientQuantity(selectedIngredient).isVague}
                   substitutes={substitutes}
                   selectedSubstitute={selectedSubstitute}
                   onSelectSubstitute={setSelectedSubstitute}

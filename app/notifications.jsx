@@ -16,7 +16,7 @@ import { useCustomAuth } from '../hooks/use-custom-auth';
 import NotificationDatabaseService from '../services/notification-database-service';
 
 const Notifications = () => {
-  const { user } = useCustomAuth();
+  const { user, customUserData } = useCustomAuth();
   const router = useRouter();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -24,13 +24,17 @@ const Notifications = () => {
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
-    if (user?.userID) {
+    console.log('🔐 Notifications screen - User object:', user);
+    console.log('🔐 Custom User Data:', customUserData);
+    console.log('🔐 User ID:', customUserData?.userID);
+    
+    if (customUserData?.userID) {
       loadNotifications();
       loadUnreadCount();
 
       // Subscribe to realtime updates
       const subscription = NotificationDatabaseService.subscribeToNotifications(
-        user.userID,
+        customUserData.userID,
         (newNotification) => {
           setNotifications(prev => [newNotification, ...prev]);
           setUnreadCount(prev => prev + 1);
@@ -41,27 +45,39 @@ const Notifications = () => {
         subscription.unsubscribe();
       };
     }
-  }, [user]);
+  }, [customUserData]);
 
   const loadNotifications = async () => {
-    if (!user?.userID) return;
+    if (!customUserData?.userID) {
+      console.error('❌ No user ID available');
+      return;
+    }
     
     try {
       setLoading(true);
-      const data = await NotificationDatabaseService.getUserNotifications(user.userID);
+      console.log('📱 Loading notifications for user:', customUserData.userID);
+      const data = await NotificationDatabaseService.getUserNotifications(customUserData.userID);
+      console.log('📱 Loaded notifications:', data.length, 'items');
+      if (data.length > 0) {
+        console.log('📱 Notification types:', data.map(n => n.type));
+        console.log('📱 First notification:', data[0]);
+      } else {
+        console.log('⚠️ No notifications found in database');
+      }
       setNotifications(data);
     } catch (error) {
-      console.error('Error loading notifications:', error);
+      console.error('❌ Error loading notifications:', error);
+      console.error('❌ Error details:', JSON.stringify(error, null, 2));
     } finally {
       setLoading(false);
     }
   };
 
   const loadUnreadCount = async () => {
-    if (!user?.userID) return;
+    if (!customUserData?.userID) return;
     
     try {
-      const count = await NotificationDatabaseService.getUnreadCount(user.userID);
+      const count = await NotificationDatabaseService.getUnreadCount(customUserData.userID);
       setUnreadCount(count);
     } catch (error) {
       console.error('Error loading unread count:', error);
@@ -73,7 +89,7 @@ const Notifications = () => {
     await loadNotifications();
     await loadUnreadCount();
     setRefreshing(false);
-  }, [user]);
+  }, [customUserData]);
 
   const handleNotificationPress = async (notification) => {
     // Mark as read
@@ -119,7 +135,7 @@ const Notifications = () => {
           style: 'destructive',
           onPress: async () => {
             try {
-              await NotificationDatabaseService.clearAllNotifications(user.userID);
+              await NotificationDatabaseService.clearAllNotifications(customUserData.userID);
               setNotifications([]);
               setUnreadCount(0);
             } catch (error) {
@@ -205,6 +221,7 @@ const Notifications = () => {
 
   return (
     <SafeAreaView style={styles.container}>
+      {console.log('🎨 Rendering Notifications screen, notifications count:', notifications.length)}
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity

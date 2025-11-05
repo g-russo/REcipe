@@ -15,11 +15,13 @@ import { router } from 'expo-router';
 import { useCustomAuth } from '../../hooks/use-custom-auth';
 import RecipeMatcherService from '../../services/recipe-matcher-service';
 import RecipeHistoryService from '../../services/recipe-history-service';
+import RecipeSchedulingService from '../../services/recipe-scheduling-service';
 import AuthGuard from '../../components/auth-guard';
 import ProfileHeader from '../../components/profile/profile-header';
 import ProfileTabs from '../../components/profile/profile-tabs';
 import FavoritesTab from '../../components/profile/favorites-tab';
 import HistoryTab from '../../components/profile/history-tab';
+import ScheduledTab from '../../components/profile/scheduled-tab';
 import EmptyState from '../../components/profile/empty-state';
 import ProfileActions from '../../components/profile/profile-actions';
 
@@ -36,6 +38,8 @@ const Profile = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [recipeHistory, setRecipeHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [scheduledRecipes, setScheduledRecipes] = useState([]);
+  const [loadingScheduled, setLoadingScheduled] = useState(false);
 
   useEffect(() => {
     // Update profile data if user information is available
@@ -50,16 +54,27 @@ const Profile = () => {
       if (activeTab === 'favorites') {
         loadSavedRecipes();
       }
+      
+      // Load scheduled recipes when on scheduled tab
+      if (activeTab === 'scheduled') {
+        loadScheduledRecipes();
+      }
     }
   }, [user, customUserData]);
 
   const loadSavedRecipes = async () => {
-    if (!user?.email) return;
+    if (!user?.email) {
+      console.log('⚠️ No user email available for loading favorites');
+      setLoadingRecipes(false);
+      return;
+    }
     
     try {
       setLoadingRecipes(true);
+      console.log('📥 Loading saved recipes for:', user.email);
       const recipes = await RecipeMatcherService.getSavedRecipes(user.email);
       setSavedRecipes(recipes);
+      console.log('✅ Loaded', recipes.length, 'saved recipes');
     } catch (error) {
       console.error('❌ Error loading saved recipes:', error);
     } finally {
@@ -68,16 +83,42 @@ const Profile = () => {
   };
 
   const loadRecipeHistory = async () => {
-    if (!customUserData?.userID) return;
+    if (!customUserData?.userID) {
+      console.log('⚠️ No user ID available for loading history');
+      setLoadingHistory(false);
+      return;
+    }
     
     try {
       setLoadingHistory(true);
+      console.log('📥 Loading recipe history for user:', customUserData.userID);
       const history = await RecipeHistoryService.getRecipeHistory(customUserData.userID);
       setRecipeHistory(history);
+      console.log('✅ Loaded', history.length, 'history items');
     } catch (error) {
       console.error('❌ Error loading recipe history:', error);
     } finally {
       setLoadingHistory(false);
+    }
+  };
+
+  const loadScheduledRecipes = async () => {
+    if (!customUserData?.userID) {
+      console.log('⚠️ No user ID available for loading scheduled recipes');
+      setLoadingScheduled(false);
+      return;
+    }
+    
+    try {
+      setLoadingScheduled(true);
+      console.log('📅 Loading scheduled recipes for user:', customUserData.userID);
+      const scheduled = await RecipeSchedulingService.getScheduledRecipes(customUserData.userID, false);
+      setScheduledRecipes(scheduled);
+      console.log('✅ Loaded', scheduled.length, 'scheduled recipes');
+    } catch (error) {
+      console.error('❌ Error loading scheduled recipes:', error);
+    } finally {
+      setLoadingScheduled(false);
     }
   };
 
@@ -92,6 +133,11 @@ const Profile = () => {
     // Load history when history tab is selected
     if (tab === 'history' && recipeHistory.length === 0 && !loadingHistory) {
       loadRecipeHistory();
+    }
+    
+    // Load scheduled when scheduled tab is selected
+    if (tab === 'scheduled' && scheduledRecipes.length === 0 && !loadingScheduled) {
+      loadScheduledRecipes();
     }
   };
 
@@ -109,6 +155,8 @@ const Profile = () => {
         await loadSavedRecipes();
       } else if (activeTab === 'history') {
         await loadRecipeHistory();
+      } else if (activeTab === 'scheduled') {
+        await loadScheduledRecipes();
       }
       
     } catch (error) {
@@ -299,10 +347,10 @@ const Profile = () => {
       case 'scheduled':
         return (
           <View style={styles.tabContent}>
-            <EmptyState
-              icon="calendar-outline"
-              title="No scheduled items"
-              subtitle="Items you schedule will appear here"
+            <ScheduledTab
+              scheduledRecipes={scheduledRecipes}
+              onDelete={() => loadScheduledRecipes()}
+              onRefresh={loadScheduledRecipes}
             />
           </View>
         );

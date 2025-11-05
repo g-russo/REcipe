@@ -16,6 +16,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import cacheService from '../../services/supabase-cache-service';
 import SousChefAIService from '../../services/souschef-ai-service';
 import SpellCorrector from '../../utils/spell-corrector';
@@ -97,7 +98,31 @@ const RecipeSearch = () => {
     loadPopularRecipesFromCache();
     // Load recent searches from AsyncStorage
     loadRecentSearches();
+    
+    // Cleanup function to reset loading states when component unmounts
+    return () => {
+      setLoading(false);
+      setGeneratingAI(false);
+      setLoadingPopular(false);
+    };
   }, []);
+
+  // Reset loading states when screen comes into focus (after long periods)
+  useFocusEffect(
+    React.useCallback(() => {
+      // Reset loading states if they're stuck
+      const timer = setTimeout(() => {
+        if (loading || generatingAI || loadingPopular) {
+          console.log('⚠️ Resetting stuck loading states on focus');
+          setLoading(false);
+          setGeneratingAI(false);
+          setLoadingPopular(false);
+        }
+      }, 1000); // Give 1 second for legitimate loading to complete
+
+      return () => clearTimeout(timer);
+    }, [loading, generatingAI, loadingPopular])
+  );
 
   const loadPopularRecipesFromCache = async () => {
     setLoadingPopular(true);
@@ -377,8 +402,12 @@ const RecipeSearch = () => {
     // Add to recent searches
     addToRecentSearches(query);
 
+    // Clear previous results to show loading screen
+    setRecipes([]);
     setLoading(true);
     setHasSearched(true);
+    setCanGenerateMore(false);
+    setAiRecipeCount(0);
 
     try {
       console.log('='.repeat(60));
@@ -541,9 +570,8 @@ const RecipeSearch = () => {
           setLoading(false);
         } else {
           // ❌ No results anywhere - Generate 1 AI recipe
-          // ❌ Step 3: No results anywhere - Generate 1 AI recipe
           console.log('ℹ️ No existing recipes found, generating 1 AI recipe...');
-          setLoading(false);
+          // Don't set loading to false - transition directly to AI generation
           setGeneratingAI(true);
           setCurrentSearchQuery(query);
           
@@ -627,6 +655,7 @@ const RecipeSearch = () => {
             setCanGenerateMore(false);
           } finally {
             setGeneratingAI(false);
+            setLoading(false);
           }
         }
       } else {
@@ -1065,18 +1094,8 @@ const RecipeSearch = () => {
           </View>
         )}
 
-        {/* No Results Message */}
-        {hasSearched && recipes.length === 0 && !loading && (
-          <View style={styles.section}>
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>No recipes found</Text>
-              <Text style={styles.emptySubtext}>Try a different search term or check your spelling</Text>
-            </View>
-          </View>
-        )}
-
-        {/* Loading State */}
-        {loading && (
+        {/* Loading State - Show when searching API/Database */}
+        {loading && !generatingAI && (
           <View style={styles.section}>
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="#4CAF50" />
@@ -1085,7 +1104,7 @@ const RecipeSearch = () => {
           </View>
         )}
 
-        {/* AI Generation State */}
+        {/* AI Generation State - Show when AI is creating recipes */}
         {generatingAI && (
           <View style={styles.section}>
             <View style={styles.loadingContainer}>
@@ -1093,6 +1112,16 @@ const RecipeSearch = () => {
               <Text style={styles.loadingText}>🤖 SousChef AI is creating custom recipes...</Text>
               <Text style={styles.loadingSubtext}>Generating images and cooking instructions</Text>
               <Text style={styles.loadingSubtext}>This may take 30-60 seconds</Text>
+            </View>
+          </View>
+        )}
+
+        {/* No Results Message - Only show when search is complete, AI is done, and truly no results */}
+        {hasSearched && recipes.length === 0 && !loading && !generatingAI && (
+          <View style={styles.section}>
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>No recipes found</Text>
+              <Text style={styles.emptySubtext}>Try a different search term or check your spelling</Text>
             </View>
           </View>
         )}

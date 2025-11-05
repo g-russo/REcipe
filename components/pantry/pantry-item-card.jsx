@@ -13,6 +13,7 @@ const PantryItemCard = ({
   onMenuPress,
   selectionMode = false,
   isSelected = false,
+  isHighlighted = false,
 }) => {
   // Format expiration date
   const formatDate = (date) => {
@@ -41,7 +42,10 @@ const PantryItemCard = ({
 
   return (
     <TouchableOpacity
-      style={styles.itemCard}
+      style={[
+        styles.itemCard,
+        isHighlighted && styles.highlightedCard
+      ]}
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={300}
@@ -122,6 +126,15 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 4,
     elevation: 2,
+  },
+  highlightedCard: {
+    backgroundColor: '#FFF9C4',
+    borderWidth: 2,
+    borderColor: '#FFD54F',
+    shadowColor: '#FFD54F',
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
   checkboxContainer: {
     position: 'absolute',

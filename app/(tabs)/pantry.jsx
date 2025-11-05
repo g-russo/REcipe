@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   SafeAreaView,
   ScrollView,
@@ -6,6 +6,7 @@ import {
   Alert,
   StyleSheet,
 } from 'react-native';
+import { useLocalSearchParams } from 'expo-router';
 import { useCustomAuth } from '../../hooks/use-custom-auth';
 import AuthGuard from '../../components/auth-guard';
 import PantryService from '../../services/pantry-service';
@@ -29,11 +30,14 @@ import ExpiringItemsBanner from '../../components/pantry/expiring-items-banner';
  */
 const Pantry = () => {
   const { user, customUserData } = useCustomAuth();
+  const params = useLocalSearchParams();
+  const scrollViewRef = useRef(null);
   
   // State
   const [inventories, setInventories] = useState([]);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [highlightedItemId, setHighlightedItemId] = useState(null);
   
   // Modal states
   const [itemFormVisible, setItemFormVisible] = useState(false);
@@ -64,6 +68,27 @@ const Pantry = () => {
       console.log('⚠️ No user ID available yet');
     }
   }, [customUserData]);
+
+  // Handle highlight parameter from notifications
+  useEffect(() => {
+    if (params?.highlightItemId && items.length > 0) {
+      const itemId = parseInt(params.highlightItemId);
+      console.log('🔍 Highlighting item from notification:', itemId);
+      
+      // Check if item exists
+      const itemExists = items.find(item => item.itemID === itemId);
+      if (itemExists) {
+        setHighlightedItemId(itemId);
+        
+        // Clear highlight after 3 seconds
+        setTimeout(() => {
+          setHighlightedItemId(null);
+        }, 3000);
+      } else {
+        console.warn('⚠️ Item not found:', itemId);
+      }
+    }
+  }, [params?.highlightItemId, items]);
 
   // Initialize notification service
   const initializeNotifications = async () => {
@@ -98,10 +123,8 @@ const Pantry = () => {
     if (!customUserData?.userID) return;
     
     try {
-      const summary = await ExpirationNotificationService.checkAndScheduleExpirationNotifications(customUserData.userID);
-      setNotificationSummary(summary);
-      
-      // Get items expiring within 3 days for banner
+      // Only get expiring items for the banner display
+      // Don't schedule notifications here - they're scheduled when items are created/updated
       const expiring = await ExpirationNotificationService.getExpiringItems(customUserData.userID, 3);
       // Add days until expiry to each item
       const itemsWithDays = expiring.map(item => ({
@@ -110,9 +133,9 @@ const Pantry = () => {
       }));
       setExpiringItems(itemsWithDays);
       
-      console.log('Expiration notifications scheduled:', summary);
+      console.log('📊 Found', itemsWithDays.length, 'expiring items');
     } catch (error) {
-      console.error('Error scheduling notifications:', error);
+      console.error('Error getting expiring items:', error);
     }
   };
 
@@ -204,6 +227,19 @@ const Pantry = () => {
           ...itemData,
           userID: customUserData.userID, // For image upload
         });
+        
+        // Schedule notification if item has expiration date
+        if (itemData.itemExpiration) {
+          const daysUntilExpiry = ExpirationNotificationService.calculateDaysUntilExpiration(itemData.itemExpiration);
+          if (daysUntilExpiry !== null && daysUntilExpiry >= 0 && daysUntilExpiry <= 3) {
+            await ExpirationNotificationService.scheduleExpirationNotification(
+              { ...editingItem, ...itemData },
+              daysUntilExpiry,
+              customUserData.userID
+            );
+          }
+        }
+        
         Alert.alert('Success', 'Item updated successfully');
       } else {
         // Create new item
@@ -228,6 +264,19 @@ const Pantry = () => {
         
         const createdItem = await PantryService.createItem(itemToCreate);
         console.log('✅ Item created successfully:', createdItem);
+        
+        // Schedule notification if item has expiration date
+        if (createdItem.itemExpiration) {
+          const daysUntilExpiry = ExpirationNotificationService.calculateDaysUntilExpiration(createdItem.itemExpiration);
+          if (daysUntilExpiry !== null && daysUntilExpiry >= 0 && daysUntilExpiry <= 3) {
+            console.log('📅 Scheduling notification for item expiring in', daysUntilExpiry, 'days');
+            await ExpirationNotificationService.scheduleExpirationNotification(
+              createdItem,
+              daysUntilExpiry,
+              customUserData.userID
+            );
+          }
+        }
         
         Alert.alert('Success', 'Item added successfully');
       }
@@ -454,6 +503,7 @@ const Pantry = () => {
             onItemMenuPress={handleItemMenuPress}
             selectionMode={selectionMode}
             selectedItems={selectedItems}
+            highlightedItemId={highlightedItemId}
           />
         </ScrollView>
 
