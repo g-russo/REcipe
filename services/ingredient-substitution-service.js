@@ -100,23 +100,10 @@ class IngredientSubstitutionService {
       );
 
       if (pantryItem) {
-        // Parse required quantity from ingredient text
-        const requiredQuantity = this.parseQuantityFromText(ingredientText);
-        
-        // Check if pantry has enough quantity
-        if (requiredQuantity && pantryItem.quantity < requiredQuantity.value) {
-          insufficient.push({
-            ...ingredient,
-            text: ingredientText,
-            required: requiredQuantity.value,
-            requiredUnit: requiredQuantity.unit,
-            available: pantryItem.quantity,
-            availableUnit: pantryItem.unit,
-            pantryItemName: pantryItem.itemName
-          });
-        } else {
-          available.push(ingredient);
-        }
+        // Item exists in pantry - don't check quantity here!
+        // The user will specify how much they want to use during substitution
+        // This avoids unit mismatch issues (e.g., 1 kg vs 2 lb comparison)
+        available.push(ingredient);
       } else {
         missing.push(ingredient);
       }
@@ -128,9 +115,10 @@ class IngredientSubstitutionService {
   /**
    * Parse quantity from ingredient text with smart defaults
    * @param {string} text - Ingredient text (e.g., "2 cups flour", "2 chicken", "salt")
+   * @param {Array} pantryItems - Optional array of pantry items to check units from
    * @returns {Object|null} { value, unit, descriptors } or null
    */
-  parseQuantityFromText(text) {
+  parseQuantityFromText(text, pantryItems = []) {
     if (!text) return null;
     
     let lowerText = text.toLowerCase().trim();
@@ -177,27 +165,152 @@ class IngredientSubstitutionService {
       return { value: 0.5, unit: 'tbsp', descriptors: foundDescriptors };
     }
     
-    // PRIORITY 1: Check for measurement units anywhere in the text (g, kg, oz, lb, ml, etc.)
-    // Examples: "2 chicken breast, around 400g" → should use 400g, not 2 pcs
-    const measurementPattern = /(\d+(?:\.\d+)?)\s*(g|kg|lb|lbs|pound|pounds|oz|ounce|ounces|ml|l|liter|liters|cup|cups|tbsp|tsp|tablespoon|tablespoons|teaspoon|teaspoons)\b/i;
-    const measurementMatch = lowerText.match(measurementPattern);
+    // PRIORITY 1: Check for WEIGHT/VOLUME measurements in parentheses or anywhere in text
+    // Examples: "1 whole chicken (3 1/2 to 4 pounds)" → prefer 3.75 lb (midpoint)
+    //           "2 chicken breasts (1lb total)" → use 1 lb
+    //           "2 pounds chicken thighs" → use 2 lb
     
-    if (measurementMatch) {
-      const value = parseFloat(measurementMatch[1]);
-      let unit = measurementMatch[2].toLowerCase();
+    // Pattern 1: Weight in parentheses with ranges: "(3 1/2 to 4 pounds)", "(1-2 kg)"
+    const rangeParenPattern = /\((\d+(?:\s+\d+\/\d+)?)\s*(?:to|-)\s*(\d+(?:\s+\d+\/\d+)?)\s*(pound|pounds|lb|lbs|kg|g|oz|ounce|ounces|cup|cups|ml|l)\)/i;
+    const rangeParenMatch = lowerText.match(rangeParenPattern);
+    
+    if (rangeParenMatch) {
+      // Convert fractions like "3 1/2" to decimal
+      const parseValue = (str) => {
+        const parts = str.trim().split(/\s+/);
+        if (parts.length === 2 && parts[1].includes('/')) {
+          const whole = parseFloat(parts[0]);
+          const [num, denom] = parts[1].split('/');
+          return whole + (parseFloat(num) / parseFloat(denom));
+        } else if (str.includes('/')) {
+          const [num, denom] = str.split('/');
+          return parseFloat(num) / parseFloat(denom);
+        }
+        return parseFloat(str);
+      };
       
-      // Normalize unit variations to standard forms
-      if (unit === 'pound' || unit === 'pounds') unit = 'lb';
+      const min = parseValue(rangeParenMatch[1]);
+      const max = parseValue(rangeParenMatch[2]);
+      const value = (min + max) / 2; // Use midpoint
+      let unit = rangeParenMatch[3].toLowerCase();
+      
+      // Normalize units
+      if (unit === 'pound' || unit === 'pounds' || unit === 'lbs') unit = 'lb';
+      if (unit === 'ounce' || unit === 'ounces') unit = 'oz';
+      
+      console.log(`📊 Parsed quantity from "${text}": ${value} ${unit} (range in parentheses: ${min}-${max}) [descriptors: ${foundDescriptors.join(', ') || 'none'}]`);
+      return { value, unit, descriptors: foundDescriptors };
+    }
+    
+    // Pattern 2: Weight in parentheses: "(1lb total)", "(400g)", "(2 pounds)"
+    const parenWeightPattern = /\((\d+(?:\s+\d+\/\d+)?(?:\.\d+)?)\s*(pound|pounds|lb|lbs|kg|g|oz|ounce|ounces|ml|l|cup|cups)(?:\s+total)?\)/i;
+    const parenWeightMatch = lowerText.match(parenWeightPattern);
+    
+    if (parenWeightMatch) {
+      const parseValue = (str) => {
+        const parts = str.trim().split(/\s+/);
+        if (parts.length === 2 && parts[1].includes('/')) {
+          const whole = parseFloat(parts[0]);
+          const [num, denom] = parts[1].split('/');
+          return whole + (parseFloat(num) / parseFloat(denom));
+        } else if (str.includes('/')) {
+          const [num, denom] = str.split('/');
+          return parseFloat(num) / parseFloat(denom);
+        }
+        return parseFloat(str);
+      };
+      
+      const value = parseValue(parenWeightMatch[1]);
+      let unit = parenWeightMatch[2].toLowerCase();
+      
+      if (unit === 'pound' || unit === 'pounds' || unit === 'lbs') unit = 'lb';
+      if (unit === 'ounce' || unit === 'ounces') unit = 'oz';
+      if (unit === 'liter' || unit === 'liters') unit = 'l';
+      
+      console.log(`📊 Parsed quantity from "${text}": ${value} ${unit} (weight in parentheses) [descriptors: ${foundDescriptors.join(', ') || 'none'}]`);
+      return { value, unit, descriptors: foundDescriptors };
+    }
+    
+    // Pattern 3: Mixed fractions at start: "3 1/2 pounds", "1 1/2 cups"
+    const mixedFractionPattern = /^(\d+)\s+(\d+)\/(\d+)\s*(pound|pounds|lb|lbs|kg|g|oz|ounce|ounces|cup|cups|ml|l|liter|liters|tbsp|tsp|tablespoon|tablespoons|teaspoon|teaspoons)\b/i;
+    const mixedFractionMatch = lowerText.match(mixedFractionPattern);
+    
+    if (mixedFractionMatch) {
+      const whole = parseFloat(mixedFractionMatch[1]);
+      const numerator = parseFloat(mixedFractionMatch[2]);
+      const denominator = parseFloat(mixedFractionMatch[3]);
+      const value = whole + (numerator / denominator);
+      let unit = mixedFractionMatch[4].toLowerCase();
+      
+      if (unit === 'pound' || unit === 'pounds' || unit === 'lbs') unit = 'lb';
       if (unit === 'ounce' || unit === 'ounces') unit = 'oz';
       if (unit === 'liter' || unit === 'liters') unit = 'l';
       if (unit === 'tablespoon' || unit === 'tablespoons') unit = 'tbsp';
       if (unit === 'teaspoon' || unit === 'teaspoons') unit = 'tsp';
       
-      console.log(`📊 Parsed quantity from "${text}": ${value} ${unit} (measurement unit found) [descriptors: ${foundDescriptors.join(', ') || 'none'}]`);
+      console.log(`📊 Parsed quantity from "${text}": ${value} ${unit} (mixed fraction) [descriptors: ${foundDescriptors.join(', ') || 'none'}]`);
       return { value, unit, descriptors: foundDescriptors };
     }
     
-    // PRIORITY 2: Standard pattern for quantity at the beginning
+    // Pattern 4: Simple weight at beginning or anywhere: "2 pounds chicken", "400g"
+    const weightPattern = /(\d+(?:\.\d+)?)\s*(pound|pounds|lb|lbs|kg|g|oz|ounce|ounces)\b/i;
+    const weightMatch = lowerText.match(weightPattern);
+    
+    if (weightMatch) {
+      const value = parseFloat(weightMatch[1]);
+      let unit = weightMatch[2].toLowerCase();
+      
+      if (unit === 'pound' || unit === 'pounds' || unit === 'lbs') unit = 'lb';
+      if (unit === 'ounce' || unit === 'ounces') unit = 'oz';
+      
+      console.log(`📊 Parsed quantity from "${text}": ${value} ${unit} (weight measurement) [descriptors: ${foundDescriptors.join(', ') || 'none'}]`);
+      return { value, unit, descriptors: foundDescriptors };
+    }
+    
+    // Pattern 5: Volume measurements
+    const volumePattern = /(\d+(?:\.\d+)?)\s*(cup|cups|ml|l|liter|liters|tbsp|tsp|tablespoon|tablespoons|teaspoon|teaspoons)\b/i;
+    const volumeMatch = lowerText.match(volumePattern);
+    
+    if (volumeMatch) {
+      const value = parseFloat(volumeMatch[1]);
+      let unit = volumeMatch[2].toLowerCase();
+      
+      if (unit === 'liter' || unit === 'liters') unit = 'l';
+      if (unit === 'tablespoon' || unit === 'tablespoons') unit = 'tbsp';
+      if (unit === 'teaspoon' || unit === 'teaspoons') unit = 'tsp';
+      
+      console.log(`📊 Parsed quantity from "${text}": ${value} ${unit} (volume measurement) [descriptors: ${foundDescriptors.join(', ') || 'none'}]`);
+      return { value, unit, descriptors: foundDescriptors };
+    }
+    
+    // Pattern 6: Ranges NOT in parentheses (anywhere in text): "3-4 cups", "2 to 3 kg"
+    const rangePattern = /(\d+(?:\.\d+)?)\s*(?:to|-)\s*(\d+(?:\.\d+)?)\s*(pound|pounds|lb|lbs|kg|g|oz|ounce|ounces|cup|cups|ml|l|liter|liters|tbsp|tsp|tablespoon|tablespoons|teaspoon|teaspoons)\b/i;
+    const rangeMatch = lowerText.match(rangePattern);
+    
+    if (rangeMatch) {
+      const min = parseFloat(rangeMatch[1]);
+      const max = parseFloat(rangeMatch[2]);
+      const value = (min + max) / 2; // Use midpoint as default
+      let unit = rangeMatch[3].toLowerCase();
+      
+      if (unit === 'pound' || unit === 'pounds' || unit === 'lbs') unit = 'lb';
+      if (unit === 'ounce' || unit === 'ounces') unit = 'oz';
+      if (unit === 'liter' || unit === 'liters') unit = 'l';
+      if (unit === 'tablespoon' || unit === 'tablespoons') unit = 'tbsp';
+      if (unit === 'teaspoon' || unit === 'teaspoons') unit = 'tsp';
+      
+      console.log(`📊 Parsed quantity from "${text}": ${value} ${unit} (range: ${min}-${max}, using midpoint) [descriptors: ${foundDescriptors.join(', ') || 'none'}]`);
+      return { 
+        value, 
+        unit, 
+        descriptors: foundDescriptors,
+        isRange: true,
+        rangeMin: min,
+        rangeMax: max
+      };
+    }
+    
+    // PRIORITY 2: Standard pattern for quantity at the beginning (as fallback)
     // Examples: "2 cups flour", "1/2 tsp salt", "2 chicken", "3 pieces"
     const pattern = /^(\d+(?:\/\d+)?(?:\.\d+)?)\s*([a-zA-Z]+)?/;
     const match = lowerText.match(pattern);
@@ -222,21 +335,70 @@ class IngredientSubstitutionService {
       
       const countingUnits = ['pcs', 'pieces', 'piece', 'pc', 'each', 'whole', 'item', 'items',
                              'sprig', 'sprigs', 'clove', 'cloves', 'stalk', 'stalks',
-                             'leaf', 'leaves', 'pod', 'pods', 'bulb', 'bulbs', 'head', 'heads'];
+                             'leaf', 'leaves', 'pod', 'pods', 'bulb', 'bulbs', 'head', 'heads',
+                             'breast', 'breasts', 'fillet', 'fillets', 'thigh', 'thighs',
+                             'drumstick', 'drumsticks', 'wing', 'wings', 'egg', 'eggs',
+                             'slice', 'slices', 'sheet', 'sheets', 'strip', 'strips',
+                             'can', 'cans', 'jar', 'jars', 'bottle', 'bottles', 'pack', 'packs',
+                             'bag', 'bags', 'box', 'boxes', 'container', 'containers'];
       
-      const allRecognizedUnits = [...measurementUnits, ...countingUnits];
+      // Vague/imprecise units that require user specification
+      const vagueUnits = ['handful', 'handfuls', 'pinch', 'pinches', 'dash', 'dashes',
+                          'splash', 'splashes', 'drizzle', 'bunch', 'bunches',
+                          'some', 'few', 'several', 'small', 'medium', 'large'];
+      
+      const allRecognizedUnits = [...measurementUnits, ...countingUnits, ...vagueUnits];
       
       // Check if the captured "unit" is actually a recognized unit
-      // If not (e.g., "chicken", "tomato"), treat as no unit → default to pcs
+      // If not (e.g., "chicken", "tomato"), check pantry first, then check if it's a countable food item
       if (unit === '' || !allRecognizedUnits.includes(unit.toLowerCase())) {
+        
+        // PRIORITY: Check if we have this ingredient in pantry and use PANTRY's unit
+        if (pantryItems && pantryItems.length > 0) {
+          const normalizedIngredient = this.normalizeIngredientName(text);
+          
+          const matchingPantryItem = pantryItems.find(item => {
+            const normalizedPantryName = this.normalizeIngredientName(item.itemName);
+            return normalizedIngredient.includes(normalizedPantryName) || 
+                   normalizedPantryName.includes(normalizedIngredient);
+          });
+          
+          if (matchingPantryItem) {
+            console.log(`📊 Parsed quantity from "${text}": ${value} ${matchingPantryItem.unit} (using pantry's unit from "${matchingPantryItem.itemName}") [descriptors: ${foundDescriptors.join(', ') || 'none'}]`);
+            return { 
+              value, 
+              unit: matchingPantryItem.unit, 
+              descriptors: foundDescriptors,
+              fromPantry: true 
+            };
+          }
+        }
+        
+        // Check if this is a common countable food item
+        const countableFoods = ['chicken', 'egg', 'eggs', 'tomato', 'tomatoes', 'potato', 'potatoes',
+                                'onion', 'onions', 'carrot', 'carrots', 'apple', 'apples',
+                                'banana', 'bananas', 'lemon', 'lemons', 'lime', 'limes',
+                                'orange', 'oranges', 'avocado', 'avocados', 'mango', 'mangoes',
+                                'peach', 'peaches', 'pear', 'pears', 'plum', 'plums'];
+        
+        const isCountableFood = countableFoods.some(food => lowerText.includes(food));
+        
         // This means we have a number but no explicit/recognized unit (e.g., "2 chicken", "3 eggs")
-        // Treat this as pieces/count
-        if (unit !== '') {
-          console.log(`📊 Parsed quantity from "${text}": ${value} pcs (unrecognized unit "${unit}", defaulting to pcs) [descriptors: ${foundDescriptors.join(', ') || 'none'}]`);
+        // Treat this as pieces/count (LAST RESORT)
+        if (unit !== '' || isCountableFood) {
+          if (unit !== '') {
+            console.log(`📊 Parsed quantity from "${text}": ${value} pcs (food item "${unit}", treating as count) [descriptors: ${foundDescriptors.join(', ') || 'none'}]`);
+          } else {
+            console.log(`📊 Parsed quantity from "${text}": ${value} pcs (countable food item) [descriptors: ${foundDescriptors.join(', ') || 'none'}]`);
+          }
         } else {
           console.log(`📊 Parsed quantity from "${text}": ${value} pcs (implied count) [descriptors: ${foundDescriptors.join(', ') || 'none'}]`);
         }
         unit = 'pcs';
+      } else if (vagueUnits.includes(unit.toLowerCase())) {
+        // Vague unit - keep it and mark for user input
+        console.log(`📊 Parsed quantity from "${text}": ${value} ${unit} (vague unit - user must specify) [descriptors: ${foundDescriptors.join(', ') || 'none'}]`);
+        return { value, unit: unit.toLowerCase(), descriptors: foundDescriptors, isVague: true };
       } else if (countingUnits.includes(unit.toLowerCase())) {
         // Normalize all counting units to 'pcs'
         console.log(`📊 Parsed quantity from "${text}": ${value} pcs (normalized from ${match[2]}) [descriptors: ${foundDescriptors.join(', ') || 'none'}]`);
@@ -271,8 +433,9 @@ class IngredientSubstitutionService {
     return name
       .toLowerCase()
       .replace(/[^a-z\s]/g, '') // Remove non-alphabetic characters (numbers, punctuation)
-      .replace(/\b(fresh|dried|chopped|minced|sliced|diced|ground|whole|organic)\b/g, '') // Remove descriptors
+      .replace(/\b(fresh|dried|chopped|minced|sliced|diced|ground|whole|organic|frozen|raw|cooked)\b/g, '') // Remove descriptors
       .replace(/\b(g|kg|lb|lbs|oz|ounce|ounces|ml|l|liter|liters|cup|cups|tbsp|tsp|tablespoon|tablespoons|teaspoon|teaspoons|pcs|pieces|piece|pc)\b/g, '') // Remove measurement units
+      .replace(/\b(handful|handfuls|pinch|pinches|dash|dashes|splash|splashes|drizzle|bunch|bunches)\b/g, '') // Remove vague units
       .replace(/\s+/g, ' ') // Collapse multiple spaces
       .trim();
   }
@@ -372,13 +535,20 @@ class IngredientSubstitutionService {
     const substitutionRules = this.getSubstitutionRules();
     const suggestions = [];
 
-    // Detect recipe's preferred measurement system from original ingredient
+    // Parse the original ingredient to check if it uses a vague unit
     let preferredSystem = 'none';
+    let hasVagueUnit = false;
+    
     if (originalIngredientText) {
-      const parsedOriginal = this.parseQuantityFromText(originalIngredientText);
-      if (parsedOriginal && parsedOriginal.unit) {
-        preferredSystem = this.detectMeasurementSystem(parsedOriginal.unit);
-        console.log(`🌍 Recipe prefers "${preferredSystem}" system (from "${originalIngredientText}")`);
+      const parsedOriginal = this.parseQuantityFromText(originalIngredientText, pantryItems);
+      
+      if (parsedOriginal) {
+        hasVagueUnit = parsedOriginal.isVague || false;
+        
+        if (parsedOriginal.unit && !hasVagueUnit) {
+          preferredSystem = this.detectMeasurementSystem(parsedOriginal.unit);
+          console.log(`🌍 Recipe prefers "${preferredSystem}" system (from "${originalIngredientText}")`);
+        }
       }
     }
 
@@ -400,6 +570,24 @@ class IngredientSubstitutionService {
           let targetUnit = item.unit;
           let targetQuantity = item.quantity;
           
+          // VAGUE UNIT HANDLING: Keep pantry's original unit, let user specify amount
+          if (hasVagueUnit) {
+            console.log(`   ⚠️ Vague unit detected - using pantry's unit "${item.unit}" for "${item.itemName}"`);
+            return {
+              name: item.itemName,
+              category: category,
+              quantity: item.quantity, // Show available quantity in pantry's unit
+              unit: item.unit, // Use pantry's unit
+              originalQuantityInPantry: item.quantity,
+              originalUnitInPantry: item.unit,
+              confidence: 'high',
+              hasMeasurement: hasMeasurement,
+              conversionApplied: false,
+              requiresUserInput: true, // Flag that user needs to specify amount
+              vagueMeasurement: originalIngredientText // Store original vague measurement
+            };
+          }
+          
           // If recipe prefers a specific system and pantry uses different system, convert
           if (preferredSystem !== 'none' && pantrySystem !== 'none' && 
               preferredSystem !== pantrySystem && hasMeasurement) {
@@ -419,7 +607,8 @@ class IngredientSubstitutionService {
             originalUnitInPantry: item.unit, // Store original for subtraction
             confidence: 'high',
             hasMeasurement: hasMeasurement,
-            conversionApplied: targetUnit !== item.unit
+            conversionApplied: targetUnit !== item.unit,
+            requiresUserInput: false
           };
         }));
       }
@@ -435,6 +624,23 @@ class IngredientSubstitutionService {
         .map(item => {
           const hasMeasurement = this.hasMeasurementUnit(item.unit);
           const pantrySystem = this.detectMeasurementSystem(item.unit);
+          
+          // VAGUE UNIT HANDLING for similar items
+          if (hasVagueUnit) {
+            return {
+              name: item.itemName,
+              category: 'similar',
+              quantity: item.quantity,
+              unit: item.unit,
+              originalQuantityInPantry: item.quantity,
+              originalUnitInPantry: item.unit,
+              confidence: 'medium',
+              hasMeasurement: hasMeasurement,
+              conversionApplied: false,
+              requiresUserInput: true,
+              vagueMeasurement: originalIngredientText
+            };
+          }
           
           // Apply same conversion logic for similar items
           let targetUnit = item.unit;
@@ -458,7 +664,8 @@ class IngredientSubstitutionService {
             originalUnitInPantry: item.unit,
             confidence: 'medium',
             hasMeasurement: hasMeasurement,
-            conversionApplied: targetUnit !== item.unit
+            conversionApplied: targetUnit !== item.unit,
+            requiresUserInput: false
           };
         });
 
@@ -576,8 +783,8 @@ class IngredientSubstitutionService {
     return {
       'Protein': [
         'chicken', 'beef', 'pork', 'tofu', 'tempeh', 'turkey', 'lamb',
-        'fish', 'salmon', 'tuna', 'shrimp', 'eggs', 'chickpeas', 'lentils',
-        'black beans', 'mushrooms', 'seitan'
+        'fish', 'salmon', 'tuna', 'shrimp', 'prawns', 'seafood', 'crab', 'lobster',
+        'eggs', 'chickpeas', 'lentils', 'black beans', 'mushrooms', 'seitan'
       ],
       'Dairy': [
         'milk', 'cream', 'butter', 'cheese', 'yogurt', 'sour cream',
@@ -892,8 +1099,30 @@ class IngredientSubstitutionService {
         let modifiedStep = typeof step === 'string' ? step : step.instruction;
         
         Object.entries(substitutions).forEach(([original, substitute]) => {
-          const regex = new RegExp(original, 'gi');
-          modifiedStep = modifiedStep.replace(regex, substitute.name);
+          // Extract the base ingredient name from original (remove descriptors and quantity)
+          const parsedOriginal = this.parseQuantityFromText(original);
+          const normalizedOriginal = this.normalizeIngredientName(original);
+          
+          // Get substitute name
+          const substituteName = substitute.name;
+          
+          // Try multiple patterns to replace the ingredient in instructions
+          // Pattern 1: Full original text (e.g., "1 handful frozen prawns" → "shrimp")
+          const fullRegex = new RegExp(original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+          modifiedStep = modifiedStep.replace(fullRegex, substituteName);
+          
+          // Pattern 2: Normalized ingredient with common descriptors (e.g., "frozen prawns" → "shrimp")
+          const descriptorPattern = /\b(fresh|frozen|raw|cooked|diced|chopped|sliced|minced|ground|whole|canned|dried|smoked)\s+/gi;
+          const baseIngredient = normalizedOriginal.replace(descriptorPattern, '').trim();
+          if (baseIngredient) {
+            // Match descriptor + ingredient (e.g., "frozen prawns")
+            const descriptorRegex = new RegExp(`\\b(fresh|frozen|raw|cooked|diced|chopped|sliced|minced|ground|whole|canned|dried|smoked)\\s+${baseIngredient}\\b`, 'gi');
+            modifiedStep = modifiedStep.replace(descriptorRegex, substituteName);
+            
+            // Match just the ingredient without descriptor (e.g., "prawns")
+            const bareRegex = new RegExp(`\\b${baseIngredient}\\b`, 'gi');
+            modifiedStep = modifiedStep.replace(bareRegex, substituteName);
+          }
         });
         
         return typeof step === 'string' ? modifiedStep : { ...step, instruction: modifiedStep };

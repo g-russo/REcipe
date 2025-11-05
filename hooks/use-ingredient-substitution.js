@@ -296,7 +296,7 @@ export const useIngredientSubstitution = (recipe, userID) => {
           
           // Regular ingredient from pantry - parse quantity from text
           const ingredientText = ingredientData.text || ing;
-          const parsedQuantity = IngredientSubstitutionService.parseQuantityFromText(ingredientText);
+          const parsedQuantity = IngredientSubstitutionService.parseQuantityFromText(ingredientText, pantryItems);
           
           console.log('📝 Regular pantry ingredient:', {
             text: ingredientText,

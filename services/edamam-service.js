@@ -440,6 +440,10 @@ class EdamamService {
       return this.parseFood52(htmlContent);
     } else if (domain.includes('marthastewart')) {
       return this.parseMarthaStewart(htmlContent);
+    } else if (domain.includes('menshealth')) {
+      return this.parseMensHealth(htmlContent);
+    } else if (domain.includes('realsimple')) {
+      return this.parseRealSimple(htmlContent);
     } else if (domain.includes('simplyrecipes')) {
       return this.parseSimplyRecipes(htmlContent);
     } else if (domain.includes('foodandwine')) {
@@ -1391,10 +1395,120 @@ class EdamamService {
   }
 
   /**
-   * Parse any recipe site with aggressive generic approach
+   * Parse Men's Health specifically
    * @param {string} htmlContent - HTML content
    * @returns {Object} Parsing result
    */
+  static parseMensHealth(htmlContent) {
+    console.log('💪 Parsing Men\'s Health...');
+    
+    const instructions = [];
+    
+    try {
+      // Try JSON-LD first (most reliable)
+      const jsonLdInstructions = this.extractJsonLdInstructions(htmlContent);
+      if (jsonLdInstructions.length > 0) {
+        console.log(`✅ Extracted ${jsonLdInstructions.length} instructions from Men's Health JSON-LD`);
+        return {
+          success: true,
+          instructions: jsonLdInstructions,
+          source: 'menshealth-jsonld'
+        };
+      }
+      
+      // Fallback to HTML patterns specific to Men's Health structure
+      const patterns = [
+        /<li[^>]*class[^>]*comp[^>]*mntl-sc-block[^>]*mntl-sc-block-html[^>]*>(.*?)<\/li>/gi,
+        /<div[^>]*class[^>]*recipe-step[^>]*>(.*?)<\/div>/gi,
+        /<p[^>]*class[^>]*instruction-text[^>]*>(.*?)<\/p>/gi,
+        /<li[^>]*class[^>]*direction[^>]*>(.*?)<\/li>/gi,
+        /<div[^>]*class[^>]*mntl-sc-block-html[^>]*>(.*?)<\/div>/gi
+      ];
+
+      for (const pattern of patterns) {
+        const matches = [...htmlContent.matchAll(pattern)];
+        
+        for (const match of matches) {
+          const cleaned = this.cleanInstructionText(match[1]);
+          if (this.isValidInstruction(cleaned)) {
+            instructions.push(cleaned);
+          }
+        }
+        
+        if (instructions.length > 0) break;
+      }
+      
+      return {
+        success: instructions.length > 0,
+        instructions: instructions.slice(0, 20),
+        source: 'menshealth-html'
+      };
+    } catch (error) {
+      console.log('❌ Men\'s Health parsing failed:', error.message);
+      return { success: false };
+    }
+  }
+
+  /**
+   * Parse Real Simple specifically
+   * @param {string} htmlContent - HTML content
+   * @returns {Object} Parsing result
+   */
+  static parseRealSimple(htmlContent) {
+    console.log('🏠 Parsing Real Simple...');
+    
+    const instructions = [];
+    
+    try {
+      // Try JSON-LD first (most reliable for Real Simple)
+      const jsonLdInstructions = this.extractJsonLdInstructions(htmlContent);
+      if (jsonLdInstructions.length > 0) {
+        console.log(`✅ Extracted ${jsonLdInstructions.length} instructions from Real Simple JSON-LD`);
+        return {
+          success: true,
+          instructions: jsonLdInstructions,
+          source: 'realsimple-jsonld'
+        };
+      }
+      
+      // Fallback to HTML patterns specific to Real Simple structure
+      const patterns = [
+        /<li[^>]*class[^>]*comp[^>]*mntl-sc-block[^>]*>(.*?)<\/li>/gi,
+        /<div[^>]*class[^>]*recipe-instructions__item[^>]*>(.*?)<\/div>/gi,
+        /<p[^>]*class[^>]*direction-text[^>]*>(.*?)<\/p>/gi,
+        /<li[^>]*class[^>]*mntl-sc-block-html[^>]*>(.*?)<\/li>/gi,
+        /<div[^>]*class[^>]*step-by-step[^>]*>(.*?)<\/div>/gi
+      ];
+
+      for (const pattern of patterns) {
+        const matches = [...htmlContent.matchAll(pattern)];
+        
+        for (const match of matches) {
+          const cleaned = this.cleanInstructionText(match[1]);
+          if (this.isValidInstruction(cleaned)) {
+            instructions.push(cleaned);
+          }
+        }
+        
+        if (instructions.length > 0) break;
+      }
+      
+      return {
+        success: instructions.length > 0,
+        instructions: instructions.slice(0, 20),
+        source: 'realsimple-html'
+      };
+    } catch (error) {
+      console.log('❌ Real Simple parsing failed:', error.message);
+      return { success: false };
+    }
+  }
+
+  /**
+   * Parse any recipe site with aggressive generic approach
+   * @param {string} htmlContent - HTML content
+   * @returns {Object} Parsing result
+```   */
   static parseGenericRecipe(htmlContent) {
     console.log('🔍 Using aggressive generic parsing...');
     

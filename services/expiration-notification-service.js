@@ -82,16 +82,26 @@ class ExpirationNotificationService {
    * Schedule notification for an expiring item
    * @param {Object} item - Item object from database
    * @param {number} daysUntilExpiry - Days until expiration
+   * @param {number} userID - User ID (optional, will try to get from inventory if not provided)
    * @returns {Promise<string>} Notification ID
    */
-  async scheduleExpirationNotification(item, daysUntilExpiry) {
+  async scheduleExpirationNotification(item, daysUntilExpiry, userID = null) {
     try {
       let title, body, trigger;
 
-      if (daysUntilExpiry === 0) {
+      if (daysUntilExpiry < 0) {
+        // Already expired
+        title = '🔴 Item Has Expired!';
+        body = `"${item.itemName}" has expired. Remove or dispose of it.`;
+        trigger = {
+          hour: 9,
+          minute: 0,
+          repeats: false,
+        };
+      } else if (daysUntilExpiry === 0) {
         // Expires today
         title = '🔴 Item Expires Today!';
-        body = `"${item.itemName}" expires today. Use it soon!`;
+        body = `"${item.itemName}" expires today. Use it now!`;
         trigger = {
           hour: 9,
           minute: 0,
@@ -106,17 +116,35 @@ class ExpirationNotificationService {
           minute: 0,
           repeats: false,
         };
-      } else if (daysUntilExpiry <= 3) {
-        // Expires in 2-3 days
-        title = '🟡 Item Expiring Soon';
-        body = `"${item.itemName}" expires in ${daysUntilExpiry} days.`;
+      } else if (daysUntilExpiry === 2) {
+        // Expires in 2 days
+        title = '� Item Expires in 2 Days';
+        body = `"${item.itemName}" expires in 2 days. Use it soon!`;
+        trigger = {
+          hour: 9,
+          minute: 0,
+          repeats: false,
+        };
+      } else if (daysUntilExpiry === 3) {
+        // Expires in 3 days
+        title = '� Item Expires in 3 Days';
+        body = `"${item.itemName}" expires in 3 days.`;
+        trigger = {
+          hour: 9,
+          minute: 0,
+          repeats: false,
+        };
+      } else if (daysUntilExpiry === 7) {
+        // Expires in 1 week
+        title = '🟡 Item Expires in 1 Week';
+        body = `"${item.itemName}" expires in 1 week.`;
         trigger = {
           hour: 9,
           minute: 0,
           repeats: false,
         };
       } else {
-        // Don't schedule for items more than 3 days away
+        // Don't schedule for items more than 1 week away or between 3-7 days
         return null;
       }
 
@@ -139,23 +167,46 @@ class ExpirationNotificationService {
 
       // Also save to database for notification history
       try {
-        const inventoryData = await PantryService.getInventory(item.inventoryID);
-        const userID = inventoryData?.userID;
+        // Use provided userID or try to get from inventory
+        let notificationUserID = userID;
         
-        if (userID) {
-          await NotificationDatabaseService.createNotification(
-            userID,
-            title,
-            body,
-            'pantry_expiration',
-            {
-              itemID: item.itemID,
-              itemName: item.itemName,
-              expirationDate: item.itemExpiration,
-              daysUntilExpiry,
-              inventoryID: item.inventoryID,
-            }
+        if (!notificationUserID && item.inventoryID) {
+          const inventoryData = await PantryService.getInventory(item.inventoryID);
+          notificationUserID = inventoryData?.userID;
+        }
+        
+        if (notificationUserID) {
+          // Check if notification already exists for this item/date combination
+          const existingNotifications = await NotificationDatabaseService.getUserNotifications(notificationUserID, 100);
+          const isDuplicate = existingNotifications.some(notif => 
+            notif.type === 'pantry_expiration' &&
+            notif.data?.itemID === item.itemID &&
+            notif.data?.expirationDate === item.itemExpiration &&
+            notif.data?.daysUntilExpiry === daysUntilExpiry &&
+            !notif.isDeleted
           );
+          
+          if (isDuplicate) {
+            console.log(`ℹ️ Notification already exists for "${item.itemName}" - skipping database save`);
+          } else {
+            console.log(`💾 Saving notification to database for user ${notificationUserID}...`);
+            await NotificationDatabaseService.createNotification(
+              notificationUserID,
+              title,
+              body,
+              'pantry_expiration',
+              {
+                itemID: item.itemID,
+                itemName: item.itemName,
+                expirationDate: item.itemExpiration,
+                daysUntilExpiry,
+                inventoryID: item.inventoryID,
+              }
+            );
+            console.log(`✅ Notification saved to database`);
+          }
+        } else {
+          console.warn(`⚠️ Could not determine userID for notification`);
         }
       } catch (dbError) {
         console.warn('⚠️ Could not save notification to database:', dbError.message);
@@ -195,7 +246,7 @@ class ExpirationNotificationService {
   }
 
   /**
-   * Check all items and schedule notifications for those expiring within 3 days
+   * Check all items and schedule notifications for those expiring within 1 week (7 days) and daily from 3 days
    * @param {number} userID - User ID
    * @returns {Promise<Object>} Summary of scheduled notifications
    */
@@ -214,6 +265,7 @@ class ExpirationNotificationService {
         expiringSoon: 0,
         expiringToday: 0,
         expiringTomorrow: 0,
+        expiringOneWeek: 0,
         expired: 0,
         scheduled: [],
       };
@@ -225,23 +277,36 @@ class ExpirationNotificationService {
         
         if (daysUntilExpiry === null) continue;
 
-        // Track expired items
+        // Track expired items and send notification
         if (daysUntilExpiry < 0) {
           summary.expired++;
+          const notificationId = await this.scheduleExpirationNotification(item, daysUntilExpiry, userID);
+          if (notificationId) {
+            summary.scheduled.push({
+              itemID: item.itemID,
+              itemName: item.itemName,
+              daysUntilExpiry,
+              notificationId,
+            });
+          }
           continue;
         }
 
-        // Schedule notifications for items expiring within 3 days
-        if (daysUntilExpiry <= 3) {
-          summary.expiringSoon++;
+        // Schedule notifications for items expiring within 3 days (daily) or at 1 week
+        if (daysUntilExpiry <= 3 || daysUntilExpiry === 7) {
+          if (daysUntilExpiry <= 3) {
+            summary.expiringSoon++;
+          }
           
           if (daysUntilExpiry === 0) {
             summary.expiringToday++;
           } else if (daysUntilExpiry === 1) {
             summary.expiringTomorrow++;
+          } else if (daysUntilExpiry === 7) {
+            summary.expiringOneWeek++;
           }
 
-          const notificationId = await this.scheduleExpirationNotification(item, daysUntilExpiry);
+          const notificationId = await this.scheduleExpirationNotification(item, daysUntilExpiry, userID);
           
           if (notificationId) {
             summary.scheduled.push({
@@ -259,6 +324,7 @@ class ExpirationNotificationService {
         expiringSoon: summary.expiringSoon,
         expiringToday: summary.expiringToday,
         expiringTomorrow: summary.expiringTomorrow,
+        expiringOneWeek: summary.expiringOneWeek,
         expired: summary.expired,
         scheduled: summary.scheduled.length,
       });
@@ -302,10 +368,10 @@ class ExpirationNotificationService {
   /**
    * Get items expiring within specified days
    * @param {number} userID - User ID
-   * @param {number} days - Days threshold (default: 3)
+   * @param {number} days - Days threshold (default: 7)
    * @returns {Promise<Array>} Array of expiring items with days info
    */
-  async getExpiringItems(userID, days = 3) {
+  async getExpiringItems(userID, days = 7) {
     try {
       const items = await PantryService.getUserItems(userID);
       

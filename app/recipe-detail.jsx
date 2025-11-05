@@ -15,6 +15,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import cacheService from '../services/supabase-cache-service';
 import EdamamService from '../services/edamam-service';
 import RecipeMatcherService from '../services/recipe-matcher-service';
+import PantryService from '../services/pantry-service';
 import { useCustomAuth } from '../hooks/use-custom-auth';
 import AuthGuard from '../components/auth-guard';
 
@@ -26,6 +27,7 @@ import IngredientsTab from '../components/recipe-detail/ingredients-tab';
 import InstructionsTab from '../components/recipe-detail/instructions-tab';
 import SimilarRecipes from '../components/recipe-detail/similar-recipes';
 import FloatingPlayButton from '../components/recipe-detail/floating-play-button';
+import ScheduleRecipeModal from '../components/recipe-detail/schedule-recipe-modal';
 import { useIngredientSubstitution } from '../hooks/use-ingredient-substitution';
 import IngredientSubstitutionModal from '../components/substitution/ingredient-substitution-modal';
 
@@ -48,6 +50,7 @@ const RecipeDetail = () => {
   const [displayRecipe, setDisplayRecipe] = useState(null); // Recipe to display (may have substitutions)
   const [showSubstitutionModal, setShowSubstitutionModal] = useState(false);
   const [substitutionMode, setSubstitutionMode] = useState('manual'); // 'manual' or 'auto'
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
 
   // Use the substitution hook
   const {
@@ -449,11 +452,21 @@ const RecipeDetail = () => {
   };
 
   const handleScheduleRecipe = () => {
-    Alert.alert(
-      'Schedule Recipe',
-      'This feature is coming soon! You\'ll be able to schedule recipes for specific dates and times.',
-      [{ text: 'OK' }]
-    );
+    if (!customUserData?.userID) {
+      Alert.alert('Sign In Required', 'Please sign in to schedule recipes');
+      return;
+    }
+    
+    setShowScheduleModal(true);
+  };
+
+  const handleScheduleModalClose = (wasSuccessful) => {
+    setShowScheduleModal(false);
+    
+    if (wasSuccessful) {
+      // Optionally navigate to profile scheduled tab
+      // router.push('/(tabs)/profile');
+    }
   };
 
   const handleManualSubstitute = () => {
@@ -468,7 +481,7 @@ const RecipeDetail = () => {
     setShowSubstitutionModal(true);
   };
 
-  const handleSubstitutionConfirm = (substitutions) => {
+  const handleSubstitutionConfirm = async (substitutions) => {
     // Apply substitutions to create modified recipe
     const modified = applySubstitutions(substitutions);
     
@@ -665,6 +678,14 @@ const RecipeDetail = () => {
             ? [...missingIngredients, ...insufficientIngredients] // Include both missing and insufficient
             : ((displayRecipe || recipe)?.ingredientLines || []) // All ingredients for manual
         }
+        userID={customUserData?.userID}
+      />
+
+      {/* Schedule Recipe Modal */}
+      <ScheduleRecipeModal
+        visible={showScheduleModal}
+        onClose={handleScheduleModalClose}
+        recipe={displayRecipe || recipe}
         userID={customUserData?.userID}
       />
     </SafeAreaView>

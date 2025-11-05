@@ -42,6 +42,48 @@ class NotificationDatabaseService {
   }
 
   /**
+   * Save notification (alternative method with object parameter)
+   * @param {object} params - Notification parameters
+   * @param {number} params.userID - User ID
+   * @param {string} params.title - Notification title
+   * @param {string} params.message - Notification message/body
+   * @param {string} params.type - Notification type
+   * @param {number} params.relatedID - Related item ID (scheduleID, itemID, etc.)
+   * @param {string} params.scheduledFor - ISO date string when notification should fire
+   * @param {string} params.notificationIdentifier - Expo notification ID
+   * @returns {Promise<object>} Created notification
+   */
+  async saveNotification({ userID, title, message, type, relatedID, scheduledFor, notificationIdentifier }) {
+    try {
+      const { data: notification, error } = await supabase
+        .from('tbl_notifications')
+        .insert({
+          userID,
+          title,
+          body: message,
+          type,
+          data: { 
+            relatedID, 
+            scheduledFor,
+            notificationIdentifier 
+          },
+          isRead: false,
+          isDeleted: false,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      console.log('✅ Notification saved to database:', notification.notificationID);
+      return notification;
+    } catch (error) {
+      console.error('❌ Error saving notification:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Get all notifications for user (not deleted)
    * @param {string} userID - User ID
    * @param {number} limit - Max number of notifications (default: 50)
@@ -49,6 +91,7 @@ class NotificationDatabaseService {
    */
   async getUserNotifications(userID, limit = 50) {
     try {
+      console.log('🔍 Fetching notifications for userID:', userID);
       const { data, error } = await supabase
         .from('tbl_notifications')
         .select('*')
@@ -57,11 +100,18 @@ class NotificationDatabaseService {
         .order('createdAt', { ascending: false })
         .limit(limit);
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Supabase error:', error);
+        throw error;
+      }
 
+      console.log('✅ Query successful, found', data?.length || 0, 'notifications');
       return data || [];
     } catch (error) {
       console.error('❌ Error fetching notifications:', error);
+      console.error('❌ Error code:', error.code);
+      console.error('❌ Error message:', error.message);
+      console.error('❌ Error details:', error.details);
       return [];
     }
   }
@@ -202,8 +252,15 @@ class NotificationDatabaseService {
 
     switch (type) {
       case 'pantry_expiration':
-        // Navigate to pantry tab
-        router.push('/(tabs)/pantry-new');
+        // Navigate to pantry tab with item highlighted
+        if (data?.itemID) {
+          router.push({
+            pathname: '/(tabs)/pantry',
+            params: { highlightItemId: data.itemID }
+          });
+        } else {
+          router.push('/(tabs)/pantry');
+        }
         break;
 
       case 'recipe_reminder':

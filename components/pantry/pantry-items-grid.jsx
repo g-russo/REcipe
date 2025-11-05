@@ -15,6 +15,7 @@ const PantryItemsGrid = ({
   onItemMenuPress,
   selectionMode = false,
   selectedItems = [],
+  highlightedItemId = null,
 }) => {
   if (items.length === 0) {
     return (
@@ -68,6 +69,7 @@ const PantryItemsGrid = ({
             onMenuPress={(e) => onItemMenuPress(e, item)}
             selectionMode={selectionMode}
             isSelected={selectedItems.includes(item.itemID)}
+            isHighlighted={highlightedItemId === item.itemID}
           />
         ))}
       </View>

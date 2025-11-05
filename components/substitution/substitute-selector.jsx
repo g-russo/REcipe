@@ -20,6 +20,7 @@ const SubstituteSelector = ({
   originalIngredient,
   originalQuantity,
   originalUnit,
+  isVagueUnit = false,  // NEW: Flag indicating if original ingredient has vague unit
   substitutes, 
   selectedSubstitute, 
   onSelectSubstitute,
@@ -69,6 +70,19 @@ const SubstituteSelector = ({
   };
 
   const getConvertedSubstitute = (substitute) => {
+    // FOR VAGUE UNITS: Don't convert, use pantry's actual unit
+    if (isVagueUnit) {
+      console.log(`🔄 Vague unit detected - using pantry's unit "${substitute.unit}" for "${substitute.name}"`);
+      return {
+        ...substitute,
+        convertedQuantity: substitute.quantity || 1,  // Pantry's quantity
+        convertedUnit: substitute.unit || '',         // Pantry's unit (kg, not handful!)
+        originalQuantityInPantry: substitute.quantity,
+        originalUnitInPantry: substitute.unit
+      };
+    }
+
+    // NORMAL CASE: Convert pantry unit to recipe's unit
     if (!originalUnit || !substitute.unit) {
       // No conversion needed, return with original values
       return {
@@ -96,9 +110,51 @@ const SubstituteSelector = ({
   };
 
   const handleQuantityChange = (substitute, newQuantity) => {
-    const quantity = parseFloat(newQuantity) || 0;
+    // Allow empty string while typing
+    if (newQuantity === '') {
+      setCustomQuantities({
+        ...customQuantities,
+        [substitute.name]: ''
+      });
+      return;
+    }
     
-    // Convert the user's input back to pantry units to check if we have enough
+    // Allow decimal point while typing (e.g., "0." → "0.2")
+    if (newQuantity.endsWith('.') || newQuantity.endsWith('.0')) {
+      setCustomQuantities({
+        ...customQuantities,
+        [substitute.name]: newQuantity
+      });
+      return;
+    }
+    
+    const quantity = parseFloat(newQuantity);
+    
+    // Validate numeric input
+    if (isNaN(quantity) || quantity < 0) {
+      return; // Ignore invalid input
+    }
+    
+    // FOR VAGUE UNITS: User specifies amount directly in pantry's unit (no conversion needed)
+    if (isVagueUnit) {
+      // Check if user has enough in pantry (already in same units)
+      if (quantity > substitute.quantity) {
+        Alert.alert(
+          'Not Enough in Pantry',
+          `You only have ${substitute.quantity} ${substitute.unit || ''} of ${substitute.name} in your pantry.`,
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+      
+      setCustomQuantities({
+        ...customQuantities,
+        [substitute.name]: quantity
+      });
+      return;
+    }
+    
+    // NORMAL CASE: Convert the user's input back to pantry units to check if we have enough
     const converted = getConvertedSubstitute(substitute);
     const quantityInPantryUnits = convertUnit(quantity, originalUnit, substitute.unit);
     
@@ -122,7 +178,34 @@ const SubstituteSelector = ({
     const converted = getConvertedSubstitute(substitute);
     const customQty = customQuantities[substitute.name];
     
-    // Use custom quantity if user edited it, otherwise use the recipe's required quantity
+    // FOR VAGUE UNITS: Use pantry's unit, require user input
+    if (isVagueUnit) {
+      // Parse the quantity (handle string or number)
+      const parsedQty = typeof customQty === 'string' ? parseFloat(customQty) : customQty;
+      
+      const finalSubstitute = {
+        ...converted,
+        quantity: parsedQty !== undefined && !isNaN(parsedQty) ? parsedQty : 0,  // User MUST specify amount
+        unit: substitute.unit,  // Use pantry's unit (kg, not handful!)
+        requiresUserInput: parsedQty === undefined || isNaN(parsedQty),  // Flag if user hasn't specified amount
+        vagueMeasurement: `${originalQuantity} ${originalUnit}`  // Original "1 handful"
+      };
+      
+      // Alert user if they haven't specified amount
+      if (parsedQty === undefined || isNaN(parsedQty) || parsedQty === 0) {
+        Alert.alert(
+          'Specify Amount',
+          `The recipe calls for "${originalQuantity} ${originalUnit}" which is vague. Please tap the quantity to specify how much ${substitute.unit} you want to use.`,
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+      
+      onSelectSubstitute(finalSubstitute);
+      return;
+    }
+    
+    // NORMAL CASE: Use custom quantity if user edited it, otherwise use the recipe's required quantity
     // NOT the full pantry amount (converted.convertedQuantity)
     const finalSubstitute = {
       ...converted,
@@ -134,7 +217,20 @@ const SubstituteSelector = ({
   };
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Replace {originalIngredient} with...</Text>
+      {/* Show different title for vague units */}
+      {isVagueUnit ? (
+        <View style={styles.titleContainer}>
+          <Text style={styles.title}>Replace {originalIngredient} with...</Text>
+          <View style={styles.vagueUnitNotice}>
+            <Ionicons name="information-circle" size={16} color="#FF9800" />
+            <Text style={styles.vagueUnitText}>
+              "{originalQuantity} {originalUnit}" is vague. Specify amount in your pantry's unit.
+            </Text>
+          </View>
+        </View>
+      ) : (
+        <Text style={styles.title}>Replace {originalIngredient} with...</Text>
+      )}
       
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.grid}>
         {substitutes.map((substitute, index) => {
@@ -170,12 +266,13 @@ const SubstituteSelector = ({
                   <View style={styles.quantityInputContainer}>
                     <TextInput
                       style={styles.quantityInput}
-                      keyboardType="numeric"
+                      keyboardType="decimal-pad"
                       value={customQuantities[substitute.name]?.toString() || converted.convertedQuantity.toString()}
                       onChangeText={(text) => handleQuantityChange(substitute, text)}
                       onBlur={() => setEditingQuantity(null)}
                       autoFocus
                       selectTextOnFocus
+                      placeholder="0.0"
                     />
                     {converted.convertedUnit && (
                       <Text style={styles.unitText}>{converted.convertedUnit}</Text>
@@ -183,7 +280,7 @@ const SubstituteSelector = ({
                   </View>
                 ) : (
                   <TouchableOpacity 
-                    style={styles.quantityDisplay}
+                    style={[styles.quantityDisplay, isVagueUnit && styles.quantityDisplayVague]}
                     onPress={(e) => {
                       e.stopPropagation();
                       setEditingQuantity(substitute.name);
@@ -193,6 +290,11 @@ const SubstituteSelector = ({
                       {displayQuantity} {converted.convertedUnit || ''}
                     </Text>
                     <Ionicons name="pencil" size={12} color="#2E7D32" style={styles.editIcon} />
+                    {isVagueUnit && customQuantities[substitute.name] === undefined && (
+                      <View style={styles.requiredBadge}>
+                        <Text style={styles.requiredText}>Tap to edit</Text>
+                      </View>
+                    )}
                   </TouchableOpacity>
                 )}
               </View>
@@ -238,6 +340,30 @@ const styles = StyleSheet.create({
     marginTop: 24,
     marginBottom: 24,
     marginHorizontal: 20,
+  },
+  titleContainer: {
+    marginTop: 24,
+    marginBottom: 16,
+    marginHorizontal: 20,
+  },
+  vagueUnitNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFF3E0',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#FFB74D',
+  },
+  vagueUnitText: {
+    fontSize: 12,
+    color: '#E65100',
+    marginLeft: 8,
+    flex: 1,
+    fontWeight: '500',
   },
   scrollView: {
     flex: 1,
@@ -319,6 +445,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E0E0E0',
   },
+  quantityDisplayVague: {
+    borderColor: '#FF9800',
+    borderWidth: 2,
+    backgroundColor: '#FFF3E0',
+  },
   quantityDisplayText: {
     fontSize: 14,
     fontWeight: '600',
@@ -327,6 +458,22 @@ const styles = StyleSheet.create({
   },
   editIcon: {
     marginLeft: 2,
+  },
+  requiredBadge: {
+    position: 'absolute',
+    bottom: -16,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  requiredText: {
+    fontSize: 9,
+    color: '#FF9800',
+    fontWeight: '600',
+    backgroundColor: '#FFF3E0',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
   },
   pantryInfo: {
     fontSize: 11,
