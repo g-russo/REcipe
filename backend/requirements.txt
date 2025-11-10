@@ -7,11 +7,10 @@ requests==2.31.0
 pytesseract==0.3.10
 python-dotenv==1.0.0
 
-# PyTorch for CPU (EC2 default)
-# For CPU-only (EC2 without GPU)
-torch==2.1.0
-torchvision==0.16.0
+# PyTorch for CPU (Python 3.12 compatible)
+torch==2.5.1
+torchvision==0.20.1
 
-# If you have GPU on EC2, replace above with:
-# torch --index-url https://download.pytorch.org/whl/cu118
-# torchvision --index-url https://download.pytorch.org/whl/cu118
+# If you have GPU on EC2, use:
+# torch==2.5.1+cu118 --index-url https://download.pytorch.org/whl/cu118
+# torchvision==0.20.1+cu118 --index-url https://download.pytorch.org/whl/cu118
