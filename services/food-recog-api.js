@@ -10,7 +10,7 @@ export async function recognizeFood(imageUri) {
     name: 'food.jpg',
   });
 
-  const response = await fetch(`${API_BASE_URL}/recognize`, {
+  const response = await fetch(`${API_BASE_URL}/recognize-food`, {  // ✅ Changed from /recognize to /recognize-food
     method: 'POST',
     body: formData,
     headers: {
@@ -19,7 +19,8 @@ export async function recognizeFood(imageUri) {
   });
 
   if (!response.ok) {
-    throw new Error(`Recognition failed: ${response.status}`);
+    const errorText = await response.text();
+    throw new Error(`Recognition failed: ${response.status} - ${errorText}`);
   }
 
   return response.json();
