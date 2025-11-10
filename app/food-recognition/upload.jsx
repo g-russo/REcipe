@@ -14,11 +14,159 @@ import * as ImagePicker from 'expo-image-picker';
 import BarcodeScannerModal from '../../components/barcode-scanner-modal';
 import QRScannerModal from '../../components/qr-scanner-modal';
 import OCRScannerModal from '../../components/ocr-scanner-modal';
+import { supabase } from '../../lib/supabase';
 
 export default function FoodRecognitionUpload() {
   const [barcodeScannerVisible, setBarcodeScannerVisible] = useState(false);
   const [qrScannerVisible, setQrScannerVisible] = useState(false);
   const [ocrVisible, setOcrVisible] = useState(false);
+
+  // Helper function to determine category
+  const determineFoodCategory = (foodName) => {
+    const name = foodName.toLowerCase();
+    
+    if (/apple|banana|orange|grape|strawberry|mango|pineapple|watermelon|kiwi|berry/i.test(name)) {
+      return 'Fruits';
+    }
+    if (/carrot|tomato|potato|onion|lettuce|cabbage|spinach|broccoli|pepper|cucumber/i.test(name)) {
+      return 'Vegetables';
+    }
+    if (/chicken|beef|pork|fish|salmon|tuna|egg|tofu|meat|steak/i.test(name)) {
+      return 'Meat & Protein';
+    }
+    if (/milk|cheese|yogurt|butter|cream|dairy/i.test(name)) {
+      return 'Dairy';
+    }
+    if (/rice|bread|pasta|noodle|wheat|cereal|oat/i.test(name)) {
+      return 'Grains';
+    }
+    if (/juice|soda|coffee|tea|water|drink|beverage/i.test(name)) {
+      return 'Beverages';
+    }
+    if (/chip|cookie|candy|chocolate|snack|cracker/i.test(name)) {
+      return 'Snacks';
+    }
+    
+    return 'Other';
+  };
+
+  // Helper function to estimate expiry date
+  const estimateExpiryDate = (category) => {
+    const now = new Date();
+    const expiryDays = {
+      'Fruits': 7,
+      'Vegetables': 7,
+      'Meat & Protein': 3,
+      'Dairy': 7,
+      'Grains': 30,
+      'Beverages': 90,
+      'Snacks': 60,
+      'Other': 14
+    };
+
+    const days = expiryDays[category] || 14;
+    now.setDate(now.getDate() + days);
+    return now.toISOString();
+  };
+
+  // Add item to Supabase
+  const addItemToInventory = async (itemName, metadata = {}) => {
+    try {
+      // Get current user
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        Alert.alert('Error', 'You must be logged in to add items');
+        return false;
+      }
+
+      // Get user's first inventory
+      const { data: inventories, error: invError } = await supabase
+        .from('inventories')
+        .select('*')
+        .eq('userID', user.id)
+        .order('createdAt', { ascending: true })
+        .limit(1);
+
+      if (invError) {
+        console.error('Inventory error:', invError);
+        Alert.alert('Error', 'Failed to fetch inventory');
+        return false;
+      }
+
+      let inventoryID;
+      
+      if (!inventories || inventories.length === 0) {
+        // Create default inventory if none exists
+        const { data: newInventory, error: createError } = await supabase
+          .from('inventories')
+          .insert({
+            userID: user.id,
+            inventoryColor: '#8BC34A',
+            maxItems: 100,
+            inventoryTags: { name: 'My Pantry' }
+          })
+          .select()
+          .single();
+
+        if (createError) {
+          console.error('Create inventory error:', createError);
+          Alert.alert('Error', 'Failed to create inventory');
+          return false;
+        }
+        inventoryID = newInventory.inventoryID;
+      } else {
+        inventoryID = inventories[0].inventoryID;
+      }
+
+      // Determine category and expiry
+      const category = determineFoodCategory(itemName);
+      const expiryDate = estimateExpiryDate(category);
+
+      // Insert the pantry item
+      const { data: newItem, error: itemError } = await supabase
+        .from('pantry_items')
+        .insert({
+          inventoryID,
+          itemName,
+          category,
+          quantity: 1,
+          unit: 'pcs',
+          expiryDate,
+          itemTags: {
+            scannedAt: new Date().toISOString(),
+            ...metadata
+          }
+        })
+        .select()
+        .single();
+
+      if (itemError) {
+        console.error('Item insert error:', itemError);
+        Alert.alert('Error', `Failed to add item: ${itemError.message}`);
+        return false;
+      }
+
+      // Update inventory count
+      const { error: updateError } = await supabase
+        .from('inventories')
+        .update({
+          itemCount: inventories[0].itemCount + 1,
+          updatedAt: new Date().toISOString()
+        })
+        .eq('inventoryID', inventoryID);
+
+      if (updateError) {
+        console.warn('Count update error:', updateError);
+      }
+
+      return true;
+
+    } catch (error) {
+      console.error('Add to inventory error:', error);
+      Alert.alert('Error', 'Failed to add item to pantry');
+      return false;
+    }
+  };
 
   const pickImage = async (useCamera = false) => {
     const permissionMethod = useCamera
@@ -57,45 +205,92 @@ export default function FoodRecognitionUpload() {
     }
   };
 
-  const handleFoodFound = (food) => {
+  const handleFoodFound = async (food) => {
     console.log('Food found:', food);
+    
+    const foodName = food.food_name || 'Unknown Food';
     
     Alert.alert(
       'Food Found!',
-      `${food.food_name}\n\n${food.food_description || 'No description available'}`,
+      `${foodName}\n\nAdd to your pantry?`,
       [
+        { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Close',
-          style: 'cancel',
-          onPress: () => router.back(),
-        },
-        {
-          text: 'View Details',
-          onPress: () => {
-            // TODO: Navigate to food detail screen
-            router.back();
+          text: 'Add to Pantry',
+          onPress: async () => {
+            // Parse nutrition info
+            const serving = food.servings?.serving;
+            const servingData = Array.isArray(serving) ? serving[0] : serving;
+            
+            const metadata = {
+              source: 'barcode',
+              food_id: food.food_id,
+              brand: food.brand_name,
+              calories: servingData?.calories,
+              protein: servingData?.protein,
+              carbs: servingData?.carbohydrate,
+              fat: servingData?.fat,
+            };
+
+            const success = await addItemToInventory(foodName, metadata);
+            
+            if (success) {
+              Alert.alert(
+                'Added to Pantry! ✅',
+                `${foodName} has been added to your pantry.`,
+                [
+                  { text: 'View Pantry', onPress: () => router.push('/(tabs)/pantry') },
+                  { text: 'OK' },
+                ]
+              );
+            }
           },
         },
       ]
     );
   };
 
-  const handleTextExtracted = (text) => {
+  const handleTextExtracted = async (text) => {
     console.log('Text extracted:', text);
     
+    // Parse OCR text into item names (split by newlines)
+    const items = text.split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0);
+
+    if (items.length === 0) {
+      Alert.alert('No Items', 'No valid items found in the text.');
+      return;
+    }
+
     Alert.alert(
-      'Text Extracted',
-      `"${text}"\n\nSearch for this food?`,
+      'Add Items to Pantry?',
+      `Found ${items.length} item(s):\n${items.slice(0, 5).join('\n')}${items.length > 5 ? '\n...' : ''}`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Search',
-          onPress: () => {
-            router.push({
-              pathname: '/(tabs)/recipe-search',
-              params: { query: text },
-            });
-          },
+          text: 'Add All',
+          onPress: async () => {
+            let successCount = 0;
+            
+            for (const itemName of items) {
+              const success = await addItemToInventory(itemName, {
+                source: 'ocr',
+                extractedText: text
+              });
+              
+              if (success) successCount++;
+            }
+
+            Alert.alert(
+              'Items Added! ✅',
+              `Successfully added ${successCount} of ${items.length} items to your pantry.`,
+              [
+                { text: 'View Pantry', onPress: () => router.push('/(tabs)/pantry') },
+                { text: 'OK' }
+              ]
+            );
+          }
         },
       ]
     );
@@ -117,7 +312,7 @@ export default function FoodRecognitionUpload() {
         <View style={styles.titleContainer}>
           <Text style={styles.title}>How would you like to add food?</Text>
           <Text style={styles.subtitle}>
-            Choose a method to identify your food and get nutrition information
+            Choose a method to identify your food and add to your pantry
           </Text>
         </View>
 
@@ -203,7 +398,7 @@ export default function FoodRecognitionUpload() {
         <View style={styles.infoContainer}>
           <Ionicons name="information-circle-outline" size={20} color="#666" />
           <Text style={styles.infoText}>
-            All methods provide detailed nutrition information
+            Scanned items will be automatically added to your pantry
           </Text>
         </View>
       </ScrollView>
@@ -305,7 +500,7 @@ const styles = StyleSheet.create({
   infoContainer: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    backgroundColor: '#fff3cd',
+    backgroundColor: '#E8F5E9',
     borderRadius: 12,
     padding: 16,
     marginTop: 24,
@@ -314,7 +509,7 @@ const styles = StyleSheet.create({
   infoText: {
     flex: 1,
     fontSize: 13,
-    color: '#856404',
+    color: '#2E7D32',
     lineHeight: 18,
   },
 });

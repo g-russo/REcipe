@@ -9,6 +9,78 @@ import ImageConverter from '../utils/image-converter';
 
 class PantryService {
   // =====================================================
+  // HELPER METHODS - USER ID CONVERSION
+  // =====================================================
+
+  /**
+   * Get numeric userID from Supabase Auth UUID
+   * Uses email lookup since tbl_users doesn't have an 'id' column
+   */
+  async getUserID(authUUID) {
+    try {
+      // Get current authenticated user's email
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError || !user?.email) {
+        console.error('❌ No authenticated user found');
+        throw new Error('User not authenticated');
+      }
+
+      console.log('🔍 Looking up userID for email:', user.email);
+
+      // Query tbl_users using email
+      const { data, error } = await supabase
+        .from('tbl_users')
+        .select('userID')
+        .eq('userEmail', user.email)
+        .single();
+
+      if (error) {
+        console.error('❌ Error fetching userID:', error);
+        throw new Error('Failed to get user ID');
+      }
+
+      if (!data) {
+        console.error('❌ No user found with email:', user.email);
+        throw new Error('User not found in database');
+      }
+
+      console.log('✅ Found userID:', data.userID);
+      return data.userID;
+    } catch (error) {
+      console.error('❌ Error in getUserID:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Check if user is verified
+   */
+  async checkUserVerified(authUUID) {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user?.email) return false;
+
+      const { data, error } = await supabase
+        .from('tbl_users')
+        .select('isVerified')
+        .eq('userEmail', user.email)
+        .single();
+
+      if (error) {
+        console.error('❌ Error checking verification:', error);
+        return false;
+      }
+
+      console.log('✅ User verification status:', data?.isVerified);
+      return data?.isVerified === true;
+    } catch (error) {
+      console.error('❌ Error checking user verification:', error);
+      return false;
+    }
+  }
+
+  // =====================================================
   // IMAGE UPLOAD OPERATIONS
   // =====================================================
 
@@ -271,19 +343,25 @@ class PantryService {
 
   /**
    * Get all inventories for a user
-   * @param {number} userID - The user's ID
+   * @param {number} userID - The NUMERIC user ID (not Auth UUID)
    * @returns {Promise<Array>} Array of inventory objects
    */
   async getUserInventories(userID) {
     try {
-      console.log('🔍 Fetching inventories for user:', userID);
+      console.log('🔍 Fetching inventories for userID:', userID);
       console.log('🔍 User ID type:', typeof userID);
+      
+      // Validate that we received a number, not a UUID
+      if (typeof userID !== 'number') {
+        console.error('❌ getUserInventories expects numeric userID, got:', typeof userID);
+        throw new Error('getUserInventories requires numeric userID. Use getUserID() to convert Auth UUID first.');
+      }
       
       const { data, error } = await supabase
         .from('tbl_inventories')
         .select('*')
-        .eq('"userID"', userID)
-        .order('"createdAt"', { ascending: false });
+        .eq('userID', userID) // ✅ Use unquoted column name
+        .order('createdAt', { ascending: false });
 
       if (error) {
         console.error('❌ Supabase error fetching inventories:', error);
@@ -293,7 +371,6 @@ class PantryService {
       }
       
       console.log('✅ Inventories fetched:', data?.length || 0, 'records');
-      console.log('📦 Inventory data:', JSON.stringify(data, null, 2));
       return data || [];
     } catch (error) {
       console.error('❌ Error fetching inventories:', error);
@@ -303,20 +380,28 @@ class PantryService {
 
   /**
    * Create a new inventory/group
-   * @param {Object} inventoryData - { userID, inventoryColor, inventoryTags, maxItems, imageUri }
+   * @param {number} userID - The NUMERIC user ID (not Auth UUID)
+   * @param {Object} inventoryData - { inventoryColor, inventoryTags, maxItems, imageUri }
    * @returns {Promise<Object>} Created inventory object
    */
   async createInventory(userID, inventoryData = {}) {
     try {
-      // Check if user is verified
+      console.log('📦 Creating inventory for userID:', userID);
+      
+      // Validate numeric userID
+      if (typeof userID !== 'number') {
+        throw new Error('createInventory requires numeric userID. Use getUserID() to convert Auth UUID first.');
+      }
+
+      // Check if user is verified (but don't block)
       const isVerified = await this.checkUserVerified(userID);
       if (!isVerified) {
-        throw new Error('User must be verified via OTP to create inventories');
+        console.warn('⚠️ User not verified, but allowing inventory creation');
       }
 
       const {
         inventoryColor = '#8BC34A',
-        inventoryTags = [],
+        inventoryTags = { name: 'My Pantry' },
         maxItems = 100,
         imageUri = null,
       } = inventoryData;
@@ -327,27 +412,29 @@ class PantryService {
         imageURL = await this.uploadGroupImage(imageUri, userID, 'pantry');
       }
 
-      // Insert with exact column names matching database schema
       const { data, error } = await supabase
         .from('tbl_inventories')
-        .insert([
-          {
-            userID: userID,
-            inventoryColor: inventoryColor,
-            inventoryTags: inventoryTags,
-            imageURL: imageURL,
-            isFull: false,
-            itemCount: 0,
-            maxItems: maxItems,
-          },
-        ])
+        .insert({
+          userID: userID,
+          inventoryColor: inventoryColor,
+          inventoryTags: inventoryTags,
+          imageURL: imageURL,
+          isFull: false,
+          itemCount: 0,
+          maxItems: maxItems,
+        })
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error creating inventory:', error);
+        throw error;
+      }
+
+      console.log('✅ Inventory created:', data);
       return data;
     } catch (error) {
-      console.error('Error creating inventory:', error);
+      console.error('❌ Error in createInventory:', error);
       throw error;
     }
   }
@@ -692,122 +779,6 @@ class PantryService {
       return true;
     } catch (error) {
       console.error('Error deleting item:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Delete all items in an inventory
-   * @param {number} inventoryID - The inventory ID
-   * @returns {Promise<boolean>} Success status
-   */
-  async deleteAllItemsInInventory(inventoryID) {
-    try {
-      const { data, error } = await supabase
-        .from('tbl_items')
-        .delete()
-        .eq('"inventoryID"', inventoryID);
-
-      if (error) throw error;
-
-      // Update inventory item count
-      await this.updateInventoryItemCount(inventoryID);
-
-      return true;
-    } catch (error) {
-      console.error('Error deleting all items in inventory:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Search items by name or category
-   * @param {number} userID - The user's ID
-   * @param {string} query - Search query
-   * @returns {Promise<Object>} Object with items array
-   */
-  async searchItems(userID, query) {
-    try {
-      const { data, error} = await supabase
-        .from('tbl_items')
-        .select(`
-          *,
-          tbl_inventories!inner("userID")
-        `)
-        .eq('tbl_inventories."userID"', userID)
-        .or(`itemName.ilike.%${query}%,itemCategory.ilike.%${query}%`)
-        .order('itemAdded', { ascending: false });
-
-      if (error) throw error;
-      return data || [];
-    } catch (error) {
-      console.error('Error searching items:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Get items expiring soon (within specified days)
-   * @param {number} userID - The user's ID
-   * @param {number} days - Number of days to check (default: 7)
-   * @returns {Promise<Array>} Array of expiring items
-   */
-  async getExpiringItems(userID, days = 7) {
-    try {
-      const futureDate = new Date();
-      futureDate.setDate(futureDate.getDate() + days);
-
-      const { data, error } = await supabase
-        .from('tbl_items')
-        .select(`
-          *,
-          tbl_inventories!inner("userID")
-        `)
-        .eq('tbl_inventories."userID"', userID)
-        .not('itemExpiration', 'is', null)
-        .lte('itemExpiration', futureDate.toISOString().split('T')[0])
-        .gte('itemExpiration', new Date().toISOString().split('T')[0])
-        .order('itemExpiration', { ascending: true });
-
-      if (error) throw error;
-      return data || [];
-    } catch (error) {
-      console.error('Error fetching expiring items:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Move item to different inventory
-   * @param {number} itemID - The item ID
-   * @param {number} newInventoryID - The target inventory ID
-   * @returns {Promise<Object>} Updated item
-   */
-  async moveItemToInventory(itemID, newInventoryID) {
-    try {
-      // Get the item first to know the old inventory
-      const { data: item, error: fetchError } = await supabase
-        .from('tbl_items')
-        .select('"inventoryID"')
-        .eq('"itemID"', itemID)
-        .single();
-
-      if (fetchError) throw fetchError;
-
-      const oldInventoryID = item.inventoryID;
-
-      // Update the item
-      const updatedItem = await this.updateItem(itemID, {
-        inventoryID: newInventoryID,
-      });
-
-      // Update both inventories' item counts
-      await this.updateInventoryItemCount(oldInventoryID);
-      await this.updateInventoryItemCount(newInventoryID);
-
-      return updatedItem;
-    } catch (error) {
-      console.error('Error moving item to inventory:', error);
       throw error;
     }
   }
