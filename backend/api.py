@@ -81,7 +81,7 @@ def pil_from_upload(upload: UploadFile) -> Image.Image:
 
 def topk_from_probs(res, k: int):
     # res: Ultralytics classification result (res.probs, res.names)
-    items: List[TopKItem] = []
+    items: List = []
     try:
         probs = res.probs.data
         if hasattr(probs, "cpu"):
@@ -93,7 +93,7 @@ def topk_from_probs(res, k: int):
         names = res.names if hasattr(res, "names") else {}
         for idx, p in vals[:k]:
             label = names[idx] if isinstance(names, dict) and idx in names else str(idx)
-            items.append(TopKItem(label=label, conf=p))
+            items.append({"label": label, "conf": p})
     except Exception:
         pass
     return items
@@ -254,7 +254,6 @@ def fs_food_get(food_id: int = Query(..., alias="id")):
 async def fatsecret_barcode(barcode: str = Query(...)):
     """Lookup food by barcode."""
     try:
-        # ✅ Use call_server_api (not fatsecret_client object)
         result = call_server_api("food.find_id_for_barcode", {"barcode": barcode})
         if not result or "error" in result:
             return {"error": {"message": "Barcode not found"}}
@@ -286,3 +285,17 @@ async def fatsecret_qr(qr_code: str = Query(...)):
         return {"error": {"message": "Invalid QR code response"}}
     except Exception as e:
         return {"error": {"message": str(e)}}
+
+if __name__ == "__main__":
+    import uvicorn
+    # ✅ Bind to 0.0.0.0 to accept external connections
+    print("🚀 Starting REcipe API on 0.0.0.0:8000")
+    print(f"📊 Using device: {device}")
+    print("✅ Access from anywhere at: http://54.153.205.43:8000")
+    
+    uvicorn.run(
+        app, 
+        host="0.0.0.0",  # Accept connections from any IP
+        port=8000,
+        reload=False  # Disable reload in production
+    )
