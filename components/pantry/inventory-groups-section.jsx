@@ -7,12 +7,12 @@ import { Ionicons } from '@expo/vector-icons';
  * Displays horizontal scrollable list of inventory groups
  */
 const InventoryGroupsSection = ({ 
-  inventories, 
+  groups, 
   onGroupPress, 
   onCreateGroup,
   userName = 'My'
 }) => {
-  if (inventories.length === 0) {
+  if (groups.length === 0) {
     return (
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Groups</Text>
@@ -42,43 +42,27 @@ const InventoryGroupsSection = ({
         showsHorizontalScrollIndicator={false}
         style={styles.categoriesScrollView}
       >
-        {inventories.map((inventory) => (
+        {groups.map((group) => (
           <TouchableOpacity 
-            key={inventory.inventoryID} 
-            style={[styles.categoryCard, { backgroundColor: inventory.inventoryColor || '#8BC34A' }]}
-            onPress={() => onGroupPress(inventory)}
+            key={group.groupID} 
+            style={[styles.categoryCard, { backgroundColor: group.groupColor || '#8BC34A' }]}
+            onPress={() => onGroupPress(group)}
           >
             <View style={styles.categoryLetterContainer}>
               <Text style={styles.categoryLetter}>
-                {userName?.charAt(0).toUpperCase() || 'P'}
+                {group.groupTitle?.charAt(0).toUpperCase() || 'G'}
               </Text>
             </View>
             <View style={styles.categoryDetails}>
               <View style={styles.categoryHeaderRow}>
                 <Text style={styles.categoryName}>
-                  {userName}'s Pantry
+                  {group.groupTitle || 'Untitled Group'}
                 </Text>
                 <View style={styles.arrowContainer}>
                   <Ionicons name="chevron-forward" size={18} color="#fff" />
                 </View>
               </View>
-              <Text style={styles.itemCount}>{inventory.itemCount || 0} items</Text>
-              
-              {inventory.inventoryTags && inventory.inventoryTags.length > 0 && (
-                <View style={styles.tagsContainer}>
-                  {inventory.inventoryTags.map((tag, index) => (
-                    <View key={index} style={styles.tagPill}>
-                      <Text style={styles.tagText}>{tag}</Text>
-                    </View>
-                  ))}
-                </View>
-              )}
-              
-              {inventory.isFull && (
-                <View style={styles.fullBadge}>
-                  <Text style={styles.fullBadgeText}>Full</Text>
-                </View>
-              )}
+              <Text style={styles.itemCount}>{group.itemCount || 0} items</Text>
             </View>
           </TouchableOpacity>
         ))}
