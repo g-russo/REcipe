@@ -405,7 +405,7 @@ const RecipeSearch = () => {
     // Clear previous results to show loading screen
     setRecipes([]);
     setLoading(true);
-    setHasSearched(true);
+    // ✅ DON'T set hasSearched yet - wait until we have results or confirmed no results
     setCanGenerateMore(false);
     setAiRecipeCount(0);
 
@@ -555,6 +555,7 @@ const RecipeSearch = () => {
         if (totalRecipes > 0) {
           // ✅ Show all recipes (AI + Edamam)
           setRecipes(allRecipes);
+          setHasSearched(true); // ✅ Set hasSearched AFTER we have results
           
           // 🤖 If less than 5 recipes, enable "Generate More" button
           if (totalRecipes < 5) {
@@ -571,8 +572,9 @@ const RecipeSearch = () => {
         } else {
           // ❌ No results anywhere - Generate 1 AI recipe
           console.log('ℹ️ No existing recipes found, generating 1 AI recipe...');
-          // Don't set loading to false - transition directly to AI generation
-          setGeneratingAI(true);
+          // ✅ Transition from search loading to AI generation loading
+          setLoading(false); // Stop search loading
+          setGeneratingAI(true); // Start AI loading
           setCurrentSearchQuery(query);
           
           try {
@@ -627,6 +629,7 @@ const RecipeSearch = () => {
               setRecipes([formattedRecipe]);
               setAiRecipeCount(1);
               setCanGenerateMore(true); // Enable "Generate Another"
+              setHasSearched(true); // ✅ Set hasSearched AFTER AI recipe is created
               console.log(`✅ Generated 1 AI recipe (1/5)`);
               
               Alert.alert(
@@ -643,6 +646,7 @@ const RecipeSearch = () => {
               );
               setRecipes([]);
               setCanGenerateMore(false);
+              setHasSearched(true); // ✅ Set hasSearched even if AI fails
             }
           } catch (aiError) {
             console.error('❌ AI generation error:', aiError);
@@ -653,6 +657,7 @@ const RecipeSearch = () => {
             );
             setRecipes([]);
             setCanGenerateMore(false);
+            setHasSearched(true); // ✅ Set hasSearched even if error occurs
           } finally {
             setGeneratingAI(false);
             setLoading(false);
@@ -663,6 +668,7 @@ const RecipeSearch = () => {
         Alert.alert('Search Error', result.error || 'Failed to search recipes. Please try again.');
         setRecipes([]);
         setLoading(false);
+        setHasSearched(true); // ✅ Set hasSearched even on API error
       }
     } catch (error) {
       console.error('='.repeat(60));
@@ -675,6 +681,7 @@ const RecipeSearch = () => {
       setRecipes([]);
       setLoading(false);
       setGeneratingAI(false);
+      setHasSearched(true); // ✅ Set hasSearched even on exception
     }
   };
 
@@ -1094,12 +1101,13 @@ const RecipeSearch = () => {
           </View>
         )}
 
-        {/* Loading State - Show when searching API/Database */}
+        {/* Loading State - Show when searching API/Database (but NOT when AI is generating) */}
         {loading && !generatingAI && (
           <View style={styles.section}>
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="#4CAF50" />
               <Text style={styles.loadingText}>Searching for recipes...</Text>
+              <Text style={styles.loadingSubtext}>Checking Edamam API and database...</Text>
             </View>
           </View>
         )}
@@ -1116,18 +1124,23 @@ const RecipeSearch = () => {
           </View>
         )}
 
-        {/* No Results Message - Only show when search is complete, AI is done, and truly no results */}
+        {/* No Results Message - Only show when search AND AI generation both fail */}
         {hasSearched && recipes.length === 0 && !loading && !generatingAI && (
           <View style={styles.section}>
             <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>No recipes found</Text>
-              <Text style={styles.emptySubtext}>Try a different search term or check your spelling</Text>
+              <Ionicons name="alert-circle-outline" size={60} color="#ff6b6b" style={{ marginBottom: 15 }} />
+              <Text style={styles.emptyText}>No Recipes Available</Text>
+              <Text style={styles.emptySubtext}>No results found in Edamam or our AI database.</Text>
+              <Text style={styles.emptySubtext}>AI generation also encountered an error.</Text>
+              <Text style={[styles.emptySubtext, { marginTop: 10, color: '#4CAF50' }]}>
+                💡 Try a different search term or check your spelling
+              </Text>
             </View>
           </View>
         )}
 
-        {/* Recent Searches - Show only when not searching or no results */}
-        {!hasSearched && recentSearches.length > 0 && (
+        {/* Recent Searches - Show only when not searching AND not loading */}
+        {!hasSearched && !loading && !generatingAI && recentSearches.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Recent Searches</Text>
@@ -1155,8 +1168,8 @@ const RecipeSearch = () => {
           </View>
         )}
 
-        {/* Popular Recipes - Show only when not searching */}
-        {!hasSearched && (
+        {/* Popular Recipes - Show only when not searching AND not loading */}
+        {!hasSearched && !loading && !generatingAI && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Popular Recipes</Text>
