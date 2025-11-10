@@ -25,13 +25,9 @@ const GroupFormModal = ({
 
   // Form state
   const [formData, setFormData] = useState({
-    inventoryName: '',
-    inventoryColor: '#8BC34A',
-    inventoryTags: [],
-    maxItems: 100,
+    groupTitle: '',
+    groupColor: '#8BC34A',
   });
-
-  const [tagInput, setTagInput] = useState('');
 
   // Available colors
   const colorOptions = [
@@ -51,10 +47,8 @@ const GroupFormModal = ({
   useEffect(() => {
     if (initialData) {
       setFormData({
-        inventoryName: initialData.inventoryName || '',
-        inventoryColor: initialData.inventoryColor || '#8BC34A',
-        inventoryTags: initialData.inventoryTags || [],
-        maxItems: initialData.maxItems || 100,
+        groupTitle: initialData.groupTitle || '',
+        groupColor: initialData.groupColor || '#8BC34A',
       });
     }
   }, [initialData]);
@@ -64,52 +58,29 @@ const GroupFormModal = ({
     setFormData({ ...formData, [field]: value });
   };
 
-  // Add tag
-  const addTag = () => {
-    if (!tagInput.trim()) return;
-    
-    if (formData.inventoryTags.length >= 5) {
-      Alert.alert('Limit Reached', 'Maximum 5 tags allowed');
-      return;
-    }
-
-    if (formData.inventoryTags.includes(tagInput.trim())) {
-      Alert.alert('Duplicate', 'This tag already exists');
-      return;
-    }
-
-    updateField('inventoryTags', [...formData.inventoryTags, tagInput.trim()]);
-    setTagInput('');
-  };
-
-  // Remove tag
-  const removeTag = (tagToRemove) => {
-    updateField(
-      'inventoryTags',
-      formData.inventoryTags.filter(tag => tag !== tagToRemove)
-    );
-  };
-
   // Validate and save
   const handleSave = () => {
-    if (!formData.inventoryName.trim()) {
+    if (!formData.groupTitle.trim()) {
       Alert.alert('Error', 'Please enter a group name');
       return;
     }
 
     onSave(formData);
-    handleClose();
+    
+    // Reset form
+    setFormData({
+      groupTitle: '',
+      groupColor: '#8BC34A',
+    });
+    onClose();
   };
 
   // Close modal and reset
   const handleClose = () => {
     setFormData({
-      inventoryName: '',
-      inventoryColor: '#8BC34A',
-      inventoryTags: [],
-      maxItems: 100,
+      groupTitle: '',
+      groupColor: '#8BC34A',
     });
-    setTagInput('');
     onClose();
   };
 
@@ -142,8 +113,8 @@ const GroupFormModal = ({
               style={styles.input}
               placeholder="e.g., Spices, Baking Supplies, Vegetables"
               placeholderTextColor="#999"
-              value={formData.inventoryName}
-              onChangeText={(text) => updateField('inventoryName', text)}
+              value={formData.groupTitle}
+              onChangeText={(text) => updateField('groupTitle', text)}
             />
 
             {/* Color Picker */}
@@ -155,62 +126,16 @@ const GroupFormModal = ({
                   style={[
                     styles.colorOption,
                     { backgroundColor: color },
-                    formData.inventoryColor === color && styles.selectedColorOption,
+                    formData.groupColor === color && styles.selectedColorOption,
                   ]}
-                  onPress={() => updateField('inventoryColor', color)}
+                  onPress={() => updateField('groupColor', color)}
                 >
-                  {formData.inventoryColor === color && (
+                  {formData.groupColor === color && (
                     <Ionicons name="checkmark" size={24} color="#fff" />
                   )}
                 </TouchableOpacity>
               ))}
             </View>
-
-            {/* Tags */}
-            <Text style={styles.label}>Tags (Optional)</Text>
-            <View style={styles.tagInputContainer}>
-              <TextInput
-                style={styles.tagInput}
-                placeholder="Add a tag..."
-                placeholderTextColor="#999"
-                value={tagInput}
-                onChangeText={setTagInput}
-                onSubmitEditing={addTag}
-                returnKeyType="done"
-              />
-              <TouchableOpacity 
-                style={styles.addTagButton}
-                onPress={addTag}
-              >
-                <Ionicons name="add-circle" size={28} color="#8BC34A" />
-              </TouchableOpacity>
-            </View>
-
-            {/* Display Tags */}
-            {formData.inventoryTags.length > 0 && (
-              <View style={styles.tagsContainer}>
-                {formData.inventoryTags.map((tag, index) => (
-                  <View key={index} style={styles.tag}>
-                    <Text style={styles.tagText}>{tag}</Text>
-                    <TouchableOpacity onPress={() => removeTag(tag)}>
-                      <Ionicons name="close-circle" size={18} color="#666" />
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </View>
-            )}
-
-            {/* Max Items */}
-            <Text style={styles.label}>Maximum Items</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="100"
-              placeholderTextColor="#999"
-              keyboardType="numeric"
-              value={formData.maxItems.toString()}
-              onChangeText={(text) => updateField('maxItems', parseInt(text) || 100)}
-            />
-
             {/* Info Text */}
             <Text style={styles.infoText}>
               Groups help you organize your pantry items into categories like "Spices", "Baking", or "Vegetables".

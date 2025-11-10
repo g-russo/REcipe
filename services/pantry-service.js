@@ -782,6 +782,465 @@ class PantryService {
       throw error;
     }
   }
+
+  /**
+   * Delete all items in an inventory
+   * @param {number} inventoryID - The inventory ID
+   * @returns {Promise<boolean>} Success status
+   */
+  async deleteAllItemsInInventory(inventoryID) {
+    try {
+      const { data, error } = await supabase
+        .from('tbl_items')
+        .delete()
+        .eq('"inventoryID"', inventoryID);
+
+      if (error) throw error;
+
+      // Update inventory item count
+      await this.updateInventoryItemCount(inventoryID);
+
+      return true;
+    } catch (error) {
+      console.error('Error deleting all items in inventory:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Search items by name or category
+   * @param {number} userID - The user's ID
+   * @param {string} query - Search query
+   * @returns {Promise<Object>} Object with items array
+   */
+  async searchItems(userID, query) {
+    try {
+      const { data, error} = await supabase
+        .from('tbl_items')
+        .select(`
+          *,
+          tbl_inventories!inner("userID")
+        `)
+        .eq('tbl_inventories."userID"', userID)
+        .or(`itemName.ilike.%${query}%,itemCategory.ilike.%${query}%`)
+        .order('itemAdded', { ascending: false });
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error searching items:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get items expiring soon (within specified days)
+   * @param {number} userID - The user's ID
+   * @param {number} days - Number of days to check (default: 7)
+   * @returns {Promise<Array>} Array of expiring items
+   */
+  async getExpiringItems(userID, days = 7) {
+    try {
+      const futureDate = new Date();
+      futureDate.setDate(futureDate.getDate() + days);
+
+      const { data, error } = await supabase
+        .from('tbl_items')
+        .select(`
+          *,
+          tbl_inventories!inner("userID")
+        `)
+        .eq('tbl_inventories."userID"', userID)
+        .not('itemExpiration', 'is', null)
+        .lte('itemExpiration', futureDate.toISOString().split('T')[0])
+        .gte('itemExpiration', new Date().toISOString().split('T')[0])
+        .order('itemExpiration', { ascending: true });
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching expiring items:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Move item to different inventory
+   * @param {number} itemID - The item ID
+   * @param {number} newInventoryID - The target inventory ID
+   * @returns {Promise<Object>} Updated item
+   */
+  async moveItemToInventory(itemID, newInventoryID) {
+    try {
+      // Get the item first to know the old inventory
+      const { data: item, error: fetchError } = await supabase
+        .from('tbl_items')
+        .select('"inventoryID"')
+        .eq('"itemID"', itemID)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      const oldInventoryID = item.inventoryID;
+
+      // Update the item
+      const updatedItem = await this.updateItem(itemID, {
+        inventoryID: newInventoryID,
+      });
+
+      // Update both inventories' item counts
+      await this.updateInventoryItemCount(oldInventoryID);
+      await this.updateInventoryItemCount(newInventoryID);
+
+      return updatedItem;
+    } catch (error) {
+      console.error('Error moving item to inventory:', error);
+      throw error;
+    }
+  }
+
+  // =====================================================
+  // GROUP OPERATIONS (NEW)
+  // =====================================================
+
+  /**
+   * Get all groups for a user's inventory
+   * @param {number} userID - User ID
+   * @returns {Promise<Array>} Array of groups
+   */
+  async getUserGroups(userID) {
+    try {
+      console.log('📂 Getting groups for user:', userID);
+      
+      // First get user's inventory
+      const { data: inventory, error: invError } = await supabase
+        .from('tbl_inventories')
+        .select('inventoryID')
+        .eq('userID', userID)
+        .single();
+
+      if (invError) throw invError;
+      if (!inventory) return [];
+
+      // Get all groups for this inventory
+      const { data, error } = await supabase
+        .from('tbl_groups')
+        .select('*')
+        .eq('inventoryID', inventory.inventoryID)
+        .order('createdAt', { ascending: true });
+
+      if (error) throw error;
+      console.log(`✅ Found ${data.length} groups`);
+      return data || [];
+    } catch (error) {
+      console.error('Error getting user groups:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create a new group within user's inventory
+   * @param {number} userID - User ID
+   * @param {Object} groupData - { groupTitle, groupColor, groupImg (imageUri) }
+   * @returns {Promise<Object>} Created group
+   */
+  async createGroup(userID, groupData = {}) {
+    try {
+      console.log('📂 Creating group for user:', userID);
+
+      // Get user's inventory
+      const { data: inventory, error: invError } = await supabase
+        .from('tbl_inventories')
+        .select('inventoryID')
+        .eq('userID', userID)
+        .single();
+
+      if (invError) throw invError;
+      if (!inventory) {
+        throw new Error('User must have an inventory before creating groups');
+      }
+
+      const {
+        groupTitle = 'New Group',
+        groupColor = '#8BC34A',
+        imageUri = null,
+      } = groupData;
+
+      // Upload group image if provided
+      let groupImg = null;
+      if (imageUri) {
+        groupImg = await this.uploadGroupImage(imageUri, userID, groupTitle);
+      }
+
+      // Create group
+      const { data, error } = await supabase
+        .from('tbl_groups')
+        .insert([
+          {
+            inventoryID: inventory.inventoryID,
+            groupTitle: groupTitle,
+            groupColor: groupColor,
+            groupImg: groupImg,
+            itemCount: 0,
+          },
+        ])
+        .select()
+        .single();
+
+      if (error) throw error;
+      console.log('✅ Group created:', data);
+      return data;
+    } catch (error) {
+      console.error('Error creating group:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update a group
+   * @param {number} groupID - Group ID
+   * @param {Object} updates - Fields to update (can include imageUri for new image)
+   * @returns {Promise<Object>} Updated group
+   */
+  async updateGroup(groupID, updates) {
+    try {
+      console.log('📝 Updating group:', groupID);
+
+      // Handle image update if new imageUri provided
+      if (updates.imageUri && updates.userID) {
+        // Get current group to check for old image
+        const { data: currentGroup } = await supabase
+          .from('tbl_groups')
+          .select('groupImg, groupTitle')
+          .eq('groupID', groupID)
+          .single();
+
+        // Delete old image if exists
+        if (currentGroup?.groupImg) {
+          await this.deleteGroupImage(currentGroup.groupImg);
+        }
+
+        // Upload new image
+        const groupImg = await this.uploadGroupImage(
+          updates.imageUri,
+          updates.userID,
+          updates.groupTitle || currentGroup?.groupTitle || 'group'
+        );
+
+        // Replace imageUri with groupImg in updates
+        delete updates.imageUri;
+        delete updates.userID;
+        updates.groupImg = groupImg;
+      }
+
+      const { data, error } = await supabase
+        .from('tbl_groups')
+        .update({
+          ...updates,
+          updatedAt: new Date().toISOString(),
+        })
+        .eq('groupID', groupID)
+        .select()
+        .single();
+
+      if (error) throw error;
+      console.log('✅ Group updated:', data);
+      return data;
+    } catch (error) {
+      console.error('Error updating group:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a group and optionally its items
+   * @param {number} groupID - Group ID
+   * @param {boolean} deleteItems - Whether to delete items or move them to ungrouped
+   * @returns {Promise<boolean>} Success status
+   */
+  async deleteGroup(groupID, deleteItems = false) {
+    try {
+      console.log('🗑️ Deleting group:', groupID);
+
+      // Get group to delete image
+      const { data: group } = await supabase
+        .from('tbl_groups')
+        .select('groupImg, inventoryID')
+        .eq('groupID', groupID)
+        .single();
+
+      // Delete group image if exists
+      if (group?.groupImg) {
+        await this.deleteGroupImage(group.groupImg);
+      }
+
+      if (deleteItems) {
+        // Get all items in this group
+        const { data: groupItems } = await supabase
+          .from('tbl_group_items')
+          .select('itemID')
+          .eq('groupID', groupID);
+
+        // Delete all items in the group
+        if (groupItems && groupItems.length > 0) {
+          const itemIDs = groupItems.map(gi => gi.itemID);
+          await supabase
+            .from('tbl_items')
+            .delete()
+            .in('itemID', itemIDs);
+        }
+      }
+
+      // Delete group-item associations
+      await supabase
+        .from('tbl_group_items')
+        .delete()
+        .eq('groupID', groupID);
+
+      // Delete the group
+      const { error } = await supabase
+        .from('tbl_groups')
+        .delete()
+        .eq('groupID', groupID);
+
+      if (error) throw error;
+      console.log('✅ Group deleted');
+      return true;
+    } catch (error) {
+      console.error('Error deleting group:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Add item to a group
+   * @param {number} itemID - Item ID
+   * @param {number} groupID - Group ID
+   * @returns {Promise<Object>} Group-item association
+   */
+  async addItemToGroup(itemID, groupID) {
+    try {
+      console.log(`🔗 Adding item ${itemID} to group ${groupID}`);
+
+      // Check if already in this group
+      const { data: existing } = await supabase
+        .from('tbl_group_items')
+        .select('*')
+        .eq('itemID', itemID)
+        .eq('groupID', groupID)
+        .single();
+
+      if (existing) {
+        console.log('ℹ️ Item already in this group');
+        throw new Error('Item is already in this group');
+      }
+
+      // Add to group
+      const { data, error } = await supabase
+        .from('tbl_group_items')
+        .insert([{ itemID, groupID }])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Update group item count
+      await this.updateGroupItemCount(groupID);
+
+      console.log('✅ Item added to group');
+      return data;
+    } catch (error) {
+      console.error('Error adding item to group:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Remove item from a group
+   * @param {number} itemID - Item ID
+   * @param {number} groupID - Group ID
+   * @returns {Promise<boolean>} Success status
+   */
+  async removeItemFromGroup(itemID, groupID) {
+    try {
+      console.log(`🔗 Removing item ${itemID} from group ${groupID}`);
+
+      const { error } = await supabase
+        .from('tbl_group_items')
+        .delete()
+        .eq('itemID', itemID)
+        .eq('groupID', groupID);
+
+      if (error) throw error;
+
+      // Update group item count
+      await this.updateGroupItemCount(groupID);
+
+      console.log('✅ Item removed from group');
+      return true;
+    } catch (error) {
+      console.error('Error removing item from group:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get items in a specific group
+   * @param {number} groupID - Group ID
+   * @returns {Promise<Array>} Array of items
+   */
+  async getGroupItems(groupID) {
+    try {
+      console.log('📦 Getting items for group:', groupID);
+
+      const { data, error } = await supabase
+        .from('tbl_group_items')
+        .select(`
+          groupItemID,
+          itemID,
+          addedAt,
+          tbl_items (*)
+        `)
+        .eq('groupID', groupID);
+
+      if (error) throw error;
+
+      // Extract items from the join
+      const items = data.map(gi => gi.tbl_items);
+      console.log(`✅ Found ${items.length} items in group`);
+      return items;
+    } catch (error) {
+      console.error('Error getting group items:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update group item count
+   * @param {number} groupID - Group ID
+   * @returns {Promise<void>}
+   */
+  async updateGroupItemCount(groupID) {
+    try {
+      // Count items in group
+      const { count, error: countError } = await supabase
+        .from('tbl_group_items')
+        .select('*', { count: 'exact', head: true })
+        .eq('groupID', groupID);
+
+      if (countError) throw countError;
+
+      // Update group
+      const { error: updateError } = await supabase
+        .from('tbl_groups')
+        .update({ itemCount: count || 0 })
+        .eq('groupID', groupID);
+
+      if (updateError) throw updateError;
+    } catch (error) {
+      console.error('Error updating group item count:', error);
+    }
+  }
 }
 
 export default new PantryService();
