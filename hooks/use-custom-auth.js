@@ -373,16 +373,35 @@ export function useCustomAuth() {
     return { error }
   }
 
-  // Request password reset (generates OTP)
+  // Request password reset (generates token link for web)
   const requestPasswordReset = async (email) => {
     try {
       setLoading(true)
       
       console.log('📧 Requesting password reset for:', email)
 
-      // Send OTP via Supabase auth (this sends the actual OTP email)
+      // Check if user exists in custom table first
+      const { data: userData, error: userError } = await supabase
+        .from('tbl_users')
+        .select('userID, isVerified')
+        .eq('userEmail', email)
+        .single()
+
+      if (userError || !userData) {
+        console.error('❌ User not found:', userError)
+        throw new Error('User not found')
+      }
+
+      if (!userData.isVerified) {
+        throw new Error('Account not verified. Please verify your email address first.')
+      }
+
+      // Get website URL from environment or use default
+      const websiteUrl = process.env.EXPO_PUBLIC_WEBSITE_URL || 'http://localhost:5173'
+      
+      // Send password reset email with token link that redirects to website
       const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: 'REcipe://reset-password'
+        redirectTo: `${websiteUrl}/reset-password`
       })
 
       if (error) {
@@ -390,7 +409,7 @@ export function useCustomAuth() {
         throw error
       }
 
-      console.log('✅ Password reset email sent via Supabase')
+      console.log('✅ Password reset email sent with token link to website')
       return { data, error }
     } catch (err) {
       console.error('Password reset request error:', err)
@@ -601,9 +620,12 @@ export function useCustomAuth() {
 
       console.log('📤 Sending password reset email via Supabase...')
 
+      // Get website URL from environment or use default
+      const websiteUrl = process.env.EXPO_PUBLIC_WEBSITE_URL || 'http://localhost:5173'
+
       // Send password reset email via Supabase auth
       const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: 'REcipe://reset-password'
+        redirectTo: `${websiteUrl}/reset-password`
       })
 
       if (error) {
@@ -622,6 +644,57 @@ export function useCustomAuth() {
       }
     } catch (err) {
       console.error('❌ Resend password reset OTP error:', err)
+      return { data: null, error: err }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Reset password with token (for website use)
+  const resetPasswordWithToken = async (newPassword) => {
+    try {
+      setLoading(true)
+
+      console.log('🔐 Resetting password with token from email link...')
+
+      // Update password using the session from the token
+      const { data, error } = await supabase.auth.updateUser({
+        password: newPassword
+      })
+
+      if (error) {
+        console.error('❌ Failed to update password:', error)
+        throw error
+      }
+
+      console.log('✅ Password updated successfully via token!')
+
+      // Also update password in custom table if user exists
+      if (data.user?.email) {
+        try {
+          const { data: userData } = await supabase
+            .from('tbl_users')
+            .select('userID')
+            .eq('userEmail', data.user.email)
+            .single()
+
+          if (userData?.userID) {
+            const hashedPassword = await simpleHash(newPassword)
+            await supabase
+              .from('tbl_users')
+              .update({ userPassword: hashedPassword })
+              .eq('userID', userData.userID)
+            
+            console.log('✅ Password updated in custom table as well')
+          }
+        } catch (customTableError) {
+          console.log('⚠️ Could not update custom table, but password reset succeeded')
+        }
+      }
+
+      return { data, error: null }
+    } catch (err) {
+      console.error('❌ Reset password with token error:', err)
       return { data: null, error: err }
     } finally {
       setLoading(false)
@@ -907,6 +980,7 @@ export function useCustomAuth() {
     requestPasswordReset,
     verifyPasswordResetOTP,
     resendPasswordResetOTP,
+    resetPasswordWithToken,
     forcePasswordChange,
     generateAndStoreOTP,
     storeVerifiedOTP,

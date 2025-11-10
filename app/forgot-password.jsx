@@ -87,13 +87,13 @@ const ForgotPassword = () => {
       } else {
         Alert.alert(
           'Reset Code Sent!',
-          'We\'ve sent a 6-digit verification code to your email. Please check your inbox and enter the code on the next screen.',
+          'We\'ve sent a link to your email. Please check your inbox and click the link on the next screen.',
           [
             {
               text: 'Continue',
               onPress: () => {
                 router.push({
-                  pathname: '/reset-password-otp',
+                  pathname: '/signin',
                   params: { 
                     email: email,
                     returnTo: returnTo || '/signin'
