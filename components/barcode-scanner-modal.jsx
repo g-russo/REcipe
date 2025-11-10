@@ -16,6 +16,7 @@ export default function BarcodeScannerModal({ visible, onClose, onFoodFound }) {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [lastResult, setLastResult] = useState(null);
 
   useEffect(() => {
     if (visible && !permission?.granted) {
@@ -23,6 +24,7 @@ export default function BarcodeScannerModal({ visible, onClose, onFoodFound }) {
     }
     if (visible) {
       setScanned(false);
+      setLastResult(null);
     }
   }, [visible]);
 
@@ -45,21 +47,49 @@ export default function BarcodeScannerModal({ visible, onClose, onFoodFound }) {
         Alert.alert(
           'Not Found',
           'This barcode is not in the FatSecret database. Try another one.',
-          [{ text: 'OK', onPress: () => setScanned(false) }]
+          [
+            { text: 'Cancel', style: 'cancel', onPress: onClose },
+            { text: 'Scan Again', onPress: () => setScanned(false) }
+          ]
         );
+        setLoading(false);
         return;
       }
 
-      onFoodFound(result.food);
-      onClose();
+      setLastResult(result.food);
+      setLoading(false);
+
+      // Show result with options
+      Alert.alert(
+        'Food Found!',
+        `${result.food.food_name}\n\n${result.food.food_description || 'No description available'}`,
+        [
+          {
+            text: 'Scan Another',
+            onPress: () => {
+              setScanned(false);
+              setLastResult(null);
+            },
+          },
+          {
+            text: 'Use This',
+            onPress: () => {
+              onFoodFound(result.food);
+              onClose();
+            },
+          },
+        ]
+      );
     } catch (error) {
       console.error('Barcode lookup error:', error);
       Alert.alert(
         'Error',
         'Failed to lookup barcode. Please try again.',
-        [{ text: 'OK', onPress: () => setScanned(false) }]
+        [
+          { text: 'Cancel', style: 'cancel', onPress: onClose },
+          { text: 'Try Again', onPress: () => setScanned(false) }
+        ]
       );
-    } finally {
       setLoading(false);
     }
   };
@@ -140,17 +170,22 @@ export default function BarcodeScannerModal({ visible, onClose, onFoodFound }) {
           <View style={styles.instructionsContainer}>
             <Ionicons name="barcode-outline" size={48} color="#fff" />
             <Text style={styles.instructionsText}>
-              {loading ? 'Looking up barcode...' : 'Align barcode within frame'}
+              {loading ? 'Looking up barcode...' : 
+               scanned ? 'Check the result above' :
+               'Align barcode within frame'}
             </Text>
             {loading && <ActivityIndicator size="large" color="#fff" style={{ marginTop: 10 }} />}
           </View>
 
-          {/* Rescan button */}
+          {/* Scan Again button */}
           {scanned && !loading && (
             <View style={styles.rescanContainer}>
               <TouchableOpacity
                 style={styles.rescanButton}
-                onPress={() => setScanned(false)}
+                onPress={() => {
+                  setScanned(false);
+                  setLastResult(null);
+                }}
               >
                 <Ionicons name="refresh" size={24} color="#fff" />
                 <Text style={styles.rescanText}>Tap to Scan Again</Text>
