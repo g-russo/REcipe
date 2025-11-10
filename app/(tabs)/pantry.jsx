@@ -21,6 +21,7 @@ import InventoryGroupsSection from '../../components/pantry/inventory-groups-sec
 import PantryItemsGrid from '../../components/pantry/pantry-items-grid';
 import ItemFormModal from '../../components/pantry/item-form-modal';
 import GroupFormModal from '../../components/pantry/group-form-modal';
+import GroupItemsModal from '../../components/pantry/group-items-modal';
 import SearchFilterModal from '../../components/pantry/search-filter-modal';
 import ExpiringItemsBanner from '../../components/pantry/expiring-items-banner';
 
@@ -35,6 +36,7 @@ const Pantry = () => {
   
   // State
   const [inventories, setInventories] = useState([]);
+  const [groups, setGroups] = useState([]); // NEW: Separate groups state
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [highlightedItemId, setHighlightedItemId] = useState(null);
@@ -44,6 +46,8 @@ const Pantry = () => {
   const [editingItem, setEditingItem] = useState(null);
   const [groupFormVisible, setGroupFormVisible] = useState(false);
   const [editingGroup, setEditingGroup] = useState(null);
+  const [groupItemsModalVisible, setGroupItemsModalVisible] = useState(false);
+  const [selectedGroup, setSelectedGroup] = useState(null);
   const [searchModalVisible, setSearchModalVisible] = useState(false);
   
   // Selection mode
@@ -145,15 +149,18 @@ const Pantry = () => {
       setLoading(true);
       console.log('📥 Loading pantry data for user:', customUserData.userID);
       
-      const [inventoriesData, itemsData] = await Promise.all([
+      const [inventoriesData, groupsData, itemsData] = await Promise.all([
         PantryService.getUserInventories(customUserData.userID),
+        PantryService.getUserGroups(customUserData.userID),
         PantryService.getUserItems(customUserData.userID),
       ]);
       
       console.log('📦 Inventories loaded:', inventoriesData);
-      console.log('📝 Items loaded:', itemsData.length, 'items');
+      console.log('� Groups loaded:', groupsData.length, 'groups');
+      console.log('�📝 Items loaded:', itemsData.length, 'items');
       
       setInventories(inventoriesData);
+      setGroups(groupsData);
       setItems(itemsData);
       
       // If user has no inventory but is verified, create one automatically
@@ -364,6 +371,13 @@ const Pantry = () => {
       `What would you like to do with "${item.itemName}"?`,
       [
         {
+          text: 'Add to Group',
+          onPress: () => {
+            setSelectedItems([item.itemID]);
+            handleAddToGroup();
+          },
+        },
+        {
           text: 'Edit',
           onPress: () => {
             setEditingItem(item);
@@ -396,20 +410,134 @@ const Pantry = () => {
     setSelectedItems([]);
   };
 
-  // Handle group press
-  const handleGroupPress = (inventory) => {
+  // Handle add items to group
+  const handleAddToGroup = () => {
+    if (selectedItems.length === 0) {
+      Alert.alert('No Items Selected', 'Please select items to add to a group');
+      return;
+    }
+
+    if (groups.length === 0) {
+      Alert.alert(
+        'No Groups Available',
+        'Please create a group first before adding items.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Create Group', onPress: handleCreateGroup }
+        ]
+      );
+      return;
+    }
+
+    // Show group selection dialog
+    const groupButtons = groups.map(group => ({
+      text: `${group.groupTitle} (${group.itemCount || 0} items)`,
+      onPress: async () => {
+        try {
+          console.log(`📂 Adding ${selectedItems.length} items to group ${group.groupID}`);
+          
+          let addedCount = 0;
+          let alreadyInGroupCount = 0;
+          const alreadyInGroupItems = [];
+          
+          // Add each selected item to the group
+          for (const itemID of selectedItems) {
+            try {
+              await PantryService.addItemToGroup(itemID, group.groupID);
+              addedCount++;
+            } catch (error) {
+              // Check if error is because item already in group
+              if (error.message && error.message.includes('already in this group')) {
+                alreadyInGroupCount++;
+                const item = items.find(i => i.itemID === itemID);
+                if (item) alreadyInGroupItems.push(item.itemName);
+              } else {
+                throw error;
+              }
+            }
+          }
+          
+          // Show appropriate message
+          if (alreadyInGroupCount === selectedItems.length) {
+            // All items already in group
+            Alert.alert(
+              'Already in Group',
+              `${alreadyInGroupCount === 1 ? 'This item is' : 'All selected items are'} already in "${group.groupTitle}".\n\n${alreadyInGroupItems.join(', ')}`
+            );
+          } else if (alreadyInGroupCount > 0) {
+            // Some items already in group
+            Alert.alert(
+              'Partially Added',
+              `${addedCount} item(s) added to "${group.groupTitle}".\n\n${alreadyInGroupCount} item(s) were already in this group: ${alreadyInGroupItems.join(', ')}`
+            );
+          } else {
+            // All items added successfully
+            Alert.alert(
+              'Success',
+              `${addedCount} item(s) added to "${group.groupTitle}"`
+            );
+          }
+          
+          // Exit selection mode and reload data
+          exitSelectionMode();
+          await loadData();
+        } catch (error) {
+          console.error('Error adding items to group:', error);
+          Alert.alert('Error', 'Failed to add items to group');
+        }
+      }
+    }));
+
+    // Add cancel button
+    groupButtons.push({ text: 'Cancel', style: 'cancel' });
+
     Alert.alert(
-      inventory.inventoryName || `Inventory #${inventory.inventoryID}`,
-      `Items: ${inventory.itemCount} / ${inventory.maxItems}\nStatus: ${inventory.isFull ? 'Full' : 'Available'}`,
+      'Select Group',
+      `Add ${selectedItems.length} item(s) to which group?`,
+      groupButtons
+    );
+  };
+
+  // Handle group press
+  const handleGroupPress = (group) => {
+    setSelectedGroup(group);
+    setGroupItemsModalVisible(true);
+  };
+
+  // Handle delete group
+  const handleDeleteGroup = (group) => {
+    Alert.alert(
+      'Delete Group',
+      `Are you sure you want to delete "${group.groupTitle}"?`,
       [
+        { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Edit',
-          onPress: () => {
-            setEditingGroup(inventory);
-            setGroupFormVisible(true);
+          text: 'Delete Group Only',
+          onPress: async () => {
+            try {
+              await PantryService.deleteGroup(group.groupID, false); // Keep items
+              await loadData();
+              Alert.alert('Success', 'Group deleted (items kept)');
+            } catch (error) {
+              console.error('Error deleting group:', error);
+              Alert.alert('Error', 'Failed to delete group');
+            }
           },
         },
-        { text: 'OK' }
+        {
+          text: 'Delete Group & Items',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await PantryService.deleteGroup(group.groupID, true); // Delete items too
+              await loadData();
+              Alert.alert('Success', 'Group and items deleted');
+            } catch (error) {
+              console.error('Error deleting group:', error);
+              Alert.alert('Error', 'Failed to delete group');
+            }
+          },
+        },
       ]
     );
   };
@@ -419,11 +547,11 @@ const Pantry = () => {
     try {
       if (editingGroup) {
         // Update existing group
-        await PantryService.updateInventory(editingGroup.inventoryID, groupData);
+        await PantryService.updateGroup(editingGroup.groupID, groupData);
         Alert.alert('Success', 'Group updated successfully');
       } else {
         // Create new group
-        await PantryService.createInventory(user.userID, groupData);
+        await PantryService.createGroup(customUserData.userID, groupData);
         Alert.alert('Success', 'Group created successfully');
       }
       
@@ -473,7 +601,7 @@ const Pantry = () => {
           <SelectionModeHeader
             selectedCount={selectedItems.length}
             onCancel={exitSelectionMode}
-            onAddToGroup={() => Alert.alert('Feature Coming', 'Add to group feature coming soon!')}
+            onAddToGroup={handleAddToGroup}
             isDisabled={selectedItems.length === 0}
           />
         )}
@@ -488,7 +616,7 @@ const Pantry = () => {
 
           {/* Inventory Groups Section */}
           <InventoryGroupsSection
-            inventories={inventories}
+            groups={groups}
             onGroupPress={handleGroupPress}
             onCreateGroup={handleCreateGroup}
             userName={customUserData?.userName || user?.user_metadata?.name || 'My'}
@@ -537,6 +665,22 @@ const Pantry = () => {
           }}
           onSave={handleSaveGroup}
           initialData={editingGroup}
+        />
+
+        {/* Group Items Modal */}
+        <GroupItemsModal
+          visible={groupItemsModalVisible}
+          onClose={() => {
+            setGroupItemsModalVisible(false);
+            setSelectedGroup(null);
+          }}
+          group={selectedGroup}
+          onItemPress={handleItemPress}
+          onEditGroup={() => {
+            setEditingGroup(selectedGroup);
+            setGroupFormVisible(true);
+          }}
+          onDeleteGroup={() => handleDeleteGroup(selectedGroup)}
         />
       </SafeAreaView>
     </AuthGuard>
