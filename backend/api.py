@@ -2,6 +2,10 @@ import os
 from pathlib import Path
 import io
 import time
+import requests
+import hashlib
+import hmac
+import urllib.parse
 from typing import List, Optional
 from fastapi import FastAPI, File, UploadFile, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,6 +14,37 @@ from PIL import Image
 import pytesseract
 from ultralytics import YOLO
 import torch
+
+# FatSecret API credentials
+FATSECRET_API_URL = "https://platform.fatsecret.com/rest/server.api"
+FATSECRET_KEY = os.getenv("FATSECRET_KEY", "")
+FATSECRET_SECRET = os.getenv("FATSECRET_SECRET", "")
+
+def call_server_api(method: str, params: dict = None):
+    """Call FatSecret server API with OAuth 1.0 signature."""
+    if params is None:
+        params = {}
+    
+    params["method"] = method
+    params["format"] = "json"
+    params["oauth_consumer_key"] = FATSECRET_KEY
+    params["oauth_signature_method"] = "HMAC-SHA1"
+    params["oauth_timestamp"] = str(int(time.time()))
+    params["oauth_nonce"] = hashlib.md5(str(time.time()).encode()).hexdigest()
+    params["oauth_version"] = "1.0"
+    
+    # Create signature
+    sorted_params = sorted(params.items())
+    param_string = "&".join([f"{k}={urllib.parse.quote(str(v), safe='')}" for k, v in sorted_params])
+    base_string = f"GET&{urllib.parse.quote(FATSECRET_API_URL, safe='')}&{urllib.parse.quote(param_string, safe='')}"
+    signing_key = f"{FATSECRET_SECRET}&"
+    signature = hmac.new(signing_key.encode(), base_string.encode(), hashlib.sha1).digest()
+    import base64
+    oauth_signature = base64.b64encode(signature).decode()
+    params["oauth_signature"] = oauth_signature
+    
+    response = requests.get(FATSECRET_API_URL, params=params)
+    return response.json()
 
 # Load models at startup
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
