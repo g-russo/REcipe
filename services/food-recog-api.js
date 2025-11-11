@@ -1,7 +1,8 @@
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 
-// ✅ Your EC2 public IP
-const API_BASE_URL = 'http://54.153.205.43:8000';
+// Use environment variable
+const API_BASE_URL = Constants.expoConfig?.extra?.foodApiUrl || 'http://54.153.205.43:8000';
 
 export const recognizeFood = async (imageUri) => {
   try {
