@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Modal,
   View,
@@ -31,32 +31,26 @@ const ItemFormModal = ({
   const isEditMode = !!initialData;
 
   // Form state
-  const [formData, setFormData] = useState(
-    initialData || {
-      itemName: '',
-      inventoryID: inventories[0]?.inventoryID || null,
-      quantity: '',
-      unit: '',
-      itemCategory: '',
-      itemDescription: '',
-      itemExpiration: '',
-      imageURL: null,
-    }
-  );
+  const [formData, setFormData] = useState({
+    itemName: '',
+    inventoryID: inventories[0]?.inventoryID || null,
+    quantity: '',
+    unit: '',
+    itemCategory: '',
+    itemDescription: '',
+    itemExpiration: '',
+    imageURL: null,
+  });
 
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
   const [unitModalVisible, setUnitModalVisible] = useState(false);
 
-  // Food categories
+  // Simplified food categories (matching group categories)
   const foodCategories = [
-    'Vegetables', 'Fruits', 'Meat', 'Poultry', 'Seafood', 'Dairy',
-    'Eggs', 'Deli', 'Bread & Bakery', 'Pasta & Rice', 'Canned Goods',
-    'Soups & Broths', 'Condiments', 'Sauces', 'Oils & Vinegars',
-    'Spices & Herbs', 'Snacks', 'Nuts & Seeds', 'Dried Fruits',
-    'Beans & Legumes', 'Baking Supplies', 'Beverages', 'Coffee & Tea',
-    'Frozen Foods', 'Desserts & Sweets', 'Alcohol', 'Baby Food',
-    'Pet Food', 'Gluten-Free', 'Organic', 'Vegan', 'Vegetarian'
+    'Fruits', 'Vegetables', 'Meat & Poultry', 'Seafood', 'Dairy & Eggs',
+    'Grains & Pasta', 'Canned & Jarred', 'Condiments & Sauces', 
+    'Spices & Herbs', 'Snacks', 'Beverages', 'Frozen', 'Baking', 'Other'
   ];
 
   // Units
@@ -188,6 +182,34 @@ const ItemFormModal = ({
     });
     onClose();
   };
+
+  // Update form data when initialData changes
+  useEffect(() => {
+    if (initialData) {
+      setFormData({
+        itemName: initialData.itemName || '',
+        inventoryID: initialData.inventoryID || inventories[0]?.inventoryID || null,
+        quantity: initialData.quantity?.toString() || '',
+        unit: initialData.unit || '',
+        itemCategory: initialData.itemCategory || '',
+        itemDescription: initialData.itemDescription || '',
+        itemExpiration: initialData.itemExpiration || '',
+        imageURL: initialData.imageURL || null,
+      });
+    } else {
+      // Reset form when not editing
+      setFormData({
+        itemName: '',
+        inventoryID: inventories[0]?.inventoryID || null,
+        quantity: '',
+        unit: '',
+        itemCategory: '',
+        itemDescription: '',
+        itemExpiration: '',
+        imageURL: null,
+      });
+    }
+  }, [initialData, inventories]);
 
   return (
     <>

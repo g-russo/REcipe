@@ -12,7 +12,7 @@ import AuthGuard from '../../components/auth-guard';
 import PantryService from '../../services/pantry-service';
 import ExpirationNotificationService from '../../services/expiration-notification-service';
 import BackgroundNotificationRefresh from '../../services/background-notification-refresh';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useRouter } from 'expo-router';
 
 // Components
 import PantryHeader from '../../components/pantry/pantry-header';
@@ -33,10 +33,11 @@ const Pantry = () => {
   const { user, customUserData } = useCustomAuth();
   const params = useLocalSearchParams();
   const scrollViewRef = useRef(null);
+  const router = useRouter(); // NEW
   
   // State
   const [inventories, setInventories] = useState([]);
-  const [groups, setGroups] = useState([]); // NEW: Separate groups state
+  const [groups, setGroups] = useState([]);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [highlightedItemId, setHighlightedItemId] = useState(null);
@@ -106,11 +107,6 @@ const Pantry = () => {
       // Register background task for notification refresh
       await BackgroundNotificationRefresh.registerBackgroundNotificationRefresh();
       
-      // Save user ID for background task
-      if (customUserData?.userID) {
-        await AsyncStorage.setItem('currentUserID', customUserData.userID.toString());
-      }
-      
       // Cleanup listener on unmount
       return () => {
         if (listener) {
@@ -156,11 +152,11 @@ const Pantry = () => {
       ]);
       
       console.log('📦 Inventories loaded:', inventoriesData);
-      console.log('� Groups loaded:', groupsData.length, 'groups');
-      console.log('�📝 Items loaded:', itemsData.length, 'items');
+      console.log('📁 Groups loaded:', groupsData.length, 'groups');
+      console.log('📝 Items loaded:', itemsData.length, 'items');
       
       setInventories(inventoriesData);
-      setGroups(groupsData);
+      setGroups(groupsData); // Groups now include groupCategory from database
       setItems(itemsData);
       
       // If user has no inventory but is verified, create one automatically
@@ -264,7 +260,7 @@ const Pantry = () => {
         const itemToCreate = {
           ...itemData,
           inventoryID: itemData.inventoryID || inventoryID,
-          userID: customUserData.userID, // For image upload
+          userID: customUserData.userID,
         };
         
         console.log('📤 Sending item to database:', itemToCreate);
@@ -285,6 +281,9 @@ const Pantry = () => {
           }
         }
         
+        // NEW: Check for matching category groups and prompt user
+        await checkAndPromptForCategoryGroup(createdItem);
+        
         Alert.alert('Success', 'Item added successfully');
       }
       
@@ -302,6 +301,99 @@ const Pantry = () => {
       });
       Alert.alert('Error', error.message || 'Failed to save item');
     }
+  };
+
+  // NEW: Check for groups with matching category and prompt user
+  const checkAndPromptForCategoryGroup = async (item) => {
+    if (!item.itemCategory) return;
+
+    // Find groups with matching category
+    const matchingGroups = groups.filter(
+      group => group.groupCategory === item.itemCategory
+    );
+
+    if (matchingGroups.length === 0) return;
+
+    // Create a promise to handle the alert
+    return new Promise((resolve) => {
+      if (matchingGroups.length === 1) {
+        // Single matching group - show styled prompt
+        const group = matchingGroups[0];
+        Alert.alert(
+          `📂 Add to ${group.groupTitle}?`,
+          `This ${item.itemCategory} item matches your "${group.groupTitle}" group.\n\nWould you like to add it?`,
+          [
+            {
+              text: 'No, thanks',
+              style: 'cancel',
+              onPress: () => resolve(),
+            },
+            {
+              text: `Add to ${group.groupTitle}`,
+              onPress: async () => {
+                try {
+                  await PantryService.addItemToGroup(item.itemID, group.groupID);
+                  Alert.alert(
+                    '✅ Added!',
+                    `"${item.itemName}" has been added to "${group.groupTitle}"`
+                  );
+                  await loadData();
+                } catch (error) {
+                  if (error.message && error.message.includes('already in this group')) {
+                    // Silently ignore if already in group
+                  } else {
+                    console.error('Error adding to group:', error);
+                  }
+                }
+                resolve();
+              },
+            },
+          ],
+          {
+            cancelable: true,
+            onDismiss: () => resolve(),
+          }
+        );
+      } else {
+        // Multiple matching groups - let user choose
+        const groupButtons = matchingGroups.map(group => ({
+          text: `📂 ${group.groupTitle}`,
+          onPress: async () => {
+            try {
+              await PantryService.addItemToGroup(item.itemID, group.groupID);
+              Alert.alert(
+                '✅ Added!',
+                `"${item.itemName}" has been added to "${group.groupTitle}"`
+              );
+              await loadData();
+            } catch (error) {
+              if (error.message && error.message.includes('already in this group')) {
+                // Silently ignore
+              } else {
+                console.error('Error adding to group:', error);
+              }
+            }
+            resolve();
+          },
+        }));
+
+        groupButtons.push({
+          text: 'None',
+          style: 'cancel',
+          onPress: () => resolve(),
+        });
+
+        Alert.alert(
+          `Add to a ${item.itemCategory} Group?`,
+          `You have ${matchingGroups.length} groups for ${item.itemCategory} items.\n\nAdd "${item.itemName}" to one?`,
+          groupButtons,
+          {
+            cancelable: true,
+            onDismiss: () => resolve(),
+          }
+        );
+      }
+    });
   };
 
   // Handle delete item
@@ -515,7 +607,7 @@ const Pantry = () => {
           text: 'Delete Group Only',
           onPress: async () => {
             try {
-              await PantryService.deleteGroup(group.groupID, false); // Keep items
+              await PantryService.deleteGroup(group.groupID, false);
               await loadData();
               Alert.alert('Success', 'Group deleted (items kept)');
             } catch (error) {
@@ -529,7 +621,7 @@ const Pantry = () => {
           style: 'destructive',
           onPress: async () => {
             try {
-              await PantryService.deleteGroup(group.groupID, true); // Delete items too
+              await PantryService.deleteGroup(group.groupID, true);
               await loadData();
               Alert.alert('Success', 'Group and items deleted');
             } catch (error) {
@@ -542,15 +634,15 @@ const Pantry = () => {
     );
   };
 
-  // Handle save group
+  // Handle save group - now saves groupCategory to database
   const handleSaveGroup = async (groupData) => {
     try {
       if (editingGroup) {
-        // Update existing group
+        // Update existing group (including groupCategory)
         await PantryService.updateGroup(editingGroup.groupID, groupData);
         Alert.alert('Success', 'Group updated successfully');
       } else {
-        // Create new group
+        // Create new group (including groupCategory)
         await PantryService.createGroup(customUserData.userID, groupData);
         Alert.alert('Success', 'Group created successfully');
       }
@@ -588,6 +680,49 @@ const Pantry = () => {
     // The modal will open with "Expiring Soon" filter pre-applied
   };
 
+  // NEW: Handle find recipe with selected items
+  const handleFindRecipe = async () => {
+    if (selectedItems.length === 0) {
+      Alert.alert('No Items Selected', 'Please select items to find recipes');
+      return;
+    }
+
+    // Get the selected item names
+    const selectedItemNames = items
+      .filter(item => selectedItems.includes(item.itemID))
+      .map(item => item.itemName);
+
+    if (selectedItemNames.length === 0) {
+      Alert.alert('Error', 'Could not find selected items');
+      return;
+    }
+
+    // Create a search query from selected items
+    const searchQuery = selectedItemNames.join(', ');
+
+    // Exit selection mode first
+    exitSelectionMode();
+    
+    // Navigate to recipe search tab and trigger search
+    try {
+      // Navigate to the recipe-search tab
+      router.push('/(tabs)/recipe-search');
+      
+      // Wait a moment for the tab to load, then trigger the search
+      setTimeout(() => {
+        // The recipe-search screen will need to accept these params
+        // You can use expo-router's useLocalSearchParams to receive them
+        router.setParams({
+          searchQuery: searchQuery,
+          autoSearch: 'true'
+        });
+      }, 300);
+    } catch (error) {
+      console.error('Navigation error:', error);
+      Alert.alert('Error', 'Could not navigate to recipe search');
+    }
+  };
+
   return (
     <AuthGuard>
       <SafeAreaView style={styles.container}>
@@ -602,11 +737,16 @@ const Pantry = () => {
             selectedCount={selectedItems.length}
             onCancel={exitSelectionMode}
             onAddToGroup={handleAddToGroup}
+            onFindRecipe={handleFindRecipe}
             isDisabled={selectedItems.length === 0}
           />
         )}
 
-        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        <ScrollView 
+          style={styles.scrollView} 
+          contentContainerStyle={styles.scrollViewContent}
+          showsVerticalScrollIndicator={false}
+        >
           {/* Expiring Items Banner */}
           <ExpiringItemsBanner
             expiringItems={expiringItems}
@@ -694,6 +834,9 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+  },
+  scrollViewContent: {
+    paddingBottom: 100, // Add space at bottom for navbar
   },
 });
 

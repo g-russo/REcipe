@@ -134,7 +134,7 @@ const ExpiringItemsBanner = ({ expiringItems, onItemPress, onViewAll }) => {
 const styles = StyleSheet.create({
   container: {
     backgroundColor: '#fff',
-    paddingVertical: 15,
+    paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
   },
@@ -143,14 +143,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    marginBottom: 12,
+    marginBottom: 8,
   },
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   headerTitle: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     color: '#333',
     marginLeft: 8,
@@ -158,13 +158,13 @@ const styles = StyleSheet.create({
   badge: {
     backgroundColor: '#FF9800',
     borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    marginLeft: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    marginLeft: 6,
   },
   badgeText: {
     color: '#fff',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
   },
   viewAllButton: {
@@ -173,7 +173,7 @@ const styles = StyleSheet.create({
   },
   viewAllText: {
     color: '#8BC34A',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     marginRight: 4,
   },
@@ -181,31 +181,31 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   itemCard: {
-    width: 140,
-    marginRight: 12,
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 2,
+    width: 120,
+    marginRight: 10,
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1.5,
   },
   itemHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   urgencyText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
-    marginLeft: 5,
+    marginLeft: 4,
   },
   itemName: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: '#333',
-    marginBottom: 4,
-    minHeight: 36,
+    marginBottom: 3,
+    minHeight: 32,
   },
   itemQuantity: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#666',
   },
 });

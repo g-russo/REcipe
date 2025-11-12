@@ -27,7 +27,16 @@ const GroupFormModal = ({
   const [formData, setFormData] = useState({
     groupTitle: '',
     groupColor: '#8BC34A',
+    groupCategory: '', // NEW: Optional category
   });
+  const [categoryModalVisible, setCategoryModalVisible] = useState(false);
+
+  // Simplified food categories (matching item categories)
+  const foodCategories = [
+    'Fruits', 'Vegetables', 'Meat & Poultry', 'Seafood', 'Dairy & Eggs',
+    'Grains & Pasta', 'Canned & Jarred', 'Condiments & Sauces', 
+    'Spices & Herbs', 'Snacks', 'Beverages', 'Frozen', 'Baking', 'Other'
+  ];
 
   // Available colors
   const colorOptions = [
@@ -49,6 +58,7 @@ const GroupFormModal = ({
       setFormData({
         groupTitle: initialData.groupTitle || '',
         groupColor: initialData.groupColor || '#8BC34A',
+        groupCategory: initialData.groupCategory || '',
       });
     }
   }, [initialData]);
@@ -71,6 +81,7 @@ const GroupFormModal = ({
     setFormData({
       groupTitle: '',
       groupColor: '#8BC34A',
+      groupCategory: '',
     });
     onClose();
   };
@@ -80,6 +91,7 @@ const GroupFormModal = ({
     setFormData({
       groupTitle: '',
       groupColor: '#8BC34A',
+      groupCategory: '',
     });
     onClose();
   };
@@ -117,6 +129,32 @@ const GroupFormModal = ({
               onChangeText={(text) => updateField('groupTitle', text)}
             />
 
+            {/* Category (Optional) */}
+            <View style={styles.categorySection}>
+              <View style={styles.labelRow}>
+                <Text style={styles.label}>Category</Text>
+                <Text style={styles.optionalBadge}>(Optional)</Text>
+              </View>
+              <Text style={styles.helperText}>
+                Items in this category will prompt to add to this group
+              </Text>
+              <TouchableOpacity
+                style={styles.categorySelectInput}
+                onPress={() => setCategoryModalVisible(true)}
+              >
+                <Text
+                  style={
+                    formData.groupCategory
+                      ? styles.dropdownSelectedText
+                      : styles.dropdownPlaceholder
+                  }
+                >
+                  {formData.groupCategory || 'None - No auto-suggestions'}
+                </Text>
+                <Ionicons name="chevron-down" size={18} color="#999" />
+              </TouchableOpacity>
+            </View>
+
             {/* Color Picker */}
             <Text style={styles.label}>Group Color</Text>
             <View style={styles.colorPickerContainer}>
@@ -136,6 +174,7 @@ const GroupFormModal = ({
                 </TouchableOpacity>
               ))}
             </View>
+
             {/* Info Text */}
             <Text style={styles.infoText}>
               Groups help you organize your pantry items into categories like "Spices", "Baking", or "Vegetables".
@@ -162,6 +201,50 @@ const GroupFormModal = ({
           </View>
         </View>
       </View>
+
+      {/* Category Selection Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={categoryModalVisible}
+        onRequestClose={() => setCategoryModalVisible(false)}
+      >
+        <View style={styles.categoryModalOverlay}>
+          <View style={styles.categoryModalContent}>
+            <View style={styles.categoryModalHeader}>
+              <Text style={styles.categoryModalTitle}>Select Category</Text>
+              <TouchableOpacity onPress={() => setCategoryModalVisible(false)}>
+                <Ionicons name="close" size={24} color="#555" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.categoryList}>
+              <TouchableOpacity
+                style={styles.categoryOption}
+                onPress={() => {
+                  updateField('groupCategory', '');
+                  setCategoryModalVisible(false);
+                }}
+              >
+                <Text style={styles.categoryOptionText}>None - No auto-suggestions</Text>
+              </TouchableOpacity>
+
+              {foodCategories.map((category) => (
+                <TouchableOpacity
+                  key={category}
+                  style={styles.categoryOption}
+                  onPress={() => {
+                    updateField('groupCategory', category);
+                    setCategoryModalVisible(false);
+                  }}
+                >
+                  <Text style={styles.categoryOptionText}>{category}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </Modal>
   );
 };
@@ -301,6 +384,83 @@ const styles = StyleSheet.create({
     color: '#555',
     fontSize: 16,
     fontWeight: '600',
+  },
+  categorySection: {
+    marginBottom: 20,
+  },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 5,
+  },
+  optionalBadge: {
+    fontSize: 12,
+    color: '#999',
+    marginLeft: 8,
+    fontStyle: 'italic',
+  },
+  helperText: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 10,
+    lineHeight: 16,
+  },
+  categorySelectInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+  },
+  dropdownSelectedText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  dropdownPlaceholder: {
+    fontSize: 16,
+    color: '#999',
+  },
+  categoryModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  categoryModalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '70%',
+    paddingBottom: 20,
+  },
+  categoryModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  categoryModalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+  },
+  categoryList: {
+    paddingHorizontal: 20,
+  },
+  categoryOption: {
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f5f5f5',
+  },
+  categoryOptionText: {
+    fontSize: 16,
+    color: '#333',
   },
 });
 

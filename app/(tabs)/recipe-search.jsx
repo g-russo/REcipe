@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import cacheService from '../../services/supabase-cache-service';
 import SousChefAIService from '../../services/souschef-ai-service';
@@ -26,6 +26,7 @@ import { useCustomAuth } from '../../hooks/use-custom-auth';
 const RecipeSearch = () => {
   const router = useRouter();
   const { user } = useCustomAuth();
+  const params = useLocalSearchParams(); // Add this to receive params
   const [searchQuery, setSearchQuery] = useState('');
   const [recipes, setRecipes] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -915,6 +916,21 @@ const RecipeSearch = () => {
     { id: '7', icon: '🍜', label: 'Ramen', query: 'ramen' },
     { id: '8', icon: '🥘', label: 'Stew', query: 'stew' }
   ];
+
+  // NEW: Auto-search when coming from pantry
+  useEffect(() => {
+    if (params?.searchQuery && params?.autoSearch === 'true') {
+      console.log('🔍 Auto-searching from pantry:', params.searchQuery);
+      setSearchQuery(params.searchQuery);
+      
+      // Clear params and trigger search after a short delay
+      setTimeout(() => {
+        handleSearch(params.searchQuery);
+        // Clear the params so it doesn't search again
+        router.setParams({ searchQuery: undefined, autoSearch: undefined });
+      }, 100);
+    }
+  }, [params?.searchQuery, params?.autoSearch]);
 
   return (
     <AuthGuard>
