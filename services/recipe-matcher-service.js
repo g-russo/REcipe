@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase';
 import { OPENAI_API_KEY } from '@env';
 import EdamamService from './edamam-service';
+import ImageGenerationService from './image-generation-service';
 
 class RecipeMatcherService {
   /**
@@ -223,6 +224,23 @@ Return ONLY valid JSON:
         };
       } else {
         // Edamam recipe - store comprehensive cache data
+        
+        // 🖼️ Download and store image permanently to avoid expired AWS tokens
+        let permanentImageUrl = recipe.image;
+        if (recipe.image && recipe.uri) {
+          console.log('📥 Downloading and storing Edamam image permanently...');
+          try {
+            permanentImageUrl = await ImageGenerationService.downloadAndStoreEdamamImage(
+              recipe.image,
+              recipe.uri
+            );
+            console.log('✅ Image stored permanently:', permanentImageUrl);
+          } catch (imageError) {
+            console.warn('⚠️ Failed to store image, using original URL:', imageError.message);
+            // Continue with original URL - better than failing the entire save
+          }
+        }
+        
         recipeData = {
           userID: userData.userID,
           aiRecipeID: null,
@@ -232,7 +250,7 @@ Return ONLY valid JSON:
             id: recipe.id || recipe.uri,
             uri: recipe.uri, // ✅ CRITICAL: Include uri for favorites functionality
             label: recipe.label,
-            image: recipe.image,
+            image: permanentImageUrl, // Use permanent URL instead of temporary AWS URL
             images: recipe.images,
             source: recipe.source,
             url: recipe.url,
@@ -528,14 +546,66 @@ Return ONLY valid JSON:
           } else {
             // ⚡ OPTIMIZED: For Edamam recipes, ALWAYS use cached data for fast loading
             // This eliminates slow API calls and provides instant loading
-            console.log('� Using cached Edamam recipe:', userRecipe.edamamRecipeURI);
+            console.log('📦 Using cached Edamam recipe:', userRecipe.edamamRecipeURI);
             
-            const cachedRecipe = userRecipe.recipeData;
+            // Parse recipeData if it's a string (JSONB from database)
+            let cachedRecipe = userRecipe.recipeData;
+            if (typeof cachedRecipe === 'string') {
+              try {
+                cachedRecipe = JSON.parse(cachedRecipe);
+                console.log('✅ Parsed JSONB recipeData');
+              } catch (parseError) {
+                console.error('❌ Failed to parse recipeData:', parseError);
+                cachedRecipe = null;
+              }
+            }
+            
+            // 🔄 Check if image URL has expired AWS token
+            let imageUrl = cachedRecipe?.image;
+            let imageRefreshed = false;
+            
+            if (imageUrl && imageUrl.includes('X-Amz-Date=')) {
+              // Extract the date from the URL
+              const dateMatch = imageUrl.match(/X-Amz-Date=(\d{8}T\d{6}Z)/);
+              const expiresMatch = imageUrl.match(/X-Amz-Expires=(\d+)/);
+              
+              if (dateMatch && expiresMatch) {
+                const signDate = new Date(
+                  dateMatch[1].replace(/(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z/, 
+                  '$1-$2-$3T$4:$5:$6Z')
+                );
+                const expiresSeconds = parseInt(expiresMatch[1]);
+                const expiryDate = new Date(signDate.getTime() + expiresSeconds * 1000);
+                const now = new Date();
+                
+                if (now > expiryDate) {
+                  console.log('⚠️ Image URL expired, needs refresh:', cachedRecipe.label);
+                  imageRefreshed = true;
+                  // Mark for async refresh but use cached URL for now
+                  imageUrl = null; // Will trigger fallback placeholder
+                }
+              }
+            }
+            
+            // Debug logging for image issues
+            console.log('🔍 Cached recipe data:', {
+              hasCachedData: !!cachedRecipe,
+              hasImage: !!cachedRecipe?.image,
+              imageUrl: imageUrl,
+              imageExpired: imageRefreshed,
+              label: cachedRecipe?.label,
+              dataType: typeof userRecipe.recipeData
+            });
             
             // Ensure cached recipe has uri field (critical for favorites)
             if (cachedRecipe && !cachedRecipe.uri && userRecipe.edamamRecipeURI) {
               cachedRecipe.uri = userRecipe.edamamRecipeURI;
               console.log('✅ Added missing URI to cached recipe');
+            }
+            
+            // If image expired, use a flag to indicate refresh needed
+            if (imageRefreshed && cachedRecipe) {
+              cachedRecipe._imageExpired = true;
             }
             
             return {
@@ -592,6 +662,228 @@ Return ONLY valid JSON:
       }
     } catch (error) {
       console.error('Error tracking view:', error);
+    }
+  }
+
+  /**
+   * Refresh expired Edamam image URLs by fetching fresh data from API
+   * This is called asynchronously in the background for better UX
+   */
+  async refreshExpiredImages(savedRecipes) {
+    if (!Array.isArray(savedRecipes)) return savedRecipes;
+
+    const refreshPromises = savedRecipes.map(async (item) => {
+      // Skip AI recipes and recipes without expired flag
+      if (item.recipeSource === 'ai' || !item.recipe?._imageExpired) {
+        return item;
+      }
+
+      const uri = item.recipe.uri || item.edamamRecipeURI;
+      if (!uri) return item;
+
+      console.log(`🔄 Refreshing image for: ${item.recipe.label}`);
+
+      try {
+        const result = await EdamamService.getRecipeByUri(uri);
+        
+        if (result.success && result.recipe) {
+          console.log(`✅ Image refreshed for: ${item.recipe.label}`);
+          
+          // Update the recipe with fresh data (especially the image URL)
+          return {
+            ...item,
+            recipe: {
+              ...item.recipe,
+              ...result.recipe,
+              _imageExpired: false // Clear the flag
+            }
+          };
+        }
+      } catch (error) {
+        console.error(`❌ Failed to refresh image for ${item.recipe.label}:`, error);
+      }
+
+      // If refresh failed, return original
+      return item;
+    });
+
+    return await Promise.all(refreshPromises);
+  }
+
+  /**
+   * MIGRATION: Fix all existing Edamam recipes with expired image URLs
+   * Fetches fresh data from Edamam API and updates database with permanent URLs
+   * Call this once to migrate existing data
+   */
+  async migrateExistingEdamamImages(userEmail) {
+    try {
+      console.log('🔧 Starting image migration for user:', userEmail);
+      
+      const { data: userData } = await supabase
+        .from('tbl_users')
+        .select('userID')
+        .eq('userEmail', userEmail)
+        .single();
+
+      if (!userData) {
+        console.error('User not found');
+        return { success: false, error: 'User not found' };
+      }
+
+      // Get all favorites with Edamam recipes
+      const { data: favorites, error: favError } = await supabase
+        .from('tbl_favorites')
+        .select('*')
+        .eq('userID', userData.userID)
+        .eq('recipeSource', 'edamam');
+
+      if (favError) throw favError;
+
+      console.log(`📋 Found ${favorites?.length || 0} Edamam favorites to migrate`);
+
+      let migratedCount = 0;
+      let failedCount = 0;
+
+      for (const fav of favorites || []) {
+        try {
+          let recipeData = fav.recipeData;
+          
+          // Parse if string
+          if (typeof recipeData === 'string') {
+            recipeData = JSON.parse(recipeData);
+          }
+
+          if (!recipeData?.uri) {
+            console.log('⏭️ Skipping - no URI');
+            continue;
+          }
+
+          // Check if image is already permanent (Supabase URL)
+          if (recipeData.image?.includes('supabase')) {
+            console.log('✅ Already migrated:', recipeData.label);
+            migratedCount++;
+            continue;
+          }
+
+          // ✨ Fetch fresh recipe data from Edamam API using the URI
+          console.log(`🔄 Fetching fresh data for: ${recipeData.label}`);
+          const freshData = await EdamamService.getRecipeByUri(recipeData.uri);
+
+          if (!freshData.success || !freshData.recipe?.image) {
+            console.warn(`⚠️ Could not fetch fresh data for: ${recipeData.label}`);
+            failedCount++;
+            continue;
+          }
+
+          // Download and store the fresh image
+          console.log(`📥 Downloading fresh image for: ${recipeData.label}`);
+          const permanentUrl = await ImageGenerationService.downloadAndStoreEdamamImage(
+            freshData.recipe.image,
+            recipeData.uri
+          );
+
+          // Update recipe data with fresh image
+          recipeData.image = permanentUrl;
+          
+          // Also update other fields from fresh data
+          recipeData.images = freshData.recipe.images || recipeData.images;
+          
+          const { error: updateError } = await supabase
+            .from('tbl_favorites')
+            .update({ recipeData: recipeData })
+            .eq('favoriteID', fav.favoriteID);
+
+          if (updateError) throw updateError;
+
+          console.log(`✅ Migrated: ${recipeData.label}`);
+          migratedCount++;
+
+          // Small delay to avoid rate limiting
+          await new Promise(resolve => setTimeout(resolve, 500));
+
+        } catch (error) {
+          console.error('❌ Failed to migrate favorite:', error.message);
+          failedCount++;
+        }
+      }
+
+      // Also migrate history
+      const { data: history, error: histError } = await supabase
+        .from('tbl_recipe_history')
+        .select('*')
+        .eq('userID', userData.userID);
+
+      if (!histError) {
+        console.log(`📋 Found ${history?.length || 0} history items to check`);
+
+        for (const item of history || []) {
+          try {
+            let recipeData = item.recipeData;
+            
+            if (typeof recipeData === 'string') {
+              recipeData = JSON.parse(recipeData);
+            }
+
+            // Only migrate Edamam recipes
+            if (!recipeData?.uri || recipeData?.recipeID) continue;
+            if (recipeData.image?.includes('supabase')) {
+              migratedCount++;
+              continue;
+            }
+
+            // ✨ Fetch fresh recipe data from Edamam API
+            console.log(`🔄 Fetching fresh data for history: ${recipeData.label}`);
+            const freshData = await EdamamService.getRecipeByUri(recipeData.uri);
+
+            if (!freshData.success || !freshData.recipe?.image) {
+              console.warn(`⚠️ Could not fetch fresh data for: ${recipeData.label}`);
+              failedCount++;
+              continue;
+            }
+
+            console.log(`📥 Downloading fresh image for history: ${recipeData.label}`);
+            const permanentUrl = await ImageGenerationService.downloadAndStoreEdamamImage(
+              freshData.recipe.image,
+              recipeData.uri
+            );
+
+            recipeData.image = permanentUrl;
+            recipeData.images = freshData.recipe.images || recipeData.images;
+            
+            const { error: updateError } = await supabase
+              .from('tbl_recipe_history')
+              .update({ recipeData: recipeData })
+              .eq('historyID', item.historyID);
+
+            if (updateError) throw updateError;
+
+            console.log(`✅ Migrated history: ${recipeData.label}`);
+            migratedCount++;
+
+            // Small delay to avoid rate limiting
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+          } catch (error) {
+            console.error('❌ Failed to migrate history item:', error.message);
+            failedCount++;
+          }
+        }
+      }
+
+      console.log(`✅ Migration complete! Migrated: ${migratedCount}, Failed: ${failedCount}`);
+      
+      return {
+        success: true,
+        migrated: migratedCount,
+        failed: failedCount
+      };
+
+    } catch (error) {
+      console.error('❌ Migration error:', error);
+      return {
+        success: false,
+        error: error.message
+      };
     }
   }
 }

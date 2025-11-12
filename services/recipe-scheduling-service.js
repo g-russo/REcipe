@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase';
 import * as Notifications from 'expo-notifications';
 import NotificationDatabaseService from './notification-database-service';
+import ImageGenerationService from './image-generation-service';
 
 /**
  * Recipe Scheduling Service
@@ -30,6 +31,25 @@ class RecipeSchedulingService {
       }
 
       const recipeName = recipe.label || recipe.recipeName || 'Untitled Recipe';
+      
+      // 🖼️ Download and store Edamam image permanently to avoid expired AWS tokens
+      let recipeToStore = { ...recipe };
+      const isEdamamRecipe = recipe.uri && !recipe.recipeID && !recipe.isCustom;
+      
+      if (isEdamamRecipe && recipe.image) {
+        console.log('📥 Downloading and storing Edamam image for scheduled recipe...');
+        try {
+          const permanentImageUrl = await ImageGenerationService.downloadAndStoreEdamamImage(
+            recipe.image,
+            recipe.uri
+          );
+          recipeToStore.image = permanentImageUrl;
+          console.log('✅ Image stored permanently for scheduled recipe:', permanentImageUrl);
+        } catch (imageError) {
+          console.warn('⚠️ Failed to store image, using original URL:', imageError.message);
+          // Continue with original URL - better than failing the entire save
+        }
+      }
 
       // Save scheduled recipe to database
       const { data, error } = await supabase
@@ -37,7 +57,7 @@ class RecipeSchedulingService {
         .insert({
           userID: userID,
           recipeName: recipeName,
-          recipeData: recipe,
+          recipeData: recipeToStore, // Use modified recipe with permanent image
           scheduledDate: scheduledDate.toISOString(),
           createdAt: new Date().toISOString(),
           isCompleted: false
