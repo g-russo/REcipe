@@ -33,10 +33,44 @@ export default function HistoryTab({
     });
   };
 
-  const renderHistoryCard = (item, index) => {
-    const recipe = item.recipeData;
-    const isAI = recipe.isCustom || recipe.source === 'SousChef AI';
+  const renderRecipeCard = (item, index) => {
+    console.log('🎴 History: Rendering card for item:', {
+      hasRecipe: !!item.recipe,
+      recipeSource: item.recipeSource,
+      topLevelKeys: Object.keys(item),
+      recipeKeys: item.recipe ? Object.keys(item.recipe).slice(0, 5) : []
+    });
+
+    const recipe = item.recipe;
+    const isAI = item.recipeSource === 'ai';
     const isLeftColumn = index % 2 === 0;
+
+    // Get image URL - prioritize correct field based on source
+    const imageUrl = isAI 
+      ? (recipe?.recipeImage || recipe?.image)
+      : (recipe?.image || recipe?.recipeImage);
+
+    console.log('🖼️ History: Image extraction:', {
+      index,
+      isAI,
+      recipeSource: item.recipeSource,
+      hasRecipe: !!recipe,
+      'recipe?.image': recipe?.image,
+      'recipe?.recipeImage': recipe?.recipeImage,
+      finalImageUrl: imageUrl
+    });
+
+    // Debug logging for image issues
+    if (!imageUrl) {
+      console.log('⚠️ Missing image for recipe:', {
+        source: item.recipeSource,
+        label: recipe?.label || recipe?.recipeName,
+        hasRecipe: !!recipe,
+        hasImage: !!recipe?.image,
+        hasRecipeImage: !!recipe?.recipeImage,
+        recipeKeys: recipe ? Object.keys(recipe) : []
+      });
+    }
 
     return (
       <View 
@@ -52,9 +86,20 @@ export default function HistoryTab({
           activeOpacity={0.7}
         >
           <Image
-            source={{ uri: recipe.image || recipe.recipeImage }}
+            source={{ uri: imageUrl }}
             style={styles.recipeImage}
             resizeMode="cover"
+            onError={(error) => {
+              console.error('❌ History: Image load error for:', {
+                recipeSource: item.recipeSource,
+                recipeName: recipe?.label || recipe?.recipeName,
+                imageUrl: imageUrl,
+                error: error.nativeEvent?.error
+              });
+            }}
+            onLoad={() => {
+              console.log('✅ History: Image loaded successfully for:', recipe?.label || recipe?.recipeName);
+            }}
           />
 
           {/* AI Badge */}
@@ -131,8 +176,8 @@ export default function HistoryTab({
     for (let i = 0; i < history.length; i += 2) {
       rows.push(
         <View key={`row-${i}`} style={styles.recipeRow}>
-          {renderHistoryCard(history[i], i)}
-          {history[i + 1] && renderHistoryCard(history[i + 1], i + 1)}
+          {renderRecipeCard(history[i], i)}
+          {history[i + 1] && renderRecipeCard(history[i + 1], i + 1)}
         </View>
       );
     }
