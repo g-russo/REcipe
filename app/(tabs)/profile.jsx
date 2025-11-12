@@ -72,7 +72,18 @@ const Profile = () => {
     try {
       setLoadingRecipes(true);
       console.log('📥 Loading saved recipes for:', user.email);
-      const recipes = await RecipeMatcherService.getSavedRecipes(user.email);
+      let recipes = await RecipeMatcherService.getSavedRecipes(user.email);
+      
+      // Debug: Check structure of first recipe
+      if (recipes.length > 0) {
+        console.log('🔍 First saved recipe structure:', {
+          hasRecipe: !!recipes[0].recipe,
+          recipeKeys: recipes[0].recipe ? Object.keys(recipes[0].recipe) : [],
+          recipeSource: recipes[0].recipeSource,
+          fullItem: recipes[0]
+        });
+      }
+      
       setSavedRecipes(recipes);
       console.log('✅ Loaded', recipes.length, 'saved recipes');
     } catch (error) {
@@ -83,6 +94,8 @@ const Profile = () => {
   };
 
   const loadRecipeHistory = async () => {
+    console.log('🔄 loadRecipeHistory called!');
+    
     if (!customUserData?.userID) {
       console.log('⚠️ No user ID available for loading history');
       setLoadingHistory(false);
@@ -93,8 +106,63 @@ const Profile = () => {
       setLoadingHistory(true);
       console.log('📥 Loading recipe history for user:', customUserData.userID);
       const history = await RecipeHistoryService.getRecipeHistory(customUserData.userID);
-      setRecipeHistory(history);
-      console.log('✅ Loaded', history.length, 'history items');
+      
+      // Format history data - parse recipeData JSONB if needed
+      const formattedHistory = history.map(item => {
+        let recipe = item.recipeData;
+        
+        console.log('📝 Formatting history item:', {
+          hasRecipeData: !!item.recipeData,
+          recipeDataType: typeof item.recipeData,
+          recipeName: item.recipeName
+        });
+        
+        // Parse recipeData if it's a string (JSONB from database)
+        if (typeof recipe === 'string') {
+          try {
+            recipe = JSON.parse(recipe);
+            console.log('✅ Parsed JSONB recipeData for history item');
+          } catch (parseError) {
+            console.error('❌ Failed to parse recipeData:', parseError);
+            recipe = { label: item.recipeName, image: null };
+          }
+        }
+        
+        // Detect recipe source (AI or Edamam)
+        const recipeSource = recipe?.recipeID ? 'ai' : 'edamam';
+        
+        const formatted = {
+          ...item,
+          recipe: recipe || { label: item.recipeName, image: null },
+          recipeSource: recipeSource
+        };
+        
+        console.log('✨ Formatted history item:', {
+          hasRecipe: !!formatted.recipe,
+          recipeSource: formatted.recipeSource,
+          recipeKeys: formatted.recipe ? Object.keys(formatted.recipe).slice(0, 5) : []
+        });
+        
+        return formatted;
+      });
+      
+      setRecipeHistory(formattedHistory);
+      console.log('✅ Loaded', formattedHistory.length, 'history items');
+
+      // 🔄 Refresh expired Edamam images in background
+      const hasExpiredImages = formattedHistory.some(r => r.recipe?._imageExpired);
+      if (hasExpiredImages) {
+        console.log('🔄 Refreshing expired history images in background...');
+        RecipeMatcherService.refreshExpiredImages(formattedHistory)
+          .then(refreshedHistory => {
+            console.log('✅ History images refreshed, updating state');
+            setRecipeHistory(refreshedHistory);
+          })
+          .catch(error => {
+            console.error('❌ Error refreshing history images:', error);
+          });
+      }
+      
     } catch (error) {
       console.error('❌ Error loading recipe history:', error);
     } finally {
@@ -132,6 +200,12 @@ const Profile = () => {
     
     // Load history when history tab is selected
     if (tab === 'history' && recipeHistory.length === 0 && !loadingHistory) {
+      loadRecipeHistory();
+    }
+    
+    // TEMPORARY: Force reload history to apply formatting fix
+    if (tab === 'history' && recipeHistory.length > 0 && !recipeHistory[0].recipe) {
+      console.log('⚡ Forcing history reload to apply formatting');
       loadRecipeHistory();
     }
     

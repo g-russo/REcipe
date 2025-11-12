@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import ImageGenerationService from './image-generation-service';
 
 /**
  * Recipe History Service
@@ -25,13 +26,32 @@ class RecipeHistoryService {
       }
 
       const recipeName = recipe.label || recipe.recipeName || 'Untitled Recipe';
+      
+      // 🖼️ Download and store Edamam image permanently to avoid expired AWS tokens
+      let recipeToStore = { ...recipe };
+      const isEdamamRecipe = recipe.uri && !recipe.recipeID && !recipe.isCustom;
+      
+      if (isEdamamRecipe && recipe.image) {
+        console.log('📥 Downloading and storing Edamam image for history...');
+        try {
+          const permanentImageUrl = await ImageGenerationService.downloadAndStoreEdamamImage(
+            recipe.image,
+            recipe.uri
+          );
+          recipeToStore.image = permanentImageUrl;
+          console.log('✅ Image stored permanently for history:', permanentImageUrl);
+        } catch (imageError) {
+          console.warn('⚠️ Failed to store image, using original URL:', imageError.message);
+          // Continue with original URL - better than failing the entire save
+        }
+      }
 
       const { data, error } = await supabase
         .from('tbl_recipe_history')
         .insert({
           userID: userID,
           recipeName: recipeName,
-          recipeData: recipe,
+          recipeData: recipeToStore, // Use modified recipe with permanent image
           ingredientsUsed: ingredientsUsed,
           hasSubstitutions: hasSubstitutions,
           completedAt: new Date().toISOString()

@@ -274,6 +274,123 @@ class ImageGenerationService {
       console.error('Error deleting image:', error);
     }
   }
+
+  /**
+   * Download Edamam image and store permanently in Supabase Storage
+   * This solves the expired AWS token problem by creating a permanent copy
+   */
+  async downloadAndStoreEdamamImage(imageUrl, recipeUri) {
+    try {
+      if (!imageUrl || !recipeUri) {
+        console.warn('⚠️ Missing imageUrl or recipeUri for download');
+        return null;
+      }
+
+      // Generate filename from URI
+      const uriHash = recipeUri.split('#')[1] || recipeUri.split('/').pop() || `edamam-${Date.now()}`;
+      const filename = `edamam/${uriHash}.webp`;
+
+      // Check if image already exists in Supabase Storage
+      const { data: existingFiles, error: listError } = await supabase.storage
+        .from('recipe-images')
+        .list('edamam', {
+          limit: 1,
+          search: uriHash
+        });
+
+      if (existingFiles && existingFiles.length > 0) {
+        // Image already exists, return the existing URL
+        const { data: urlData } = supabase.storage
+          .from('recipe-images')
+          .getPublicUrl(filename);
+        
+        console.log('✅ Image already exists in storage, using cached version');
+        console.log('🔗 Cached URL:', urlData.publicUrl);
+        return urlData.publicUrl;
+      }
+
+      console.log('📥 Downloading Edamam image:', imageUrl.substring(0, 100) + '...');
+
+      // Step 1: Download the image
+      const response = await fetch(imageUrl);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to download image: ${response.status} ${response.statusText}`);
+      }
+
+      // Step 2: Get image as blob
+      const blob = await response.blob();
+      console.log('✅ Image downloaded, size:', Math.round(blob.size / 1024), 'KB');
+
+      // Step 3: Convert blob to base64 for WebP conversion
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+
+      // Step 4: Convert to WebP for efficiency
+      let finalBase64;
+      let contentType = 'image/webp';
+
+      try {
+        const webpResult = await this.convertImageToWebP(
+          `data:${blob.type};base64,${base64}`,
+          { quality: 0.85, maxWidth: 1024, maxHeight: 1024 }
+        );
+
+        finalBase64 = webpResult.base64;
+        console.log('✅ Converted to WebP:', webpResult.sizeKB, 'KB');
+      } catch (webpError) {
+        console.warn('⚠️ WebP conversion failed, using original:', webpError.message);
+        finalBase64 = base64;
+        contentType = blob.type;
+      }
+
+      // Step 5: Convert to Uint8Array
+      const binaryString = atob(finalBase64);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+
+      // Step 6: Upload to Supabase Storage (filename already generated above)
+      console.log('📤 Uploading to Supabase Storage:', filename);
+
+      // Step 7: Upload to Supabase Storage
+      const { data, error } = await supabase.storage
+        .from('recipe-images')
+        .upload(filename, bytes, {
+          contentType: 'image/webp',
+          cacheControl: '31536000', // Cache for 1 year
+          upsert: true // Overwrite if exists
+        });
+
+      if (error) {
+        // If file already exists, that's fine - just get the URL
+        if (error.message.includes('already exists')) {
+          console.log('ℹ️ Image already exists in storage');
+        } else {
+          throw new Error(`Upload error: ${error.message}`);
+        }
+      }
+
+      // Step 8: Get public URL
+      const { data: urlData } = supabase.storage
+        .from('recipe-images')
+        .getPublicUrl(filename);
+
+      console.log('✅ Edamam image stored permanently!');
+      console.log('🔗 New permanent URL:', urlData.publicUrl);
+      
+      return urlData.publicUrl;
+    } catch (error) {
+      console.error('❌ Error downloading/storing Edamam image:', error);
+      // Return original URL as fallback (even if expired)
+      return imageUrl;
+    }
+  }
 }
 
 export default new ImageGenerationService();
