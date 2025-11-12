@@ -63,6 +63,15 @@ const InventoryGroupsSection = ({
                 </View>
               </View>
               <Text style={styles.itemCount}>{group.itemCount || 0} items</Text>
+              
+              {/* NEW: Show category badge if set */}
+              {group.groupCategory && (
+                <View style={styles.categoryBadge}>
+                  <Text style={styles.categoryBadgeText}>
+                    📂 {group.groupCategory}
+                  </Text>
+                </View>
+              )}
             </View>
           </TouchableOpacity>
         ))}
@@ -233,6 +242,19 @@ const styles = StyleSheet.create({
   addItemButtonText: {
     color: '#fff',
     fontSize: 16,
+    fontWeight: '600',
+  },
+  categoryBadge: {
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    marginTop: 6,
+    alignSelf: 'flex-start',
+  },
+  categoryBadgeText: {
+    color: '#fff',
+    fontSize: 10,
     fontWeight: '600',
   },
 });

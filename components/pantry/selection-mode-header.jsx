@@ -10,6 +10,7 @@ const SelectionModeHeader = ({
   selectedCount, 
   onCancel, 
   onAddToGroup,
+  onFindRecipe, // NEW
   isDisabled 
 }) => {
   return (
@@ -26,17 +27,32 @@ const SelectionModeHeader = ({
         {selectedCount} selected
       </Text>
       
-      <TouchableOpacity 
-        style={[
-          styles.selectionModeButton, 
-          isDisabled && styles.disabledButton
-        ]} 
-        onPress={onAddToGroup}
-        disabled={isDisabled}
-      >
-        <Ionicons name="folder-outline" size={20} color="#fff" />
-        <Text style={styles.selectionModeButtonText}>Add to Group</Text>
-      </TouchableOpacity>
+      <View style={styles.actionButtons}>
+        <TouchableOpacity 
+          style={[
+            styles.selectionModeButton, 
+            isDisabled && styles.disabledButton
+          ]} 
+          onPress={onFindRecipe}
+          disabled={isDisabled}
+        >
+          <Ionicons name="restaurant-outline" size={20} color="#fff" />
+          <Text style={styles.selectionModeButtonText}>Find Recipe</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={[
+            styles.selectionModeButton, 
+            isDisabled && styles.disabledButton,
+            { marginLeft: 12 }
+          ]} 
+          onPress={onAddToGroup}
+          disabled={isDisabled}
+        >
+          <Ionicons name="folder-outline" size={20} color="#fff" />
+          <Text style={styles.selectionModeButtonText}>Add to Group</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 };
@@ -67,6 +83,10 @@ const styles = StyleSheet.create({
   },
   disabledButton: {
     opacity: 0.5,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
 });
 
