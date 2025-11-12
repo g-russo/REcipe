@@ -16,10 +16,62 @@ export default function FavoritesTab({
   onRecipePress,
   onRemoveRecipe,
 }) {
+  // Debug: Log what we're receiving
+  React.useEffect(() => {
+    if (recipes.length > 0) {
+      console.log('📋 FavoritesTab received recipes:', {
+        count: recipes.length,
+        firstRecipe: {
+          hasRecipe: !!recipes[0].recipe,
+          recipeKeys: recipes[0].recipe ? Object.keys(recipes[0].recipe) : [],
+          recipeSource: recipes[0].recipeSource,
+          topLevelKeys: Object.keys(recipes[0])
+        }
+      });
+    }
+  }, [recipes]);
+
   const renderRecipeCard = (item, index) => {
+    // Debug: Log the actual item structure
+    console.log('🎴 Rendering card for item:', {
+      hasRecipe: !!item.recipe,
+      hasRecipeData: !!item.recipeData,
+      recipeSource: item.recipeSource,
+      topLevelKeys: Object.keys(item),
+      recipeKeys: item.recipe ? Object.keys(item.recipe).slice(0, 5) : [],
+      recipeDataKeys: item.recipeData ? Object.keys(item.recipeData).slice(0, 5) : []
+    });
+
     const recipe = item.recipe;
     const isAI = item.recipeSource === 'ai';
     const isLeftColumn = index % 2 === 0;
+
+    // Get image URL - prioritize correct field based on source
+    const imageUrl = isAI 
+      ? (recipe?.recipeImage || recipe?.image)
+      : (recipe?.image || recipe?.recipeImage);
+
+    console.log('🖼️ Image extraction:', {
+      index,
+      isAI,
+      recipeSource: item.recipeSource,
+      hasRecipe: !!recipe,
+      'recipe?.image': recipe?.image,
+      'recipe?.recipeImage': recipe?.recipeImage,
+      finalImageUrl: imageUrl
+    });
+
+    // Debug logging for image issues
+    if (!imageUrl) {
+      console.log('⚠️ Missing image for recipe:', {
+        source: item.recipeSource,
+        label: recipe?.label || recipe?.recipeName,
+        hasRecipe: !!recipe,
+        hasImage: !!recipe?.image,
+        hasRecipeImage: !!recipe?.recipeImage,
+        recipeKeys: recipe ? Object.keys(recipe) : []
+      });
+    }
 
     return (
       <View 
@@ -37,9 +89,20 @@ export default function FavoritesTab({
           activeOpacity={0.7}
         >
           <Image
-            source={{ uri: recipe.recipeImage || recipe.image }}
+            source={{ uri: imageUrl }}
             style={styles.recipeImage}
             resizeMode="cover"
+            onError={(error) => {
+              console.error('❌ Favorites: Image load error for:', {
+                recipeSource: item.recipeSource,
+                recipeName: recipe?.label || recipe?.recipeName,
+                imageUrl: imageUrl,
+                error: error.nativeEvent?.error
+              });
+            }}
+            onLoad={() => {
+              console.log('✅ Favorites: Image loaded successfully for:', recipe?.label || recipe?.recipeName);
+            }}
           />
 
           {/* AI Badge */}
@@ -104,6 +167,7 @@ export default function FavoritesTab({
 
   // Group recipes into rows of 2
   const renderRecipeGrid = () => {
+    console.log('🏗️ Building grid with', recipes.length, 'recipes');
     const rows = [];
     for (let i = 0; i < recipes.length; i += 2) {
       rows.push(
@@ -113,6 +177,7 @@ export default function FavoritesTab({
         </View>
       );
     }
+    console.log('✅ Grid built with', rows.length, 'rows');
     return rows;
   };
 
