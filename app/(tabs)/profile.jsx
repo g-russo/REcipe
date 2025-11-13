@@ -9,7 +9,9 @@ import {
   Alert,
   StyleSheet,
   RefreshControl,
+  Platform,
 } from 'react-native';
+import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useCustomAuth } from '../../hooks/use-custom-auth';
@@ -49,12 +51,12 @@ const Profile = () => {
         email: user.email || 'No email available',
         verified: user.email_confirmed_at !== null
       });
-      
+
       // Load saved recipes when user is available (lazy load - only on mount)
       if (activeTab === 'favorites') {
         loadSavedRecipes();
       }
-      
+
       // Load scheduled recipes when on scheduled tab
       if (activeTab === 'scheduled') {
         loadScheduledRecipes();
@@ -68,12 +70,12 @@ const Profile = () => {
       setLoadingRecipes(false);
       return;
     }
-    
+
     try {
       setLoadingRecipes(true);
       console.log('📥 Loading saved recipes for:', user.email);
       let recipes = await RecipeMatcherService.getSavedRecipes(user.email);
-      
+
       // Debug: Check structure of first recipe
       if (recipes.length > 0) {
         console.log('🔍 First saved recipe structure:', {
@@ -83,7 +85,7 @@ const Profile = () => {
           fullItem: recipes[0]
         });
       }
-      
+
       setSavedRecipes(recipes);
       console.log('✅ Loaded', recipes.length, 'saved recipes');
     } catch (error) {
@@ -95,28 +97,28 @@ const Profile = () => {
 
   const loadRecipeHistory = async () => {
     console.log('🔄 loadRecipeHistory called!');
-    
+
     if (!customUserData?.userID) {
       console.log('⚠️ No user ID available for loading history');
       setLoadingHistory(false);
       return;
     }
-    
+
     try {
       setLoadingHistory(true);
       console.log('📥 Loading recipe history for user:', customUserData.userID);
       const history = await RecipeHistoryService.getRecipeHistory(customUserData.userID);
-      
+
       // Format history data - parse recipeData JSONB if needed
       const formattedHistory = history.map(item => {
         let recipe = item.recipeData;
-        
+
         console.log('📝 Formatting history item:', {
           hasRecipeData: !!item.recipeData,
           recipeDataType: typeof item.recipeData,
           recipeName: item.recipeName
         });
-        
+
         // Parse recipeData if it's a string (JSONB from database)
         if (typeof recipe === 'string') {
           try {
@@ -127,25 +129,25 @@ const Profile = () => {
             recipe = { label: item.recipeName, image: null };
           }
         }
-        
+
         // Detect recipe source (AI or Edamam)
         const recipeSource = recipe?.recipeID ? 'ai' : 'edamam';
-        
+
         const formatted = {
           ...item,
           recipe: recipe || { label: item.recipeName, image: null },
           recipeSource: recipeSource
         };
-        
+
         console.log('✨ Formatted history item:', {
           hasRecipe: !!formatted.recipe,
           recipeSource: formatted.recipeSource,
           recipeKeys: formatted.recipe ? Object.keys(formatted.recipe).slice(0, 5) : []
         });
-        
+
         return formatted;
       });
-      
+
       setRecipeHistory(formattedHistory);
       console.log('✅ Loaded', formattedHistory.length, 'history items');
 
@@ -162,7 +164,7 @@ const Profile = () => {
             console.error('❌ Error refreshing history images:', error);
           });
       }
-      
+
     } catch (error) {
       console.error('❌ Error loading recipe history:', error);
     } finally {
@@ -176,7 +178,7 @@ const Profile = () => {
       setLoadingScheduled(false);
       return;
     }
-    
+
     try {
       setLoadingScheduled(true);
       console.log('📅 Loading scheduled recipes for user:', customUserData.userID);
@@ -192,23 +194,23 @@ const Profile = () => {
 
   const handleTabChange = (tab) => {
     setActiveTab(tab);
-    
+
     // Load recipes when favorites tab is selected
     if (tab === 'favorites' && savedRecipes.length === 0 && !loadingRecipes) {
       loadSavedRecipes();
     }
-    
+
     // Load history when history tab is selected
     if (tab === 'history' && recipeHistory.length === 0 && !loadingHistory) {
       loadRecipeHistory();
     }
-    
+
     // TEMPORARY: Force reload history to apply formatting fix
     if (tab === 'history' && recipeHistory.length > 0 && !recipeHistory[0].recipe) {
       console.log('⚡ Forcing history reload to apply formatting');
       loadRecipeHistory();
     }
-    
+
     // Load scheduled when scheduled tab is selected
     if (tab === 'scheduled' && scheduledRecipes.length === 0 && !loadingScheduled) {
       loadScheduledRecipes();
@@ -217,13 +219,13 @@ const Profile = () => {
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    
+
     try {
       // Refresh user data
       if (user?.email) {
         await fetchCustomUserData(user.email);
       }
-      
+
       // Refresh current tab content
       if (activeTab === 'favorites') {
         await loadSavedRecipes();
@@ -232,7 +234,7 @@ const Profile = () => {
       } else if (activeTab === 'scheduled') {
         await loadScheduledRecipes();
       }
-      
+
     } catch (error) {
       console.error('Error refreshing profile:', error);
     } finally {
@@ -246,8 +248,8 @@ const Profile = () => {
       'Are you sure you want to log out?',
       [
         { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Log out', 
+        {
+          text: 'Log out',
           onPress: async () => {
             try {
               await signOut();
@@ -269,7 +271,7 @@ const Profile = () => {
 
   const handleRecipePress = (savedRecipe) => {
     const recipe = savedRecipe.recipe;
-    
+
     // Ensure recipe data has all necessary fields
     let recipeData;
     if (savedRecipe.isCustom) {
@@ -277,7 +279,7 @@ const Profile = () => {
       recipeData = { ...recipe, isCustom: true };
     } else {
       // Edamam recipe - ensure it has uri field for favorites functionality
-      recipeData = { 
+      recipeData = {
         ...recipe,
         uri: recipe.uri || savedRecipe.edamamRecipeURI,
         isCustom: false
@@ -309,9 +311,9 @@ const Profile = () => {
               };
 
               const result = await RecipeMatcherService.unsaveRecipe(user.email, recipe);
-              
+
               if (result.success) {
-                setSavedRecipes(prev => prev.filter(r => 
+                setSavedRecipes(prev => prev.filter(r =>
                   savedRecipe.recipeSource === 'ai'
                     ? r.aiRecipeID !== savedRecipe.aiRecipeID
                     : r.edamamRecipeURI !== savedRecipe.edamamRecipeURI
@@ -332,7 +334,7 @@ const Profile = () => {
 
   const handleHistoryRecipePress = (historyItem) => {
     const recipe = historyItem.recipeData;
-    
+
     router.push({
       pathname: '/recipe-detail',
       params: { recipeData: JSON.stringify(recipe) }
@@ -351,7 +353,7 @@ const Profile = () => {
           onPress: async () => {
             try {
               const result = await RecipeHistoryService.deleteRecipeFromHistory(historyItem.historyID);
-              
+
               if (result.success) {
                 setRecipeHistory(prev => prev.filter(h => h.historyID !== historyItem.historyID));
                 Alert.alert('Removed', 'Recipe removed from history');
@@ -371,7 +373,7 @@ const Profile = () => {
   const renderRecipeCard = ({ item }) => {
     const recipe = item.recipe;
     const isAI = item.recipeSource === 'ai';
-    
+
     return (
       <TouchableOpacity
         style={styles.favoriteRecipeCard}
@@ -383,7 +385,7 @@ const Profile = () => {
           style={styles.favoriteRecipeImage}
           resizeMode="cover"
         />
-        
+
         {/* AI Badge */}
         {isAI && (
           <View style={styles.aiBadge}>
@@ -391,12 +393,12 @@ const Profile = () => {
             <Text style={styles.aiBadgeText}>AI</Text>
           </View>
         )}
-        
+
         <View style={styles.favoriteRecipeInfo}>
           <Text style={styles.favoriteRecipeTitle} numberOfLines={2}>
             {recipe.recipeName || recipe.label}
           </Text>
-          
+
           <View style={styles.favoriteRecipeMeta}>
             <Ionicons name="time-outline" size={12} color="#999" />
             <Text style={styles.favoriteRecipeMetaText}>
@@ -458,53 +460,47 @@ const Profile = () => {
   return (
     <AuthGuard>
       <SafeAreaView style={styles.container}>
-        <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-      
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={handleBack}
+        <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollViewContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              colors={['#81A969']} // Android spinner color
+            />
+          }
         >
-          <Ionicons name="chevron-back" size={24} color="#333" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Profile</Text>
-        <View style={styles.placeholderRight} />
-      </View>
-      
-      <ScrollView 
-        style={styles.scrollView}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            colors={['#4CAF50']} // Android spinner color
-          />
-        }
-      >
-        {/* Profile Section */}
-        <ProfileHeader profileData={profileData} />
-        
-        {/* Tabs Navigation */}
-        <ProfileTabs activeTab={activeTab} onTabChange={handleTabChange} />
-        
-        {/* Tab Content */}
-        {renderTabContent()}
-        
-        {/* Account Actions */}
-        <ProfileActions />
-        
-        {/* Logout Button */}
-        <TouchableOpacity 
-          style={styles.logoutButton}
-          onPress={handleLogout}
-        >
-          <Text style={styles.logoutText}>Log out</Text>
-        </TouchableOpacity>
-        
-        <Text style={styles.versionText}>Version 1.0.0 (Build 1)</Text>
-      </ScrollView>
-    </SafeAreaView>
+          {/* Header */}
+          <View style={styles.header}>
+            <Text style={styles.headerTitle}>Profile</Text>
+          </View>
+
+          {/* Profile Section */}
+          <ProfileHeader profileData={profileData} />
+
+          {/* Tabs Navigation */}
+          <ProfileTabs activeTab={activeTab} onTabChange={handleTabChange} />
+
+          {/* Tab Content */}
+          {renderTabContent()}
+
+          {/* Account Actions */}
+          <ProfileActions />
+
+          {/* Logout Button */}
+          <TouchableOpacity
+            style={styles.logoutButton}
+            onPress={handleLogout}
+          >
+            <Text style={styles.logoutText}>Log out</Text>
+          </TouchableOpacity>
+
+          <Text style={styles.versionText}>Version 1.0 | Made by Group 1 4ITH</Text>
+        </ScrollView>
+      </SafeAreaView>
     </AuthGuard>
   );
 };
@@ -512,58 +508,64 @@ const Profile = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#F8F9FA',
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  backButton: {
-    padding: 8,
+    paddingHorizontal: wp('5%'),
+    paddingTop: hp('7%'),
+    paddingBottom: hp('2%'),
+    backgroundColor: '#F8F9FA',
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
+    fontSize: wp('7.5%'),
+    fontWeight: 'bold',
+    color: '#000',
   },
   placeholderRight: {
-    width: 40,
+    width: wp('10%'),
   },
   scrollView: {
     flex: 1,
+    backgroundColor: '#F8F9FA',
+  },
+  scrollViewContent: {
+    paddingBottom: hp('12%'), // Extra padding to account for bottom navbar
   },
   tabContent: {
     flex: 1,
-    minHeight: 200,
-    paddingHorizontal: 16,
-    paddingVertical: 20,
+    minHeight: hp('25%'),
+    paddingHorizontal: wp('4%'),
+    paddingVertical: hp('2.5%'),
+    backgroundColor: '#F8F9FA',
   },
   logoutButton: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    marginBottom: 24,
+    marginHorizontal: wp('8%'),
+    marginTop: hp('3%'),
+    marginBottom: hp('2%'),
     backgroundColor: '#fff',
-    paddingVertical: 14,
-    borderRadius: 8,
+    paddingVertical: hp('2%'),
+    borderRadius: wp('8%'),
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#ddd',
+    borderWidth: 1.5,
+    borderColor: '#81A969',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 6,
   },
   logoutText: {
-    fontSize: 16,
-    color: '#333',
+    fontSize: wp('4%'),
+    color: '#81A969',
+    fontWeight: '600',
   },
   versionText: {
     textAlign: 'center',
-    fontSize: 12,
+    fontSize: wp('3%'),
     color: '#aaa',
-    marginBottom: 30,
+    marginBottom: hp('3%'),
   },
 });
 
