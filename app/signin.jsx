@@ -16,6 +16,7 @@ import { Link, useRouter } from 'expo-router';
 import { globalStyles } from '../assets/css/globalStyles';
 import { signinStyles } from '../assets/css/signinStyles';
 import TopographicBackground from '../components/TopographicBackground';
+import SurveyService from '../services/survey-service';
 
 const SignIn = () => {
   const [email, setEmail] = useState('');
@@ -106,6 +107,19 @@ const SignIn = () => {
         ]);
       } else {
         Alert.alert('Success', 'Signed in successfully!');
+        
+        // Check for surveys after successful sign-in
+        setTimeout(async () => {
+          try {
+            if (email) {
+              console.log('📋 Checking for surveys after sign-in...');
+              await SurveyService.checkAndShowSurvey(email);
+            }
+          } catch (error) {
+            console.error('Error checking surveys:', error);
+          }
+        }, 2000); // Wait 2 seconds after sign-in
+        
         router.push('/'); // Navigate to home screen
       }
     } catch (err) {

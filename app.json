@@ -19,19 +19,19 @@
     },
     "android": {
       "package": "com.recipe.app",
+      "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true,
-      "minSdkVersion": 26,
-      "targetSdkVersion": 34,
-      "compileSdkVersion": 34,
       "permissions": [
         "RECEIVE_BOOT_COMPLETED",
         "WAKE_LOCK",
         "VIBRATE",
-        "POST_NOTIFICATIONS"
+        "POST_NOTIFICATIONS",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
       ]
     },
     "web": {
@@ -48,6 +48,12 @@
         }
       ],
       "expo-barcode-scanner",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera to scan barcodes."
+        }
+      ],
       "react-native-vision-camera"
     ],
     "extra": {
@@ -56,16 +62,6 @@
         "projectId": "9f749e6b-8a51-4406-8a62-cb9c19e07fbd"
       }
     },
-    "owner": "recipe.app",
-    "expo": {
-      "plugins": [
-        [
-          "expo-camera",
-          {
-            "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera to scan barcodes."
-          }
-        ]
-      ]
-    }
+    "owner": "recipe.app"
   }
 }
