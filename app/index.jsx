@@ -1,5 +1,5 @@
 // Optimized index.jsx - Fast app entry with background initialization
-import { StyleSheet, Text, View, TouchableOpacity, Alert } from "react-native";
+import { StyleSheet, Text, View, TouchableOpacity, Alert, StatusBar, Platform } from "react-native";
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
@@ -119,6 +119,7 @@ export default function Home() {
   // Welcome screen for non-authenticated users
   return (
     <TopographicBackground>
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
       <View style={[globalStyles.welcomeCard, {
         borderTopLeftRadius: wp('8%'),
         borderTopRightRadius: wp('8%'),
@@ -127,9 +128,9 @@ export default function Home() {
         overflow: 'hidden',
         backgroundColor: '#fff',
         paddingBottom: 0,
-        paddingTop: hp('2%'),
+        paddingTop: hp('2.5%'),
         paddingHorizontal: wp('6%'),
-        minHeight: hp('32%'),
+        minHeight: hp('35%'),
         elevation: 14,
       }]}>
         <View style={{ position: 'relative', alignSelf: 'flex-start', marginBottom: hp('2%'), padding: 0, margin: 0 }}>
