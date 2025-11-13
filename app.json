@@ -47,7 +47,6 @@
           "defaultChannel": "default"
         }
       ],
-      "expo-barcode-scanner",
       [
         "expo-camera",
         {
