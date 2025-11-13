@@ -20,6 +20,7 @@ export default function ProfileActions({ onFAQPress, onHowToUsePress, onTermsPre
               styles.actionItem,
               index < actions.length - 1 && styles.actionItemBorder
             ]}
+            onPress={action.onPress}
           >
             <View style={styles.actionLeft}>
               <Ionicons name={action.icon} size={wp('5.5%')} color="#333" />
