@@ -18,10 +18,10 @@ const BottomNavbar = () => {
   const inactiveColor = '#C6C6C6';
 
   // Only show navbar on tab pages - check if pathname includes the tab routes
-  const showNavbar = pathname.includes('/home') || 
-                     pathname.includes('/recipe-search') || 
-                     pathname.includes('/pantry') || 
-                     pathname.includes('/profile');
+  const showNavbar = pathname.includes('/home') ||
+    pathname.includes('/recipe-search') ||
+    pathname.includes('/pantry') ||
+    pathname.includes('/profile');
 
   if (!showNavbar) {
     return null;
@@ -65,10 +65,10 @@ const BottomNavbar = () => {
         onPress={() => router.push('/food-recognition/upload')}
         activeOpacity={0.8}
       >
-        <View style={[styles.scanButtonInner, { 
-          width: wp('14.5%'), 
-          height: wp('14.5%'), 
-          borderRadius: wp('7.25%') 
+        <View style={[styles.scanButtonInner, {
+          width: wp('14.5%'),
+          height: wp('14.5%'),
+          borderRadius: wp('7.25%')
         }]}>
           <Svg width={wp('8%')} height={wp('8%')} viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <Path d="M3 7V5a2 2 0 0 1 2-2h2" />
