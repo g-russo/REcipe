@@ -723,13 +723,21 @@ const Pantry = () => {
     }
   };
 
+  // NEW: Handle back button press to navigate to homepage
+  const handleBackPress = () => {
+    router.back();
+  };
+
   return (
     <AuthGuard>
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="dark-content" backgroundColor="#fff" />
         
         {/* Header */}
-        <PantryHeader onSearchPress={() => setSearchModalVisible(true)} />
+        <PantryHeader 
+          onSearchPress={() => setSearchModalVisible(true)}
+          onBackPress={handleBackPress}
+        />
 
         {/* Selection Mode Header */}
         {selectionMode && (

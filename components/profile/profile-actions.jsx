@@ -3,11 +3,11 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 
-export default function ProfileActions() {
+export default function ProfileActions({ onFAQPress, onHowToUsePress, onTermsPress }) {
   const actions = [
-    { icon: 'help-circle-outline', label: 'FAQs' },
-    { icon: 'information-circle-outline', label: 'Help Center' },
-    { icon: 'document-text-outline', label: 'Terms & Policies' },
+    { icon: 'help-circle-outline', label: 'FAQs', onPress: onFAQPress },
+    { icon: 'information-circle-outline', label: 'How to Use', onPress: onHowToUsePress },
+    { icon: 'document-text-outline', label: 'Terms & Policies', onPress: onTermsPress },
   ];
 
   return (
