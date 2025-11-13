@@ -1,6 +1,9 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, Image, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, Image, StyleSheet, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const CARD_WIDTH = (SCREEN_WIDTH - 60) / 2; // 20px padding on each side + 20px gap
 
 /**
  * Pantry Item Card Component
@@ -116,7 +119,7 @@ const PantryItemCard = ({
 
 const styles = StyleSheet.create({
   itemCard: {
-    width: '48%',
+    width: CARD_WIDTH,
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 10,
@@ -158,7 +161,7 @@ const styles = StyleSheet.create({
   },
   itemImagePlaceholder: {
     width: '100%',
-    height: 100,
+    height: CARD_WIDTH * 0.6,
     backgroundColor: '#f5f5f5',
     borderRadius: 8,
     marginBottom: 10,

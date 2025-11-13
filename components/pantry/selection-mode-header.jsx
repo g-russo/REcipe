@@ -1,6 +1,9 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const IS_SMALL_SCREEN = SCREEN_WIDTH < 375;
 
 /**
  * Selection Mode Header Component
@@ -63,7 +66,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: '#8BC34A',
-    paddingHorizontal: 20,
+    paddingHorizontal: IS_SMALL_SCREEN ? 12 : 20,
     paddingVertical: 15,
   },
   selectionModeButton: {
@@ -73,12 +76,12 @@ const styles = StyleSheet.create({
   },
   selectionModeButtonText: {
     color: '#fff',
-    fontSize: 14,
+    fontSize: IS_SMALL_SCREEN ? 12 : 14,
     fontWeight: '600',
   },
   selectionModeTitle: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: IS_SMALL_SCREEN ? 14 : 16,
     fontWeight: '600',
   },
   disabledButton: {
@@ -87,6 +90,7 @@ const styles = StyleSheet.create({
   actionButtons: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: IS_SMALL_SCREEN ? 8 : 12,
   },
 });
 
