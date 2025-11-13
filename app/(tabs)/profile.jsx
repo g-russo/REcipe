@@ -24,6 +24,9 @@ import HistoryTab from '../../components/profile/history-tab';
 import ScheduledTab from '../../components/profile/scheduled-tab';
 import EmptyState from '../../components/profile/empty-state';
 import ProfileActions from '../../components/profile/profile-actions';
+import FAQsModal from '../../components/profile/faqs-modal';
+import HowToUseModal from '../../components/profile/how-to-use-modal';
+import TermsPoliciesModal from '../../components/profile/terms-policies-modal';
 
 const Profile = () => {
   const { user, customUserData, signOut, fetchCustomUserData } = useCustomAuth();
@@ -40,6 +43,9 @@ const Profile = () => {
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [scheduledRecipes, setScheduledRecipes] = useState([]);
   const [loadingScheduled, setLoadingScheduled] = useState(false);
+  const [faqsModalVisible, setFaqsModalVisible] = useState(false);
+  const [howToUseModalVisible, setHowToUseModalVisible] = useState(false);
+  const [termsModalVisible, setTermsModalVisible] = useState(false);
 
   useEffect(() => {
     // Update profile data if user information is available
@@ -478,7 +484,7 @@ const Profile = () => {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={handleRefresh}
-            colors={['#4CAF50']} // Android spinner color
+            colors={['#4CAF50']}
           />
         }
       >
@@ -492,7 +498,11 @@ const Profile = () => {
         {renderTabContent()}
         
         {/* Account Actions */}
-        <ProfileActions />
+        <ProfileActions 
+          onFAQPress={() => setFaqsModalVisible(true)}
+          onHowToUsePress={() => setHowToUseModalVisible(true)}
+          onTermsPress={() => setTermsModalVisible(true)}
+        />
         
         {/* Logout Button */}
         <TouchableOpacity 
@@ -504,6 +514,22 @@ const Profile = () => {
         
         <Text style={styles.versionText}>Version 1.0.0 (Build 1)</Text>
       </ScrollView>
+
+      {/* Modals */}
+      <FAQsModal
+        visible={faqsModalVisible}
+        onClose={() => setFaqsModalVisible(false)}
+      />
+      
+      <HowToUseModal
+        visible={howToUseModalVisible}
+        onClose={() => setHowToUseModalVisible(false)}
+      />
+      
+      <TermsPoliciesModal
+        visible={termsModalVisible}
+        onClose={() => setTermsModalVisible(false)}
+      />
     </SafeAreaView>
     </AuthGuard>
   );
