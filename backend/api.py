@@ -11,7 +11,6 @@ from fastapi import FastAPI, File, UploadFile, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from PIL import Image
-import pytesseract
 from ultralytics import YOLO
 import torch
 
@@ -204,26 +203,6 @@ async def recognize_food(file: UploadFile = File(...)):
             "food101_topk": [],
             "filipino_topk": []
         }
-
-@app.post("/ocr/extract")
-async def ocr_extract_text(file: UploadFile = File(...)):
-    """Extract text from image using OCR (Tesseract)."""
-    try:
-        img = pil_from_upload(file)
-        
-        # Use Tesseract OCR to extract text
-        text = pytesseract.image_to_string(img, lang='eng')
-        
-        # Clean up text
-        text = text.strip()
-        
-        return {
-            "success": True,
-            "text": text,
-            "length": len(text),
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"OCR failed: {str(e)}")
 
 # ============================================================================
 # FatSecret API Endpoints
