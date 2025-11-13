@@ -1216,24 +1216,28 @@ const RecipeSearch = () => {
                       style={[styles.popularRecipeCard, index === 0 && styles.firstCard]}
                       onPress={() => handlePopularRecipePress(recipe)}
                     >
-                      {recipe.image ? (
-                        <Image
-                          source={{ uri: recipe.image }}
-                          style={styles.popularRecipeImage}
-                          onError={(error) => console.log('Popular recipe image load error:', recipe.title, error.nativeEvent?.error)}
-                        />
-                      ) : (
-                        <View style={[styles.popularRecipeImage, { backgroundColor: '#f0f0f0', alignItems: 'center', justifyContent: 'center' }]}>
-                          <Ionicons name="image-outline" size={30} color="#ccc" />
+                      <View style={styles.popularRecipeImageContainer}>
+                        {recipe.image ? (
+                          <Image
+                            source={{ uri: recipe.image }}
+                            style={styles.popularRecipeImage}
+                            onError={(error) => console.log('Popular recipe image load error:', recipe.title, error.nativeEvent?.error)}
+                          />
+                        ) : (
+                          <View style={[styles.popularRecipeImage, { backgroundColor: '#f0f0f0', alignItems: 'center', justifyContent: 'center' }]}>
+                            <Ionicons name="image-outline" size={20} color="#ccc" />
+                          </View>
+                        )}
+                      </View>
+                      <View style={styles.popularRecipeContent}>
+                        <Text style={styles.popularRecipeTitle} numberOfLines={2}>{recipe.title}</Text>
+                        <View style={styles.popularRecipeInfo}>
+                          <Ionicons name="time-outline" size={wp('3%')} color="#666" />
+                          <Text style={styles.popularInfoText}>
+                            {recipe.time || 30} Min
+                          </Text>
                         </View>
-                      )}
-                      <Text style={styles.popularRecipeTitle}>{recipe.title}</Text>
-                      {recipe.category && (
-                        <Text style={styles.recipeCategory}>{recipe.category}</Text>
-                      )}
-                      {recipe.time && (
-                        <Text style={styles.recipeTime}>⏱️ {recipe.time}min</Text>
-                      )}
+                      </View>
                     </TouchableOpacity>
                   ))}
                 </ScrollView>
@@ -1526,40 +1530,50 @@ const styles = StyleSheet.create({
   },
   popularRecipesContainer: {
     marginLeft: wp('-5%'),
+    paddingBottom: hp('2%'),
   },
   popularRecipeCard: {
-    alignItems: 'center',
-    marginLeft: wp('5%'),
-    width: wp('20%'),
+    backgroundColor: '#fff',
+    width: wp('32%'),
+    borderRadius: wp('4%'),
+    marginLeft: wp('3%'),
+    marginBottom: hp('1.5%'),
+    elevation: 6,
   },
   firstCard: {
     marginLeft: wp('5%'),
   },
+  popularRecipeImageContainer: {
+    overflow: 'hidden',
+    position: 'relative',
+    margin: wp('2%'),
+    borderRadius: wp('3%'),
+  },
   popularRecipeImage: {
-    width: wp('17.5%'),
-    height: wp('17.5%'),
-    borderRadius: wp('8.75%'),
-    marginBottom: hp('1%'),
+    width: '100%',
+    height: hp('12%'),
+    resizeMode: 'cover',
+  },
+  popularRecipeContent: {
+    paddingHorizontal: wp('2.5%'),
+    paddingBottom: wp('2.5%'),
+    paddingTop: 0,
   },
   popularRecipeTitle: {
-    fontSize: wp('3%'),
-    color: '#333',
-    textAlign: 'center',
-    fontWeight: '600',
-    marginBottom: hp('0.2%'),
+    fontSize: wp('3.2%'),
+    fontWeight: 'bold',
+    color: '#000',
+    marginBottom: hp('0.8%'),
+    lineHeight: wp('4%'),
   },
-  recipeCategory: {
+  popularRecipeInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp('1%'),
+  },
+  popularInfoText: {
     fontSize: wp('2.5%'),
     color: '#666',
-    textAlign: 'center',
-    textTransform: 'capitalize',
-    marginBottom: hp('0.2%'),
-  },
-  recipeTime: {
-    fontSize: wp('2.5%'),
-    color: '#4CAF50',
-    textAlign: 'center',
-    fontWeight: '500',
   },
   disabledText: {
     opacity: 0.5,
