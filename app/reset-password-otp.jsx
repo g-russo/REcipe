@@ -11,6 +11,7 @@ import {
   Platform
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
+import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useCustomAuth } from '../hooks/use-custom-auth';
 import { globalStyles } from '../assets/css/globalStyles';
@@ -72,7 +73,7 @@ const ResetPasswordOTP = () => {
     if (text.length > 1) {
       // Extract only numbers from pasted text
       const numbers = text.replace(/\D/g, '');
-      
+
       if (numbers.length > 0) {
         const newOtp = [...otp];
         // Fill the OTP boxes starting from current index
@@ -80,7 +81,7 @@ const ResetPasswordOTP = () => {
           newOtp[index + i] = numbers[i];
         }
         setOtp(newOtp);
-        
+
         // Focus the next empty box or the last box
         const nextIndex = Math.min(index + numbers.length, 5);
         inputRefs.current[nextIndex]?.focus();
@@ -110,7 +111,7 @@ const ResetPasswordOTP = () => {
 
   const handleVerifyOTP = async () => {
     const otpString = otp.join('');
-    
+
     if (!otpString || otpString.length !== 6) {
       Alert.alert('Error', 'Please enter a valid 6-digit verification code');
       return;
@@ -171,7 +172,7 @@ const ResetPasswordOTP = () => {
                 onPress: () => {
                   router.push({
                     pathname: '/force-password-change',
-                    params: { 
+                    params: {
                       email: email,
                       autoSignedIn: 'true'
                     }
@@ -184,7 +185,7 @@ const ResetPasswordOTP = () => {
           // Fallback to force password change flow
           router.push({
             pathname: '/force-password-change',
-            params: { 
+            params: {
               email: email,
               autoSignedIn: 'true'
             }
@@ -228,52 +229,60 @@ const ResetPasswordOTP = () => {
   return (
     <TopographicBackground>
       {/* Back button */}
-      <TouchableOpacity style={globalStyles.backButton} onPress={goBack}>
-        <Svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#81A969" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <Path d="m15 18-6-6 6-6"/>
+      <TouchableOpacity style={[globalStyles.backButton, {
+        top: hp('5%'),
+        left: wp('5%'),
+        padding: wp('2%')
+      }]} onPress={goBack}>
+        <Svg width={wp('6%')} height={wp('6%')} viewBox="0 0 24 24" fill="none" stroke="#81A969" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <Path d="m15 18-6-6 6-6" />
         </Svg>
       </TouchableOpacity>
 
-      <Animated.View 
-        style={[globalStyles.card, { 
-          paddingTop: 8, 
-          paddingBottom: 10, 
+      <Animated.View
+        style={[globalStyles.card, {
+          paddingTop: hp('1%'),
+          paddingBottom: hp('1.2%'),
+          paddingHorizontal: wp('6%'),
           position: 'absolute',
           bottom: 0,
           left: 0,
           right: 0,
           marginTop: 0,
           minHeight: '55%',
-          borderBottomLeftRadius: 0, 
+          borderBottomLeftRadius: 0,
           borderBottomRightRadius: 0,
           transform: [{ translateY }]
         }]}
         pointerEvents="box-none"
       >
         <View style={[globalStyles.formContent, { flex: 0 }]}>
-          <View style={{ position: 'relative', alignSelf: 'flex-start', marginTop: 0, marginBottom: 20 }}>
-            <Text style={[globalStyles.title, { marginBottom: 6, paddingBottom: 0 }]}>Reset Password</Text>
+          <View style={{ position: 'relative', alignSelf: 'flex-start', marginTop: 0, marginBottom: hp('2.5%') }}>
+            <Text style={[globalStyles.title, { marginBottom: hp('0.8%'), paddingBottom: 0, fontSize: wp('7.5%') }]}>Reset Password</Text>
             <View
               style={{
                 position: 'absolute',
                 left: 0,
                 bottom: 0,
-                height: 4,
-                width: 160,
+                height: hp('0.5%'),
+                width: wp('40%'),
                 backgroundColor: '#97B88B',
-                borderRadius: 4,
+                borderRadius: hp('0.5%'),
               }}
             />
           </View>
 
-          <Text style={[globalStyles.subtitle, { marginLeft: 8, marginTop: 18, marginBottom: 10 }]}>
+          <Text style={[globalStyles.subtitle, { marginLeft: wp('2%'), marginTop: hp('2.2%'), marginBottom: hp('1.2%'), fontSize: wp('3.8%') }]}>
             Enter the verification code we just sent to your email address.
           </Text>
 
           {/* OTP Input Boxes */}
-          <View style={styles.otpContainer}>
+          <View style={[styles.otpContainer, {
+            marginVertical: hp('4%'),
+            paddingHorizontal: wp('1%')
+          }]}>
             {otp.map((digit, index) => (
-              <View key={index} style={{ flex: 1, maxWidth: 50 }}>
+              <View key={index} style={{ flex: 1, maxWidth: wp('12%') }}>
                 <TextInput
                   ref={(ref) => (inputRefs.current[index] = ref)}
                   style={[
@@ -282,6 +291,12 @@ const ResetPasswordOTP = () => {
                     focusedIndex === index && {
                       borderColor: '#81A969',
                       borderWidth: 2,
+                    },
+                    {
+                      width: wp('12%'),
+                      height: hp('6.5%'),
+                      fontSize: wp('6%'),
+                      borderRadius: wp('2%')
                     }
                   ]}
                   value={digit}
@@ -309,27 +324,31 @@ const ResetPasswordOTP = () => {
           </View>
         </View>
 
-        <View style={[globalStyles.formActions, { marginTop: 20, marginBottom: 0, paddingTop: 0 }]}>
+        <View style={[globalStyles.formActions, { marginTop: hp('2.5%'), marginBottom: 0, paddingTop: 0 }]}>
           <TouchableOpacity
-            style={globalStyles.primaryButton}
+            style={[globalStyles.primaryButton, {
+              paddingVertical: hp('1.8%'),
+              paddingHorizontal: wp('8%'),
+              borderRadius: wp('3%')
+            }]}
             onPress={handleVerifyOTP}
             disabled={loading || otp.join('').length !== 6}
           >
-            <Text style={globalStyles.primaryButtonText}>
+            <Text style={[globalStyles.primaryButtonText, { fontSize: wp('4.5%') }]}>
               {loading ? 'Verifying...' : 'Verify Code'}
             </Text>
           </TouchableOpacity>
 
-          <View style={styles.resendContainer}>
-            <Text style={globalStyles.grayText}>Didn't receive email? </Text>
+          <View style={[styles.resendContainer, { marginTop: hp('2.5%') }]}>
+            <Text style={[globalStyles.grayText, { fontSize: wp('3.8%') }]}>Didn't receive email? </Text>
             {canResend ? (
               <TouchableOpacity onPress={handleResendOTP} disabled={resendLoading}>
-                <Text style={globalStyles.linkText}>
+                <Text style={[globalStyles.linkText, { fontSize: wp('3.8%') }]}>
                   {resendLoading ? 'Sending...' : 'Resend'}
                 </Text>
               </TouchableOpacity>
             ) : (
-              <Text style={globalStyles.grayText}>
+              <Text style={[globalStyles.grayText, { fontSize: wp('3.8%') }]}>
                 Resend in {countdown}s
               </Text>
             )}
