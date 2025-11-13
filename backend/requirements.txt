@@ -4,6 +4,7 @@ python-multipart==0.0.9
 Pillow==10.4.0
 ultralytics==8.2.103
 requests==2.31.0
+pytesseract==0.3.10
 python-dotenv==1.0.0
 
 # PyTorch for CPU (Python 3.12 compatible)
