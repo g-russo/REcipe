@@ -133,47 +133,47 @@ const ForgotPassword = () => {
       </TouchableOpacity>
 
       <Animated.View style={[globalStyles.card, {
-        paddingTop: hp('1.5%'),
-        paddingBottom: hp('1.5%'),
-        paddingHorizontal: wp('6%'),
+        paddingTop: hp('1.8%'),
+        paddingBottom: hp('9%'),
+        paddingHorizontal: wp('8%'),
         position: 'absolute',
         bottom: 0,
         left: 0,
         right: 0,
         marginTop: 0,
-        minHeight: '65%',
         borderBottomLeftRadius: 0,
         borderBottomRightRadius: 0,
         transform: [{ translateY }]
       }]}>
         <View style={[globalStyles.formContent, { flex: 0 }]}>
-          <View style={{ position: 'relative', alignSelf: 'flex-start', marginTop: 0, marginBottom: hp('2.5%') }}>
-            <Text style={[globalStyles.title, { marginBottom: hp('0.8%'), paddingBottom: 0, fontSize: wp('7.5%') }]}>Forgot Password</Text>
+          <View style={{ position: 'relative', alignSelf: 'flex-start', marginTop: 0, marginBottom: hp('1.5%') }}>
+            <Text style={[globalStyles.title, { marginBottom: hp('0.6%'), paddingBottom: 0, fontSize: wp('8%'), lineHeight: wp('9.5%') }]}>Forgot Password</Text>
             <View
               style={{
                 position: 'absolute',
                 left: 0,
                 bottom: 0,
-                height: hp('0.5%'),
+                height: hp('0.4%'),
                 width: wp('50%'),
                 backgroundColor: '#97B88B',
-                borderRadius: hp('0.5%'),
+                borderRadius: hp('0.4%'),
               }}
             />
           </View>
 
-          <Text style={[globalStyles.subtitle, { marginLeft: wp('2%'), marginTop: hp('2.2%'), marginBottom: hp('3%'), fontSize: wp('3.8%') }]}>
+          <Text style={[globalStyles.subtitle, { marginLeft: 0, marginTop: hp('0.8%'), marginBottom: hp('2%'), fontSize: wp('3.8%'), lineHeight: wp('5%') }]}>
             Enter the email address so we can send you your 6-digit OTP
           </Text>
 
-          <View style={[globalStyles.inputContainer, { marginBottom: hp('1.5%') }]}>
-            <Text style={[globalStyles.inputLabel, { fontSize: wp('4%'), marginBottom: hp('0.8%') }]}>Email</Text>
+          <View style={[globalStyles.inputContainer, { marginBottom: hp('1.2%') }]}>
+            <Text style={[globalStyles.inputLabel, { fontSize: wp('4.2%'), marginBottom: hp('0.6%') }]}>Email</Text>
             <TextInput
               style={[globalStyles.input, emailFocused && globalStyles.inputFocused, {
-                paddingVertical: hp('1.5%'),
-                paddingHorizontal: wp('3.5%'),
-                fontSize: wp('4%'),
-                borderRadius: wp('2%')
+                paddingVertical: hp('1.3%'),
+                paddingHorizontal: wp('4%'),
+                fontSize: wp('4.2%'),
+                borderRadius: wp('2%'),
+                minHeight: hp('5.5%')
               }]}
               placeholder="demo@email.com"
               value={email}
@@ -189,12 +189,13 @@ const ForgotPassword = () => {
           </View>
         </View>
 
-        <View style={[globalStyles.formActions, { marginTop: hp('6%'), marginBottom: 0, paddingTop: 0 }]}>
+        <View style={[globalStyles.formActions, { marginTop: hp('4.5%'), marginBottom: 0, paddingTop: 0 }]}>
           <TouchableOpacity
             style={[globalStyles.primaryButton, {
-              paddingVertical: hp('1.8%'),
+              paddingVertical: hp('1.6%'),
               paddingHorizontal: wp('8%'),
-              borderRadius: wp('3%')
+              borderRadius: wp('2.5%'),
+              minHeight: hp('5.5%')
             }]}
             onPress={handleForgotPassword}
             disabled={loading}
@@ -204,7 +205,7 @@ const ForgotPassword = () => {
             </Text>
           </TouchableOpacity>
 
-          <View style={[forgotPasswordStyles.resendContainer, { marginTop: hp('2%') }]}>
+          <View style={[forgotPasswordStyles.resendContainer, { marginTop: hp('1.5%') }]}>
             <Text style={[globalStyles.grayText, { fontSize: wp('3.8%') }]}>Didn't receive email? </Text>
             <TouchableOpacity>
               <Text style={[globalStyles.linkText, { fontSize: wp('3.8%') }]}>Resend</Text>
