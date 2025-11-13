@@ -4,13 +4,8 @@ python-multipart==0.0.9
 Pillow==10.4.0
 ultralytics==8.2.103
 requests==2.31.0
-pytesseract==0.3.10
 python-dotenv==1.0.0
 
 # PyTorch for CPU (Python 3.12 compatible)
 torch==2.5.1
 torchvision==0.20.1
-
-# If you have GPU on EC2, use:
-# torch==2.5.1+cu118 --index-url https://download.pytorch.org/whl/cu118
-# torchvision==0.20.1+cu118 --index-url https://download.pytorch.org/whl/cu118
