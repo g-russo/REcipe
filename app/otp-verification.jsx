@@ -149,32 +149,38 @@ const OTPVerification = () => {
       </TouchableOpacity>
 
       <View style={[globalStyles.card, {
-        paddingTop: hp('1.5%'),
-        paddingBottom: hp('1.5%'),
-        paddingHorizontal: wp('6%')
+        paddingTop: hp('1.8%'),
+        paddingBottom: hp('9%'),
+        paddingHorizontal: wp('8%'),
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        borderBottomLeftRadius: 0,
+        borderBottomRightRadius: 0
       }]}>
         <View style={globalStyles.formContent}>
-          <View style={{ position: 'relative', alignSelf: 'flex-start', marginBottom: hp('2%') }}>
-            <Text style={[globalStyles.title, { marginBottom: hp('0.8%'), fontSize: wp('7.5%') }]}>Email Verification</Text>
+          <View style={{ position: 'relative', alignSelf: 'flex-start', marginBottom: hp('1.5%') }}>
+            <Text style={[globalStyles.title, { marginBottom: hp('0.6%'), fontSize: wp('8%'), lineHeight: wp('9.5%') }]}>Email Verification</Text>
             <View
               style={{
                 position: 'absolute',
                 left: 0,
                 bottom: 0,
-                height: hp('0.5%'),
+                height: hp('0.4%'),
                 width: wp('50%'),
                 backgroundColor: '#97B88B',
-                borderRadius: hp('0.5%'),
+                borderRadius: hp('0.4%'),
               }}
             />
           </View>
 
-          <Text style={[globalStyles.subtitle, { marginLeft: wp('2%'), marginTop: hp('2%'), marginBottom: hp('3%'), fontSize: wp('3.8%') }]}>
+          <Text style={[globalStyles.subtitle, { marginLeft: 0, marginTop: hp('0.8%'), marginBottom: hp('2%'), fontSize: wp('3.8%'), lineHeight: wp('5%') }]}>
             Enter the verification code we just sent to your email address.
           </Text>
 
           {/* OTP Input Boxes */}
-          <View style={[globalStyles.otpContainer, { marginTop: hp('3%') }]}>
+          <View style={[globalStyles.otpContainer, { marginTop: hp('2.5%') }]}>
             {otp.map((digit, index) => (
               <TextInput
                 key={index}
@@ -201,12 +207,13 @@ const OTPVerification = () => {
           </View>
         </View>
 
-        <View style={[globalStyles.formActions, { marginTop: hp('4%') }]}>
+        <View style={[globalStyles.formActions, { marginTop: hp('3.5%') }]}>
           <TouchableOpacity
             style={[globalStyles.primaryButton, {
-              paddingVertical: hp('1.8%'),
+              paddingVertical: hp('1.6%'),
               paddingHorizontal: wp('8%'),
-              borderRadius: wp('3%')
+              borderRadius: wp('2.5%'),
+              minHeight: hp('5.5%')
             }]}
             onPress={handleVerifyOTP}
             disabled={loading || otp.join('').length !== 6}
