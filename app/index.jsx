@@ -2,6 +2,7 @@
 import { StyleSheet, Text, View, TouchableOpacity, Alert } from "react-native";
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
+import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { globalStyles } from '../assets/css/globalStyles';
 import { indexStyles } from '../assets/css/indexStyles';
 import TopographicBackground from '../components/TopographicBackground';
@@ -29,18 +30,18 @@ export default function Home() {
   // Background initialization - doesn't block UI
   const initializeServices = async () => {
     setIsInitializing(true);
-    
+
     try {
       // Lazy load heavy dependencies only when needed
       const { useSupabase } = await import('../hooks/use-supabase');
       const { useCustomAuth } = await import('../hooks/use-custom-auth');
       const { DatabaseSetup } = await import('../lib/database-setup');
-      
+
       console.log('🚀 Background: Starting service initialization...');
-      
+
       // Test connection (non-blocking)
       setInitStatus(prev => ({ ...prev, connection: true }));
-      
+
       // Check database (non-blocking)
       try {
         const dbStatus = await DatabaseSetup.setupDatabase();
@@ -49,25 +50,25 @@ export default function Home() {
         console.warn('Database setup failed:', err);
         setInitStatus(prev => ({ ...prev, database: false }));
       }
-      
+
       // Auth status (non-blocking)
       try {
         const { useCustomAuth } = await import('../hooks/use-custom-auth');
         const authHook = useCustomAuth();
-        
+
         if (authHook.user) {
           setUser(authHook.user);
           setCustomUserData(authHook.customUserData);
         }
-        
+
         setInitStatus(prev => ({ ...prev, auth: true }));
       } catch (err) {
         console.warn('Auth status check failed:', err);
         setInitStatus(prev => ({ ...prev, auth: false }));
       }
-      
+
       console.log('✅ Background: Service initialization complete');
-      
+
     } catch (err) {
       console.error('Background initialization failed:', err);
     } finally {
@@ -96,7 +97,7 @@ export default function Home() {
 
   // Get auth data from custom hook
   const { user: authUser, customUserData: authCustomData } = useCustomAuth() || {};
-  
+
   // Sync auth data when available
   useEffect(() => {
     if (authUser && !user) {
@@ -119,40 +120,45 @@ export default function Home() {
   return (
     <TopographicBackground>
       <View style={[globalStyles.welcomeCard, {
-        borderTopLeftRadius: 32,
-        borderTopRightRadius: 32,
+        borderTopLeftRadius: wp('8%'),
+        borderTopRightRadius: wp('8%'),
         borderBottomLeftRadius: 0,
         borderBottomRightRadius: 0,
         overflow: 'hidden',
         backgroundColor: '#fff',
         paddingBottom: 0,
-        paddingTop: 0,
-        minHeight: 260,
+        paddingTop: hp('2%'),
+        paddingHorizontal: wp('6%'),
+        minHeight: hp('32%'),
         elevation: 14,
-      }]}> 
-        <View style={{ position: 'relative', alignSelf: 'flex-start', marginBottom: 16, padding: 0, margin: 0 }}>
-          <Text style={[globalStyles.title, { marginBottom: 6, paddingBottom: 0 }]}>Welcome</Text>
+      }]}>
+        <View style={{ position: 'relative', alignSelf: 'flex-start', marginBottom: hp('2%'), padding: 0, margin: 0 }}>
+          <Text style={[globalStyles.title, { marginBottom: hp('0.8%'), paddingBottom: 0, fontSize: wp('8%') }]}>Welcome</Text>
           <View
             style={{
               position: 'absolute',
               left: 0,
               bottom: 0,
-              height: 4,
-              width: 96,
+              height: hp('0.5%'),
+              width: wp('24%'),
               backgroundColor: '#97B88B',
-              borderRadius: 4,
+              borderRadius: hp('0.5%'),
             }}
           />
         </View>
-  <Text style={[globalStyles.subtitle, { marginLeft: 8, marginTop: 18 }]}> 
+        <Text style={[globalStyles.subtitle, { marginLeft: wp('2%'), marginTop: hp('2.2%'), fontSize: wp('4%') }]}>
           Just a few steps to start saving food and cooking smarter.
         </Text>
-  <View style={[globalStyles.formActions, { marginBottom: 0, marginTop: 60 }]}> 
-          <TouchableOpacity 
-            style={globalStyles.primaryButton} 
+        <View style={[globalStyles.formActions, { marginBottom: 0, marginTop: hp('7.5%') }]}>
+          <TouchableOpacity
+            style={[globalStyles.primaryButton, {
+              paddingVertical: hp('1.8%'),
+              paddingHorizontal: wp('8%'),
+              borderRadius: wp('3%')
+            }]}
             onPress={goToSignIn}
           >
-            <Text style={globalStyles.primaryButtonText}>Continue</Text>
+            <Text style={[globalStyles.primaryButtonText, { fontSize: wp('4.5%') }]}>Continue</Text>
           </TouchableOpacity>
         </View>
       </View>

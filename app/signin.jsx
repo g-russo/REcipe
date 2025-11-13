@@ -1,16 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  View, 
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
-  Alert, 
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  Alert,
   StyleSheet,
   Animated,
   Keyboard,
   Platform
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
+import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { useCustomAuth } from '../hooks/use-custom-auth';
 import { Link, useRouter } from 'expo-router';
 import { globalStyles } from '../assets/css/globalStyles';
@@ -26,7 +27,7 @@ const SignIn = () => {
   const [passwordFocused, setPasswordFocused] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const translateY = useRef(new Animated.Value(0)).current;
-  
+
   const { signIn } = useCustomAuth();
   const router = useRouter();
 
@@ -68,11 +69,11 @@ const SignIn = () => {
     try {
       setLoading(true);
       const { data, error } = await signIn(email, password);
-      
+
       if (error) {
         // Provide more helpful error messages
         let errorMessage = error.message;
-        
+
         if (errorMessage.includes('Invalid login credentials')) {
           errorMessage = 'Invalid email or password. Please check your credentials and try again.';
         } else if (errorMessage.includes('Email not confirmed')) {
@@ -80,7 +81,7 @@ const SignIn = () => {
         } else if (errorMessage.includes('not verified')) {
           errorMessage = 'Please verify your email address before signing in. Check your inbox for the verification email.';
         }
-        
+
         Alert.alert('Sign In Error', errorMessage, [
           {
             text: 'Resend Verification',
@@ -90,9 +91,9 @@ const SignIn = () => {
                 'Would you like to go to sign up to resend verification email?',
                 [
                   { text: 'Cancel', style: 'cancel' },
-                  { 
-                    text: 'Yes', 
-                    onPress: () => router.push('/signup') 
+                  {
+                    text: 'Yes',
+                    onPress: () => router.push('/signup')
                   }
                 ]
               );
@@ -123,34 +124,40 @@ const SignIn = () => {
   return (
     <TopographicBackground>
       <Animated.View style={[
-        globalStyles.card, 
-        { 
-          paddingTop: 8, 
-          paddingBottom: 10, 
+        globalStyles.card,
+        {
+          paddingTop: hp('1%'),
+          paddingBottom: hp('1.2%'),
+          paddingHorizontal: wp('6%'),
           marginTop: '80%',
           transform: [{ translateY }]
         }
       ]}>
         <View style={[globalStyles.formContent, { flex: 0 }]}>
-          <View style={{ position: 'relative', alignSelf: 'flex-start', marginTop: 0, marginBottom: 20 }}>
-            <Text style={[globalStyles.title, { marginBottom: 6, paddingBottom: 0 }]}>Sign in</Text>
+          <View style={{ position: 'relative', alignSelf: 'flex-start', marginTop: 0, marginBottom: hp('2.5%') }}>
+            <Text style={[globalStyles.title, { marginBottom: hp('0.8%'), paddingBottom: 0, fontSize: wp('8%') }]}>Sign in</Text>
             <View
               style={{
                 position: 'absolute',
                 left: 0,
                 bottom: 0,
-                height: 4,
-                width: 80,
+                height: hp('0.5%'),
+                width: wp('20%'),
                 backgroundColor: '#97B88B',
-                borderRadius: 4,
+                borderRadius: hp('0.5%'),
               }}
             />
           </View>
-          
-          <View style={globalStyles.inputContainer}>
-            <Text style={globalStyles.inputLabel}>Email</Text>
+
+          <View style={[globalStyles.inputContainer, { marginBottom: hp('1.5%') }]}>
+            <Text style={[globalStyles.inputLabel, { fontSize: wp('4%'), marginBottom: hp('0.8%') }]}>Email</Text>
             <TextInput
-              style={[globalStyles.input, emailFocused && globalStyles.inputFocused]}
+              style={[globalStyles.input, emailFocused && globalStyles.inputFocused, {
+                paddingVertical: hp('1.5%'),
+                paddingHorizontal: wp('3.5%'),
+                fontSize: wp('4%'),
+                borderRadius: wp('2%')
+              }]}
               placeholder="demo@email.com"
               value={email}
               onChangeText={setEmail}
@@ -162,12 +169,18 @@ const SignIn = () => {
               placeholderTextColor="#BDC3C7"
             />
           </View>
-          
-          <View style={globalStyles.inputContainer}>
-            <Text style={globalStyles.inputLabel}>Password</Text>
+
+          <View style={[globalStyles.inputContainer, { marginBottom: hp('1%') }]}>
+            <Text style={[globalStyles.inputLabel, { fontSize: wp('4%'), marginBottom: hp('0.8%') }]}>Password</Text>
             <View style={{ position: 'relative' }}>
               <TextInput
-                style={[globalStyles.input, passwordFocused && globalStyles.inputFocused, { paddingRight: 45 }]}
+                style={[globalStyles.input, passwordFocused && globalStyles.inputFocused, {
+                  paddingRight: wp('12%'),
+                  paddingVertical: hp('1.5%'),
+                  paddingHorizontal: wp('3.5%'),
+                  fontSize: wp('4%'),
+                  borderRadius: wp('2%')
+                }]}
                 placeholder="Enter your password"
                 value={password}
                 onChangeText={setPassword}
@@ -180,20 +193,20 @@ const SignIn = () => {
               <TouchableOpacity
                 style={{
                   position: 'absolute',
-                  right: 12,
+                  right: wp('3%'),
                   top: '50%',
-                  transform: [{ translateY: -12 }],
-                  padding: 4,
+                  transform: [{ translateY: -hp('1.5%') }],
+                  padding: hp('0.5%'),
                 }}
                 onPress={() => setShowPassword(!showPassword)}
               >
                 {showPassword ? (
-                  <Svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7F8C8D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <Svg width={wp('6%')} height={wp('6%')} viewBox="0 0 24 24" fill="none" stroke="#7F8C8D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <Path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
                     <Path d="M1 1l22 22" />
                   </Svg>
                 ) : (
-                  <Svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7F8C8D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <Svg width={wp('6%')} height={wp('6%')} viewBox="0 0 24 24" fill="none" stroke="#7F8C8D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <Path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                     <Path d="M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z" />
                   </Svg>
@@ -201,43 +214,48 @@ const SignIn = () => {
               </TouchableOpacity>
             </View>
           </View>
-          
-          <View style={[signinStyles.optionsContainer, { marginVertical: 0 }]}> 
-            <TouchableOpacity 
+
+          <View style={[signinStyles.optionsContainer, { marginVertical: 0, marginTop: hp('1%') }]}>
+            <TouchableOpacity
               style={globalStyles.checkboxContainer}
               onPress={() => setRememberMe(!rememberMe)}
             >
               <View style={[
-                globalStyles.checkbox, 
-                rememberMe && globalStyles.checkboxChecked
+                globalStyles.checkbox,
+                rememberMe && globalStyles.checkboxChecked,
+                { width: wp('5%'), height: wp('5%'), borderRadius: wp('1%') }
               ]}>
-                {rememberMe && <Text style={signinStyles.checkmark}>✓</Text>}
+                {rememberMe && <Text style={[signinStyles.checkmark, { fontSize: wp('3.5%') }]}>✓</Text>}
               </View>
-              <Text style={globalStyles.checkboxText}>Remember Me</Text>
+              <Text style={[globalStyles.checkboxText, { fontSize: wp('3.5%'), marginLeft: wp('2%') }]}>Remember Me</Text>
             </TouchableOpacity>
-            
+
             <TouchableOpacity onPress={goToForgotPassword}>
-              <Text style={globalStyles.linkText}>Forgot Password?</Text>
+              <Text style={[globalStyles.linkText, { fontSize: wp('3.5%') }]}>Forgot Password?</Text>
             </TouchableOpacity>
           </View>
         </View>
-        
-        <View style={[globalStyles.formActions, { marginTop: 50, marginBottom: 0, paddingTop: 0 }]}> 
-          <TouchableOpacity 
-            style={globalStyles.primaryButton} 
+
+        <View style={[globalStyles.formActions, { marginTop: hp('6%'), marginBottom: 0, paddingTop: 0 }]}>
+          <TouchableOpacity
+            style={[globalStyles.primaryButton, {
+              paddingVertical: hp('1.8%'),
+              paddingHorizontal: wp('8%'),
+              borderRadius: wp('3%')
+            }]}
             onPress={handleSignIn}
             disabled={loading}
           >
-            <Text style={globalStyles.primaryButtonText}>
+            <Text style={[globalStyles.primaryButtonText, { fontSize: wp('4.5%') }]}>
               {loading ? 'Signing In...' : 'Login'}
             </Text>
           </TouchableOpacity>
-          
-          <View style={signinStyles.signupContainer}>
-            <Text style={globalStyles.grayText}>Don't have an Account? </Text>
+
+          <View style={[signinStyles.signupContainer, { marginTop: hp('2%') }]}>
+            <Text style={[globalStyles.grayText, { fontSize: wp('3.8%') }]}>Don't have an Account? </Text>
             <Link href="/signup" asChild>
               <TouchableOpacity>
-                <Text style={globalStyles.linkText}>Sign up</Text>
+                <Text style={[globalStyles.linkText, { fontSize: wp('3.8%') }]}>Sign up</Text>
               </TouchableOpacity>
             </Link>
           </View>
