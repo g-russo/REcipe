@@ -167,9 +167,10 @@ const SignUp = () => {
 
   return (
     <TopographicBackground>
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
       <Animated.View style={[globalStyles.card, {
-        paddingTop: hp('1%'),
-        paddingBottom: hp('1.2%'),
+        paddingTop: hp('1.5%'),
+        paddingBottom: hp('1.5%'),
         paddingHorizontal: wp('6%'),
         position: 'absolute',
         bottom: 0,

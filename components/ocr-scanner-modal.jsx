@@ -12,6 +12,8 @@ import {
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator'; // ✅ ADD THIS
+import Tesseract from 'tesseract.js'; // ✅ ADD THIS
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const FRAME_WIDTH = SCREEN_WIDTH * 0.85;
@@ -22,6 +24,7 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
   const [scanning, setScanning] = useState(false);
   const [extractedLines, setExtractedLines] = useState([]);
   const [selectedLines, setSelectedLines] = useState(new Set());
+  const [ocrProgress, setOcrProgress] = useState(0); // ✅ ADD PROGRESS
   const cameraRef = useRef(null);
 
   useEffect(() => {
@@ -32,6 +35,7 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
       setExtractedLines([]);
       setSelectedLines(new Set());
       setScanning(false);
+      setOcrProgress(0);
     }
   }, [visible]);
 
@@ -39,48 +43,66 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
     if (scanning || !cameraRef.current) return;
     
     setScanning(true);
+    setOcrProgress(0);
     
     try {
+      console.log('📷 Capturing image...');
+      
       const photo = await cameraRef.current.takePictureAsync({
         quality: 0.8,
         base64: false,
       });
 
-      await performOCR(photo.uri);
+      console.log('✅ Image captured:', photo.uri);
+
+      // ✅ Optimize image for OCR (resize, increase contrast)
+      console.log('🔧 Processing image...');
+      const processedImage = await manipulateAsync(
+        photo.uri,
+        [
+          { resize: { width: 1024 } }, // Resize for faster processing
+        ],
+        { 
+          compress: 0.8, 
+          format: SaveFormat.JPEG 
+        }
+      );
+
+      console.log('✅ Image processed, starting OCR...');
+      await performOCR(processedImage.uri);
       
     } catch (error) {
-      console.error('OCR error:', error);
+      console.error('❌ OCR error:', error);
       Alert.alert('Error', 'Failed to capture image. Please try again.');
       setScanning(false);
+      setOcrProgress(0);
     }
   };
 
   const performOCR = async (imageUri) => {
     try {
-      const formData = new FormData();
-      formData.append('file', {
-        uri: imageUri,
-        type: 'image/jpeg',
-        name: 'ocr-image.jpg',
-      });
-
-      const response = await fetch(
-        `${process.env.EXPO_PUBLIC_FOOD_API_URL}/ocr/extract`,
+      console.log('🔍 Starting Tesseract OCR...');
+      
+      // ✅ Use Tesseract.js for client-side OCR
+      const result = await Tesseract.recognize(
+        imageUri,
+        'eng', // Language (English)
         {
-          method: 'POST',
-          body: formData,
-          headers: {
-            'Content-Type': 'multipart/form-data',
+          logger: (m) => {
+            // Track OCR progress
+            if (m.status === 'recognizing text') {
+              const progress = Math.round(m.progress * 100);
+              setOcrProgress(progress);
+              console.log(`OCR Progress: ${progress}%`);
+            }
           },
         }
       );
 
-      if (!response.ok) {
-        throw new Error('OCR extraction failed');
-      }
+      console.log('✅ OCR Complete!');
+      console.log('📝 Extracted text:', result.data.text);
 
-      const result = await response.json();
-      const text = result.text || '';
+      const text = result.data.text || '';
 
       // Split text into lines and filter empty lines
       const lines = text
@@ -90,6 +112,7 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
 
       setExtractedLines(lines);
       setScanning(false);
+      setOcrProgress(0);
 
       if (lines.length === 0) {
         Alert.alert(
@@ -99,13 +122,14 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
         );
       }
     } catch (error) {
-      console.error('OCR processing error:', error);
+      console.error('❌ OCR processing error:', error);
       Alert.alert(
         'Error',
         'Failed to process text. Please try again.',
         [{ text: 'OK' }]
       );
       setScanning(false);
+      setOcrProgress(0);
     }
   };
 
@@ -186,7 +210,7 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
               facing="back"
             />
 
-            {/* Overlay - only focus area visible */}
+            {/* Overlay */}
             <View style={styles.overlay}>
               <View style={styles.unfocusedTop} />
               <View style={styles.middleRow}>
@@ -209,11 +233,21 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
             <View style={styles.instructionsContainer}>
               <Ionicons name="document-text-outline" size={48} color="#fff" />
               <Text style={styles.instructionsText}>
-                {scanning ? 'Extracting text...' : 'Position text within the frame'}
+                {scanning 
+                  ? `Extracting text... ${ocrProgress}%` 
+                  : 'Position text within the frame'}
               </Text>
               <Text style={styles.instructionsSubtext}>
                 Only text inside the frame will be scanned
               </Text>
+              
+              {/* ✅ Progress Bar */}
+              {scanning && ocrProgress > 0 && (
+                <View style={styles.progressBarContainer}>
+                  <View style={[styles.progressBar, { width: `${ocrProgress}%` }]} />
+                </View>
+              )}
+              
               {scanning && <ActivityIndicator size="large" color="#fff" style={{ marginTop: 10 }} />}
             </View>
 
@@ -231,7 +265,7 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
             )}
           </View>
         ) : (
-          /* Results View */
+          /* Results View - SAME AS BEFORE */
           <View style={styles.resultsContainer}>
             <View style={styles.resultsHeader}>
               <Text style={styles.resultsTitle}>Select Text Lines</Text>
@@ -607,5 +641,19 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  // ✅ Add progress bar styles
+  progressBarContainer: {
+    width: '80%',
+    height: 6,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    borderRadius: 3,
+    marginTop: 12,
+    overflow: 'hidden',
+  },
+  progressBar: {
+    height: '100%',
+    backgroundColor: '#FF9800',
+    borderRadius: 3,
   },
 });

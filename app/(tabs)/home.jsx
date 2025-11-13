@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   SafeAreaView,
   Image,
+  StatusBar,
+  Platform
 } from 'react-native';
 import Svg, { Path, Circle } from 'react-native-svg';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
@@ -381,6 +383,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
   },
   scrollView: {
     flex: 1,
@@ -390,7 +393,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: wp('5%'),
-    paddingTop: hp('3.8%'),
+    paddingTop: hp('2%'),
     paddingBottom: hp('3.1%'),
   },
   headerLeft: {

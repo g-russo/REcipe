@@ -11,10 +11,12 @@ import {
   ScrollView,
   SafeAreaView,
   ActivityIndicator,
-  StatusBar
+  StatusBar,
+  Platform
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
+import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import cacheService from '../../services/supabase-cache-service';
@@ -99,7 +101,7 @@ const RecipeSearch = () => {
     loadPopularRecipesFromCache();
     // Load recent searches from AsyncStorage
     loadRecentSearches();
-    
+
     // Cleanup function to reset loading states when component unmounts
     return () => {
       setLoading(false);
@@ -129,16 +131,16 @@ const RecipeSearch = () => {
     setLoadingPopular(true);
     try {
       console.log('📱 Loading popular recipes from Supabase cache...');
-      
+
       // Get cached recipes from Supabase (auto-fetches from API if cache is empty/expired)
       const cached = await cacheService.getPopularRecipes();
-      
+
       if (cached && cached.length > 0) {
         console.log(`✅ Loaded ${cached.length} popular recipes from cache`);
-        
+
         // Take first 8 recipes
         const limitedRecipes = cached.slice(0, 8);
-        
+
         const formattedRecipes = limitedRecipes.map((recipe, index) => ({
           id: recipe.uri || `recipe-${index}`,
           title: recipe.label || recipe.title,
@@ -150,7 +152,7 @@ const RecipeSearch = () => {
           difficulty: recipe.difficulty || 'Medium',
           rating: recipe.rating || 4.5
         }));
-        
+
         setPopularRecipes(formattedRecipes);
       } else {
         console.log('⚠️ No cached recipes available, will fetch fresh');
@@ -169,13 +171,13 @@ const RecipeSearch = () => {
     setLoadingPopular(true);
     try {
       console.log('🔄 Refreshing popular recipes from API...');
-      
+
       // Force refresh the cache (bypasses cache, fetches fresh from API)
       const freshRecipes = await cacheService.getPopularRecipes(true); // true = forceRefresh
-      
+
       if (freshRecipes && freshRecipes.length > 0) {
         console.log(`✅ Refreshed with ${freshRecipes.length} recipes from API`);
-        
+
         // Shuffle for variety and take first 8
         const shuffled = [...freshRecipes].sort(() => Math.random() - 0.5);
         const displayRecipes = shuffled.slice(0, 8).map((recipe, index) => ({
@@ -189,7 +191,7 @@ const RecipeSearch = () => {
           difficulty: recipe.difficulty || 'Medium',
           rating: recipe.rating || 4.5
         }));
-        
+
         setPopularRecipes(displayRecipes);
         console.log('✅ Popular recipes updated and cached in Supabase (expires in 6h)');
       } else {
@@ -197,9 +199,9 @@ const RecipeSearch = () => {
       }
     } catch (error) {
       console.error('❌ Error refreshing popular recipes:', error);
-      
+
       Alert.alert(
-        'Refresh Error', 
+        'Refresh Error',
         'Failed to refresh popular recipes. Please try again later.',
         [{ text: 'OK' }]
       );
@@ -272,18 +274,18 @@ const RecipeSearch = () => {
 
   const addToRecentSearches = async (query) => {
     if (!query.trim()) return;
-    
+
     try {
       setRecentSearches(prev => {
         // Remove if already exists to avoid duplicates
         const filtered = prev.filter(search => search.toLowerCase() !== query.toLowerCase());
         // Add to beginning and limit to 5 items
         const updated = [query, ...filtered].slice(0, 5);
-        
+
         // Save to AsyncStorage
         AsyncStorage.setItem('recentSearches', JSON.stringify(updated))
           .catch(err => console.error('Error saving recent searches:', err));
-        
+
         return updated;
       });
     } catch (error) {
@@ -296,7 +298,7 @@ const RecipeSearch = () => {
     setLoadingPopular(true);
     try {
       console.log('⚠️ Using fallback popular recipes method');
-      
+
       // Use basic fallback data
       const fallbackRecipes = [
         {
@@ -370,7 +372,7 @@ const RecipeSearch = () => {
 
     // ✅ Add spell correction
     const spellCheck = SpellCorrector.correctSpelling(query.trim());
-    
+
     if (spellCheck.hasCorrections && spellCheck.confidence > 0.7) {
       // Show correction confirmation
       Alert.alert(
@@ -394,7 +396,7 @@ const RecipeSearch = () => {
       );
       return;
     }
-    
+
     // No corrections needed or low confidence - proceed with search
     performSearch(query.trim());
   };
@@ -419,7 +421,7 @@ const RecipeSearch = () => {
         edamamId: process.env.EXPO_PUBLIC_EDAMAM_APP_ID,
         edamamKey: process.env.EXPO_PUBLIC_EDAMAM_APP_KEY?.substring(0, 10) + '...'
       });
-      
+
       // Build complete search options with filters
       // Edamam API requires separate parameters:
       // - health: for allergies AND dietary preferences (both are health labels in Edamam)
@@ -428,10 +430,10 @@ const RecipeSearch = () => {
         ...(filters.allergy || []),
         ...(filters.dietary || [])
       ];
-      
+
       console.log('🏥 Health labels to send:', healthLabels);
       console.log('🥗 Diet labels to send:', filters.diet);
-      
+
       const searchOptions = {
         from: 0,
         to: 20
@@ -451,16 +453,16 @@ const RecipeSearch = () => {
       // Use Supabase cache service (automatically handles caching and API calls)
       // Note: Cache service returns recipes array directly, not wrapped in an object
       console.log('📞 Calling cache service with query:', query);
-      
+
       const recipesResult = await cacheService.getSearchResults(query, searchOptions);
       console.log('📦 Cache service raw result type:', Array.isArray(recipesResult) ? 'Array' : typeof recipesResult);
       console.log('📦 Cache service returned:', recipesResult?.length || 0, 'recipes');
       console.log('📦 First recipe:', recipesResult?.[0]?.label || 'No recipes');
-      
+
       // 🌐 Enhance search with multilingual support
       const MultilingualSearch = require('../../utils/multilingual-search').default;
       const enhancedSearch = MultilingualSearch.enhanceSearchQuery(query);
-      
+
       // Cache service returns array directly, not { success, data }
       const recipes = Array.isArray(recipesResult) ? recipesResult : [];
       const result = { success: true, data: { recipes } };
@@ -470,7 +472,7 @@ const RecipeSearch = () => {
         // ✅ ALWAYS check database for AI recipes (even if Edamam found results)
         console.log('🔍 Checking database for AI-generated recipes...');
         console.log('🌐 Multilingual search queries:', enhancedSearch.searchQueries);
-        
+
         let dbResult = { found: false, recipes: [], count: 0 };
         try {
           // ✅ Check if SousChefAIService and checkExistingRecipes exist
@@ -494,12 +496,12 @@ const RecipeSearch = () => {
           console.error('❌ Error checking existing recipes:', dbError);
           console.error('Error details:', dbError.message);
         }
-        
+
         let allRecipes = []; // Start empty for proper ordering
-        
+
         if (dbResult.found && dbResult.recipes.length > 0) {
           console.log(`✅ Found ${dbResult.count} AI recipes in database`);
-          
+
           // Format database recipes to match Edamam structure
           const formattedDbRecipes = dbResult.recipes.map(recipe => ({
             id: recipe.recipeID,
@@ -512,7 +514,7 @@ const RecipeSearch = () => {
             dietLabels: recipe.dietLabels || [],
             healthLabels: recipe.healthLabels || [],
             cautions: recipe.allergens || [],
-            ingredientLines: recipe.ingredients?.map(ing => 
+            ingredientLines: recipe.ingredients?.map(ing =>
               `${ing.quantity || ''} ${ing.unit || ''} ${ing.name}${ing.notes ? ` (${ing.notes})` : ''}`
             ) || [],
             ingredients: recipe.ingredients || [],
@@ -530,13 +532,13 @@ const RecipeSearch = () => {
             instructions: recipe.instructions,
             difficulty: recipe.difficulty
           }));
-          
+
           // ✅ Merge: AI recipes FIRST, then Edamam recipes (remove duplicates)
           const combined = [...formattedDbRecipes, ...result.data.recipes];
-          
+
           // Remove duplicates based on recipeID or URI
           const seenIds = new Set();
-          
+
           combined.forEach(recipe => {
             const recipeId = recipe.recipeID || recipe.uri;
             if (recipeId && !seenIds.has(recipeId)) {
@@ -544,20 +546,20 @@ const RecipeSearch = () => {
               allRecipes.push(recipe);
             }
           });
-          
+
           console.log(`🍽️ Total unique recipes: ${allRecipes.length} (AI: ${formattedDbRecipes.length}, Edamam: ${result.data.recipes.length}, Duplicates removed: ${combined.length - allRecipes.length})`);
         } else {
           // No AI recipes found, just show Edamam results
           allRecipes = [...result.data.recipes];
         }
-        
+
         const totalRecipes = allRecipes.length;
-        
+
         if (totalRecipes > 0) {
           // ✅ Show all recipes (AI + Edamam)
           setRecipes(allRecipes);
           setHasSearched(true); // ✅ Set hasSearched AFTER we have results
-          
+
           // 🤖 If less than 5 recipes, enable "Generate More" button
           if (totalRecipes < 5) {
             setCanGenerateMore(true);
@@ -566,7 +568,7 @@ const RecipeSearch = () => {
           } else {
             setCanGenerateMore(false);
           }
-          
+
           setAiRecipeCount(dbResult.count || 0);
           console.log(`✅ Displaying ${totalRecipes} total recipes (${dbResult.count} AI, ${result.data.recipes.length} Edamam)`);
           setLoading(false);
@@ -577,7 +579,7 @@ const RecipeSearch = () => {
           setLoading(false); // Stop search loading
           setGeneratingAI(true); // Start AI loading
           setCurrentSearchQuery(query);
-          
+
           try {
             // Get user's pantry items
             let pantryItems = [];
@@ -585,7 +587,7 @@ const RecipeSearch = () => {
               pantryItems = await SousChefAIService.getUserPantryItems(user.email);
               console.log(`📦 Found ${pantryItems.length} pantry items`);
             }
-            
+
             // Generate 1 AI recipe (with duplicate detection)
             const aiResult = await SousChefAIService.generateSingleRecipe(
               query,
@@ -594,7 +596,7 @@ const RecipeSearch = () => {
               0, // First recipe
               [] // No existing recipes yet
             );
-            
+
             if (aiResult.success && aiResult.recipe) {
               // Format AI recipe
               const formattedRecipe = {
@@ -608,7 +610,7 @@ const RecipeSearch = () => {
                 dietLabels: aiResult.recipe.dietLabels || [],
                 healthLabels: aiResult.recipe.healthLabels || [],
                 cautions: aiResult.recipe.allergens || [],
-                ingredientLines: aiResult.recipe.ingredients.map(ing => 
+                ingredientLines: aiResult.recipe.ingredients.map(ing =>
                   `${ing.quantity} ${ing.unit} ${ing.name}${ing.notes ? ` (${ing.notes})` : ''}`
                 ),
                 ingredients: aiResult.recipe.ingredients,
@@ -626,13 +628,13 @@ const RecipeSearch = () => {
                 instructions: aiResult.recipe.instructions,
                 difficulty: aiResult.recipe.difficulty
               };
-              
+
               setRecipes([formattedRecipe]);
               setAiRecipeCount(1);
               setCanGenerateMore(true); // Enable "Generate Another"
               setHasSearched(true); // ✅ Set hasSearched AFTER AI recipe is created
               console.log(`✅ Generated 1 AI recipe (1/5)`);
-              
+
               Alert.alert(
                 '🤖 AI Recipe Created!',
                 `No existing recipes found, so SousChef AI created a custom recipe just for you!${pantryItems.length > 0 ? '\n\n✨ Personalized with your pantry items!' : ''}\n\nWant more options? Tap "Generate Another" (up to 5 total).`,
@@ -688,7 +690,7 @@ const RecipeSearch = () => {
 
   const handleGenerateAnother = async () => {
     const currentTotal = recipes.length;
-    
+
     // Check if we've reached 5 total recipes
     if (currentTotal >= 5) {
       Alert.alert(
@@ -733,7 +735,7 @@ const RecipeSearch = () => {
           dietLabels: aiResult.recipe.dietLabels || [],
           healthLabels: aiResult.recipe.healthLabels || [],
           cautions: aiResult.recipe.allergens || [],
-          ingredientLines: aiResult.recipe.ingredients.map(ing => 
+          ingredientLines: aiResult.recipe.ingredients.map(ing =>
             `${ing.quantity} ${ing.unit} ${ing.name}${ing.notes ? ` (${ing.notes})` : ''}`
           ),
           ingredients: aiResult.recipe.ingredients,
@@ -755,24 +757,24 @@ const RecipeSearch = () => {
         // Add to existing recipes (check for duplicates first)
         setRecipes(prevRecipes => {
           // Check if recipe already exists by recipeID or URI
-          const exists = prevRecipes.some(r => 
+          const exists = prevRecipes.some(r =>
             (r.recipeID && r.recipeID === formattedRecipe.recipeID) ||
             (r.uri && r.uri === formattedRecipe.uri)
           );
-          
+
           if (exists) {
             console.log('⚠️ Recipe already exists, not adding duplicate');
             return prevRecipes;
           }
-          
+
           return [...prevRecipes, formattedRecipe];
         });
-        
+
         const newAiCount = aiRecipeCount + 1;
         setAiRecipeCount(newAiCount);
-        
+
         const newTotal = currentTotal + 1;
-        
+
         // Disable button if reached 5 total recipes
         if (newTotal >= 5) {
           setCanGenerateMore(false);
@@ -823,12 +825,12 @@ const RecipeSearch = () => {
 
   const renderRecipeCard = ({ item }) => {
     const isAI = item.isCustom || item.source === 'SousChef AI';
-    
+
     return (
       <TouchableOpacity style={styles.recipeCard} onPress={() => handleRecipePress(item)}>
         {item.image ? (
-          <Image 
-            source={{ uri: item.image }} 
+          <Image
+            source={{ uri: item.image }}
             style={styles.recipeImage}
             resizeMode="cover"
             onError={(error) => console.log('Recipe image load error:', item.label, error.nativeEvent?.error)}
@@ -838,7 +840,7 @@ const RecipeSearch = () => {
             <Ionicons name="image-outline" size={50} color="#ccc" />
           </View>
         )}
-        
+
         {/* AI Badge */}
         {isAI && (
           <View style={styles.aiBadge}>
@@ -846,45 +848,45 @@ const RecipeSearch = () => {
             <Text style={styles.aiBadgeText}>SousChef AI</Text>
           </View>
         )}
-        
+
         <View style={styles.recipeInfo}>
           <Text style={styles.recipeTitle} numberOfLines={2}>{item.label}</Text>
           <Text style={styles.recipeSource}>by {item.source}</Text>
-        
-        <View style={styles.recipeStats}>
-          <View style={styles.statItem}>
-            <Text style={styles.statLabel}>⏱️ {item.totalTime || 'N/A'}min</Text>
+
+          <View style={styles.recipeStats}>
+            <View style={styles.statItem}>
+              <Text style={styles.statLabel}>⏱️ {item.totalTime || 'N/A'}min</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={styles.statLabel}>🔥 {Math.round(item.calories || 0)} kcal</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={styles.statLabel}>👥 {item.yield} servings</Text>
+            </View>
           </View>
-          <View style={styles.statItem}>
-            <Text style={styles.statLabel}>🔥 {Math.round(item.calories || 0)} kcal</Text>
-          </View>
-          <View style={styles.statItem}>
-            <Text style={styles.statLabel}>👥 {item.yield} servings</Text>
-          </View>
+
+          {item.dietLabels.length > 0 && (
+            <View style={styles.labelsContainer}>
+              {item.dietLabels.slice(0, 2).map((label, index) => (
+                <View key={index} style={styles.dietLabel}>
+                  <Text style={styles.labelText}>{label}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {item.healthLabels.length > 0 && (
+            <View style={styles.labelsContainer}>
+              {item.healthLabels.slice(0, 3).map((label, index) => (
+                <View key={index} style={styles.healthLabel}>
+                  <Text style={styles.labelText}>{label}</Text>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
-
-        {item.dietLabels.length > 0 && (
-          <View style={styles.labelsContainer}>
-            {item.dietLabels.slice(0, 2).map((label, index) => (
-              <View key={index} style={styles.dietLabel}>
-                <Text style={styles.labelText}>{label}</Text>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {item.healthLabels.length > 0 && (
-          <View style={styles.labelsContainer}>
-            {item.healthLabels.slice(0, 3).map((label, index) => (
-              <View key={index} style={styles.healthLabel}>
-                <Text style={styles.labelText}>{label}</Text>
-              </View>
-            ))}
-          </View>
-        )}
-      </View>
-    </TouchableOpacity>
-  );
+      </TouchableOpacity>
+    );
   };
 
   const handleRecipePress = (recipe) => {
@@ -922,7 +924,7 @@ const RecipeSearch = () => {
     if (params?.searchQuery && params?.autoSearch === 'true') {
       console.log('🔍 Auto-searching from pantry:', params.searchQuery);
       setSearchQuery(params.searchQuery);
-      
+
       // Clear params and trigger search after a short delay
       setTimeout(() => {
         handleSearch(params.searchQuery);
@@ -936,311 +938,311 @@ const RecipeSearch = () => {
     <AuthGuard>
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-      
-      {/* API Usage Stats - Only show in development */}
 
-      
-      {/* Search Header */}
-      <View style={styles.searchHeader}>
-        <View style={styles.searchContainer}>
-          {hasSearched && (
-            <TouchableOpacity 
-              style={styles.backButton}
-              onPress={clearSearchResults}
-            >
-              <Ionicons name="arrow-back" size={20} color="#666" />
-            </TouchableOpacity> 
-          )}
-          <Ionicons name="search-outline" size={20} color="#666" style={styles.searchIcon} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search for recipes and ingredients"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            onSubmitEditing={() => handleSearch()}
-            returnKeyType="search"
-          />
-          <TouchableOpacity style={styles.filterButton} onPress={toggleFilters}>
-            <Ionicons name="options-outline" size={20} color="#666" />
-            {getFilterCount() > 0 && (
-              <View style={styles.filterBadge}>
-                <Text style={styles.filterBadgeText}>{getFilterCount()}</Text>
-              </View>
+        {/* API Usage Stats - Only show in development */}
+
+
+        {/* Search Header */}
+        <View style={styles.searchHeader}>
+          <View style={styles.searchContainer}>
+            {hasSearched && (
+              <TouchableOpacity
+                style={styles.backButton}
+                onPress={clearSearchResults}
+              >
+                <Ionicons name="arrow-back" size={wp('5%')} color="#666" />
+              </TouchableOpacity>
             )}
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.cameraButton}>
-            <Ionicons name="camera-outline" size={20} color="#666" />
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Expandable Filter Section */}
-      {showFilters && (
-        <View style={styles.filterSection}>
-          <View style={styles.filterHeader}>
-            <Text style={styles.filterTitle}>Filters ({getFilterCount()})</Text>
-            <View style={styles.filterHeaderActions}>
+            <Ionicons name="search-outline" size={wp('5%')} color="#666" style={styles.searchIcon} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search for recipes and ingredients"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              onSubmitEditing={() => handleSearch()}
+              returnKeyType="search"
+            />
+            <TouchableOpacity style={styles.filterButton} onPress={toggleFilters}>
+              <Ionicons name="options-outline" size={wp('5%')} color="#666" />
               {getFilterCount() > 0 && (
-                <TouchableOpacity onPress={clearAllFilters} style={styles.clearButton}>
-                  <Text style={styles.clearFiltersText}>Clear All</Text>
+                <View style={styles.filterBadge}>
+                  <Text style={styles.filterBadgeText}>{getFilterCount()}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.cameraButton}>
+              <Ionicons name="camera-outline" size={wp('5%')} color="#666" />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Expandable Filter Section */}
+        {showFilters && (
+          <View style={styles.filterSection}>
+            <View style={styles.filterHeader}>
+              <Text style={styles.filterTitle}>Filters ({getFilterCount()})</Text>
+              <View style={styles.filterHeaderActions}>
+                {getFilterCount() > 0 && (
+                  <TouchableOpacity onPress={clearAllFilters} style={styles.clearButton}>
+                    <Text style={styles.clearFiltersText}>Clear All</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity onPress={toggleFilters}>
+                  <Text style={styles.clearFiltersText}>Hide</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+            <ScrollView
+              style={styles.filterScrollView}
+              showsVerticalScrollIndicator={false}
+            >
+              {/* Allergy Filters */}
+              <View style={styles.filterCategory}>
+                <Text style={styles.filterCategoryTitle}>Allergies (Allergen-Free)</Text>
+                <View style={styles.filterChipsContainer}>
+                  {allergyLabels.map((label) => (
+                    <TouchableOpacity
+                      key={label}
+                      style={[
+                        styles.filterChip,
+                        filters.allergy?.includes(label) && styles.filterChipActive
+                      ]}
+                      onPress={() => toggleAllergyFilter(label)}
+                    >
+                      <Text
+                        style={[
+                          styles.filterChipText,
+                          filters.allergy?.includes(label) && styles.filterChipTextActive
+                        ]}
+                      >
+                        {label.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {/* Dietary Preference Filters */}
+              <View style={styles.filterCategory}>
+                <Text style={styles.filterCategoryTitle}>Dietary Preferences</Text>
+                <View style={styles.filterChipsContainer}>
+                  {dietaryLabels.map((label) => (
+                    <TouchableOpacity
+                      key={label}
+                      style={[
+                        styles.filterChip,
+                        filters.dietary?.includes(label) && styles.filterChipActive
+                      ]}
+                      onPress={() => toggleDietaryFilter(label)}
+                    >
+                      <Text
+                        style={[
+                          styles.filterChipText,
+                          filters.dietary?.includes(label) && styles.filterChipTextActive
+                        ]}
+                      >
+                        {label.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {/* Nutritional Profile Filters */}
+              <View style={styles.filterCategory}>
+                <Text style={styles.filterCategoryTitle}>Nutritional Profiles</Text>
+                <View style={styles.filterChipsContainer}>
+                  {dietLabels.map((label) => (
+                    <TouchableOpacity
+                      key={label}
+                      style={[
+                        styles.filterChip,
+                        filters.diet?.includes(label) && styles.filterChipActive
+                      ]}
+                      onPress={() => toggleDietFilter(label)}
+                    >
+                      <Text
+                        style={[
+                          styles.filterChipText,
+                          filters.diet?.includes(label) && styles.filterChipTextActive
+                        ]}
+                      >
+                        {label.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            </ScrollView>
+          </View>
+        )}
+
+        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+          {/* Search Results - Show when user has searched */}
+          {hasSearched && recipes.length > 0 && (
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Search Results</Text>
+                <Text style={styles.resultsCount}>{recipes.length} recipes found</Text>
+              </View>
+
+              <FlatList
+                data={recipes}
+                renderItem={renderRecipeCard}
+                keyExtractor={(item) => item.id}
+                showsVerticalScrollIndicator={false}
+                scrollEnabled={false} // Disable internal scrolling since we're in a ScrollView
+                numColumns={1}
+              />
+
+              {/* Generate Another Button */}
+              {canGenerateMore && !generatingAI && (
+                <TouchableOpacity
+                  style={styles.generateAnotherButton}
+                  onPress={handleGenerateAnother}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.generateAnotherContent}>
+                    <Ionicons name="sparkles" size={24} color="#fff" />
+                    <View style={styles.generateAnotherTextContainer}>
+                      <Text style={styles.generateAnotherText}>
+                        Generate Another Recipe
+                      </Text>
+                      <Text style={styles.generateAnotherSubtext}>
+                        {aiRecipeCount}/5 AI recipes created
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={24} color="#fff" />
+                  </View>
                 </TouchableOpacity>
               )}
-              <TouchableOpacity onPress={toggleFilters}>
-                <Text style={styles.clearFiltersText}>Hide</Text>
-              </TouchableOpacity>
             </View>
-          </View>
-          <ScrollView 
-            style={styles.filterScrollView}
-            showsVerticalScrollIndicator={false}
-          >
-            {/* Allergy Filters */}
-            <View style={styles.filterCategory}>
-              <Text style={styles.filterCategoryTitle}>Allergies (Allergen-Free)</Text>
-              <View style={styles.filterChipsContainer}>
-                {allergyLabels.map((label) => (
-                  <TouchableOpacity
-                    key={label}
-                    style={[
-                      styles.filterChip,
-                      filters.allergy?.includes(label) && styles.filterChipActive
-                    ]}
-                    onPress={() => toggleAllergyFilter(label)}
-                  >
-                    <Text
-                      style={[
-                        styles.filterChipText,
-                        filters.allergy?.includes(label) && styles.filterChipTextActive
-                      ]}
-                    >
-                      {label.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
+          )}
 
-            {/* Dietary Preference Filters */}
-            <View style={styles.filterCategory}>
-              <Text style={styles.filterCategoryTitle}>Dietary Preferences</Text>
-              <View style={styles.filterChipsContainer}>
-                {dietaryLabels.map((label) => (
-                  <TouchableOpacity
-                    key={label}
-                    style={[
-                      styles.filterChip,
-                      filters.dietary?.includes(label) && styles.filterChipActive
-                    ]}
-                    onPress={() => toggleDietaryFilter(label)}
-                  >
-                    <Text
-                      style={[
-                        styles.filterChipText,
-                        filters.dietary?.includes(label) && styles.filterChipTextActive
-                      ]}
-                    >
-                      {label.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-
-            {/* Nutritional Profile Filters */}
-            <View style={styles.filterCategory}>
-              <Text style={styles.filterCategoryTitle}>Nutritional Profiles</Text>
-              <View style={styles.filterChipsContainer}>
-                {dietLabels.map((label) => (
-                  <TouchableOpacity
-                    key={label}
-                    style={[
-                      styles.filterChip,
-                      filters.diet?.includes(label) && styles.filterChipActive
-                    ]}
-                    onPress={() => toggleDietFilter(label)}
-                  >
-                    <Text
-                      style={[
-                        styles.filterChipText,
-                        filters.diet?.includes(label) && styles.filterChipTextActive
-                      ]}
-                    >
-                      {label.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          </ScrollView>
-        </View>
-      )}
-
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Search Results - Show when user has searched */}
-        {hasSearched && recipes.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Search Results</Text>
-              <Text style={styles.resultsCount}>{recipes.length} recipes found</Text>
-            </View>
-            
-            <FlatList
-              data={recipes}
-              renderItem={renderRecipeCard}
-              keyExtractor={(item) => item.id}
-              showsVerticalScrollIndicator={false}
-              scrollEnabled={false} // Disable internal scrolling since we're in a ScrollView
-              numColumns={1}
-            />
-
-            {/* Generate Another Button */}
-            {canGenerateMore && !generatingAI && (
-              <TouchableOpacity 
-                style={styles.generateAnotherButton}
-                onPress={handleGenerateAnother}
-                activeOpacity={0.7}
-              >
-                <View style={styles.generateAnotherContent}>
-                  <Ionicons name="sparkles" size={24} color="#fff" />
-                  <View style={styles.generateAnotherTextContainer}>
-                    <Text style={styles.generateAnotherText}>
-                      Generate Another Recipe
-                    </Text>
-                    <Text style={styles.generateAnotherSubtext}>
-                      {aiRecipeCount}/5 AI recipes created
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={24} color="#fff" />
-                </View>
-              </TouchableOpacity>
-            )}
-          </View>
-        )}
-
-        {/* Loading State - Show when searching API/Database (but NOT when AI is generating) */}
-        {loading && !generatingAI && (
-          <View style={styles.section}>
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#4CAF50" />
-              <Text style={styles.loadingText}>Searching for recipes...</Text>
-              <Text style={styles.loadingSubtext}>Checking Edamam API and database...</Text>
-            </View>
-          </View>
-        )}
-
-        {/* AI Generation State - Show when AI is creating recipes */}
-        {generatingAI && (
-          <View style={styles.section}>
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#8A2BE2" />
-              <Text style={styles.loadingText}>🤖 SousChef AI is creating custom recipes...</Text>
-              <Text style={styles.loadingSubtext}>Generating images and cooking instructions</Text>
-              <Text style={styles.loadingSubtext}>This may take 30-60 seconds</Text>
-            </View>
-          </View>
-        )}
-
-        {/* No Results Message - Only show when search AND AI generation both fail */}
-        {hasSearched && recipes.length === 0 && !loading && !generatingAI && (
-          <View style={styles.section}>
-            <View style={styles.emptyContainer}>
-              <Ionicons name="alert-circle-outline" size={60} color="#ff6b6b" style={{ marginBottom: 15 }} />
-              <Text style={styles.emptyText}>No Recipes Available</Text>
-              <Text style={styles.emptySubtext}>No results found in Edamam or our AI database.</Text>
-              <Text style={styles.emptySubtext}>AI generation also encountered an error.</Text>
-              <Text style={[styles.emptySubtext, { marginTop: 10, color: '#4CAF50' }]}>
-                💡 Try a different search term or check your spelling
-              </Text>
-            </View>
-          </View>
-        )}
-
-        {/* Recent Searches - Show only when not searching AND not loading */}
-        {!hasSearched && !loading && !generatingAI && recentSearches.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Recent Searches</Text>
-              <TouchableOpacity onPress={clearAllRecentSearches}>
-                <Text style={styles.clearText}>Clear</Text>
-              </TouchableOpacity>
-            </View>
-            
-            {recentSearches.map((search, index) => (
-              <TouchableOpacity 
-                key={index} 
-                style={styles.recentSearchItem}
-                onPress={() => handleRecentSearchTap(search)}
-              >
-                <Ionicons name="search-outline" size={16} color="#666" style={styles.recentSearchIcon} />
-                <Text style={styles.recentSearchText}>{search}</Text>
-                <TouchableOpacity 
-                  style={styles.removeButton}
-                  onPress={() => removeRecentSearch(index)}
-                >
-                  <Ionicons name="close" size={16} color="#666" />
-                </TouchableOpacity>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-
-        {/* Popular Recipes - Show only when not searching AND not loading */}
-        {!hasSearched && !loading && !generatingAI && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Popular Recipes</Text>
-              <TouchableOpacity 
-                onPress={handleRefreshPopularRecipes}
-                disabled={loadingPopular}
-              >
-                <Text style={[styles.viewAllText, loadingPopular && styles.disabledText]}>
-                  {loadingPopular ? 'Refreshing...' : 'Refresh'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-            
-            {loadingPopular ? (
+          {/* Loading State - Show when searching API/Database (but NOT when AI is generating) */}
+          {loading && !generatingAI && (
+            <View style={styles.section}>
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color="#4CAF50" />
-                <Text style={styles.loadingText}>
-                  {popularRecipes.length > 0 ? 'Refreshing recipes...' : 'Loading popular recipes...'}
+                <Text style={styles.loadingText}>Searching for recipes...</Text>
+                <Text style={styles.loadingSubtext}>Checking Edamam API and database...</Text>
+              </View>
+            </View>
+          )}
+
+          {/* AI Generation State - Show when AI is creating recipes */}
+          {generatingAI && (
+            <View style={styles.section}>
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#8A2BE2" />
+                <Text style={styles.loadingText}>🤖 SousChef AI is creating custom recipes...</Text>
+                <Text style={styles.loadingSubtext}>Generating images and cooking instructions</Text>
+                <Text style={styles.loadingSubtext}>This may take 30-60 seconds</Text>
+              </View>
+            </View>
+          )}
+
+          {/* No Results Message - Only show when search AND AI generation both fail */}
+          {hasSearched && recipes.length === 0 && !loading && !generatingAI && (
+            <View style={styles.section}>
+              <View style={styles.emptyContainer}>
+                <Ionicons name="alert-circle-outline" size={60} color="#ff6b6b" style={{ marginBottom: 15 }} />
+                <Text style={styles.emptyText}>No Recipes Available</Text>
+                <Text style={styles.emptySubtext}>No results found in Edamam or our AI database.</Text>
+                <Text style={styles.emptySubtext}>AI generation also encountered an error.</Text>
+                <Text style={[styles.emptySubtext, { marginTop: 10, color: '#4CAF50' }]}>
+                  💡 Try a different search term or check your spelling
                 </Text>
               </View>
-            ) : (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.popularRecipesContainer}>
-                {popularRecipes.map((recipe, index) => (
-                  <TouchableOpacity 
-                    key={recipe.id} 
-                    style={[styles.popularRecipeCard, index === 0 && styles.firstCard]}
-                    onPress={() => handlePopularRecipePress(recipe)}
-                  >
-                    {recipe.image ? (
-                      <Image 
-                        source={{ uri: recipe.image }} 
-                        style={styles.popularRecipeImage}
-                        onError={(error) => console.log('Popular recipe image load error:', recipe.title, error.nativeEvent?.error)}
-                      />
-                    ) : (
-                      <View style={[styles.popularRecipeImage, { backgroundColor: '#f0f0f0', alignItems: 'center', justifyContent: 'center' }]}>
-                        <Ionicons name="image-outline" size={30} color="#ccc" />
-                      </View>
-                    )}
-                    <Text style={styles.popularRecipeTitle}>{recipe.title}</Text>
-                    {recipe.category && (
-                      <Text style={styles.recipeCategory}>{recipe.category}</Text>
-                    )}
-                    {recipe.time && (
-                      <Text style={styles.recipeTime}>⏱️ {recipe.time}min</Text>
-                    )}
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            )}
-          </View>
-        )}
-      </ScrollView>
+            </View>
+          )}
 
-    </SafeAreaView>
+          {/* Recent Searches - Show only when not searching AND not loading */}
+          {!hasSearched && !loading && !generatingAI && recentSearches.length > 0 && (
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Recent Searches</Text>
+                <TouchableOpacity onPress={clearAllRecentSearches}>
+                  <Text style={styles.clearText}>Clear</Text>
+                </TouchableOpacity>
+              </View>
+
+              {recentSearches.map((search, index) => (
+                <TouchableOpacity
+                  key={index}
+                  style={styles.recentSearchItem}
+                  onPress={() => handleRecentSearchTap(search)}
+                >
+                  <Ionicons name="search-outline" size={16} color="#666" style={styles.recentSearchIcon} />
+                  <Text style={styles.recentSearchText}>{search}</Text>
+                  <TouchableOpacity
+                    style={styles.removeButton}
+                    onPress={() => removeRecentSearch(index)}
+                  >
+                    <Ionicons name="close" size={16} color="#666" />
+                  </TouchableOpacity>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+          {/* Popular Recipes - Show only when not searching AND not loading */}
+          {!hasSearched && !loading && !generatingAI && (
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Popular Recipes</Text>
+                <TouchableOpacity
+                  onPress={handleRefreshPopularRecipes}
+                  disabled={loadingPopular}
+                >
+                  <Text style={[styles.viewAllText, loadingPopular && styles.disabledText]}>
+                    {loadingPopular ? 'Refreshing...' : 'Refresh'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {loadingPopular ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="large" color="#4CAF50" />
+                  <Text style={styles.loadingText}>
+                    {popularRecipes.length > 0 ? 'Refreshing recipes...' : 'Loading popular recipes...'}
+                  </Text>
+                </View>
+              ) : (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.popularRecipesContainer}>
+                  {popularRecipes.map((recipe, index) => (
+                    <TouchableOpacity
+                      key={recipe.id}
+                      style={[styles.popularRecipeCard, index === 0 && styles.firstCard]}
+                      onPress={() => handlePopularRecipePress(recipe)}
+                    >
+                      {recipe.image ? (
+                        <Image
+                          source={{ uri: recipe.image }}
+                          style={styles.popularRecipeImage}
+                          onError={(error) => console.log('Popular recipe image load error:', recipe.title, error.nativeEvent?.error)}
+                        />
+                      ) : (
+                        <View style={[styles.popularRecipeImage, { backgroundColor: '#f0f0f0', alignItems: 'center', justifyContent: 'center' }]}>
+                          <Ionicons name="image-outline" size={30} color="#ccc" />
+                        </View>
+                      )}
+                      <Text style={styles.popularRecipeTitle}>{recipe.title}</Text>
+                      {recipe.category && (
+                        <Text style={styles.recipeCategory}>{recipe.category}</Text>
+                      )}
+                      {recipe.time && (
+                        <Text style={styles.recipeTime}>⏱️ {recipe.time}min</Text>
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+            </View>
+          )}
+        </ScrollView>
+
+      </SafeAreaView>
     </AuthGuard>
   );
 };
@@ -1249,62 +1251,63 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
   },
   searchHeader: {
-    paddingHorizontal: 20,
-    paddingTop: 10,
-    paddingBottom: 15,
+    paddingHorizontal: wp('5%'),
+    paddingTop: hp('2%'),
+    paddingBottom: hp('2%'),
     backgroundColor: '#fff',
   },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#f5f5f5',
-    borderRadius: 25,
-    paddingHorizontal: 15,
-    height: 50,
+    borderRadius: wp('6.2%'),
+    paddingHorizontal: wp('3.8%'),
+    height: hp('6.5%'),
   },
   searchIcon: {
-    marginRight: 10,
+    marginRight: wp('2.5%'),
   },
   backButton: {
-    padding: 5,
-    marginRight: 5,
+    padding: wp('1.2%'),
+    marginRight: wp('1.2%'),
   },
   searchInput: {
     flex: 1,
-    fontSize: 16,
+    fontSize: wp('4%'),
     color: '#333',
   },
   filterButton: {
-    padding: 5,
-    marginLeft: 10,
+    padding: wp('1.2%'),
+    marginLeft: wp('2.5%'),
   },
   cameraButton: {
-    padding: 5,
-    marginLeft: 5,
+    padding: wp('1.2%'),
+    marginLeft: wp('1.2%'),
   },
   filterBadge: {
     position: 'absolute',
-    top: -5,
-    right: -5,
+    top: wp('-1.2%'),
+    right: wp('-1.2%'),
     backgroundColor: '#4CAF50',
-    borderRadius: 10,
-    minWidth: 18,
-    height: 18,
+    borderRadius: wp('2.5%'),
+    minWidth: wp('4.5%'),
+    height: wp('4.5%'),
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 4,
+    paddingHorizontal: wp('1%'),
   },
   filterBadgeText: {
     color: '#fff',
-    fontSize: 10,
+    fontSize: wp('2.5%'),
     fontWeight: 'bold',
   },
   filterSection: {
     backgroundColor: '#f8f9fa',
-    paddingHorizontal: 20,
-    paddingVertical: 15,
+    paddingHorizontal: wp('5%'),
+    paddingVertical: hp('1.8%'),
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
   },
@@ -1312,60 +1315,60 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 15,
+    marginBottom: hp('1.8%'),
   },
   filterTitle: {
-    fontSize: 18,
+    fontSize: wp('4.5%'),
     fontWeight: '600',
     color: '#333',
   },
   filterHeaderActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 15,
+    gap: wp('3.8%'),
   },
   clearButton: {
-    paddingRight: 10,
+    paddingRight: wp('2.5%'),
   },
   clearFiltersText: {
-    fontSize: 14,
+    fontSize: wp('3.5%'),
     color: '#4CAF50',
     fontWeight: '500',
   },
   filterScrollView: {
-    maxHeight: 300,
+    maxHeight: hp('37.5%'),
   },
   filterCategory: {
-    marginBottom: 20,
+    marginBottom: hp('2.5%'),
   },
   filterCategoryTitle: {
-    fontSize: 14,
+    fontSize: wp('3.5%'),
     fontWeight: '600',
     color: '#666',
-    marginBottom: 10,
+    marginBottom: hp('1.2%'),
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   filterChipsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+    gap: wp('2.5%'),
   },
   filterChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingHorizontal: wp('4%'),
+    paddingVertical: hp('1%'),
+    borderRadius: wp('5%'),
     backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: '#e0e0e0',
-    marginBottom: 8,
+    marginBottom: hp('1%'),
   },
   filterChipActive: {
     backgroundColor: '#4CAF50',
     borderColor: '#4CAF50',
   },
   filterChipText: {
-    fontSize: 14,
+    fontSize: wp('3.5%'),
     color: '#333',
     fontWeight: '500',
   },
@@ -1377,183 +1380,183 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   section: {
-    paddingHorizontal: 20,
-    marginBottom: 30,
+    paddingHorizontal: wp('5%'),
+    marginBottom: hp('3.8%'),
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 15,
+    marginBottom: hp('1.8%'),
   },
   sectionTitle: {
-    fontSize: 20,
+    fontSize: wp('5%'),
     fontWeight: '600',
     color: '#333',
   },
   clearText: {
-    fontSize: 16,
+    fontSize: wp('4%'),
     color: '#4CAF50',
     fontWeight: '500',
   },
   viewAllText: {
-    fontSize: 16,
+    fontSize: wp('4%'),
     color: '#4CAF50',
     fontWeight: '500',
   },
   resultsCount: {
-    fontSize: 14,
+    fontSize: wp('3.5%'),
     color: '#666',
     fontWeight: '400',
   },
   recipeCard: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    marginBottom: 15,
+    borderRadius: wp('3%'),
+    marginBottom: hp('1.8%'),
     elevation: 5,
     overflow: 'hidden',
   },
   recipeImage: {
     width: '100%',
-    height: 200,
+    height: hp('25%'),
   },
   aiBadge: {
     position: 'absolute',
-    top: 12,
-    right: 12,
+    top: wp('3%'),
+    right: wp('3%'),
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(138, 43, 226, 0.9)',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 20,
-    gap: 4,
+    paddingHorizontal: wp('2.5%'),
+    paddingVertical: hp('0.8%'),
+    borderRadius: wp('5%'),
+    gap: wp('1%'),
     zIndex: 1,
   },
   aiBadgeText: {
     color: '#fff',
-    fontSize: 11,
+    fontSize: wp('2.8%'),
     fontWeight: '600',
   },
   recipeInfo: {
-    padding: 15,
+    padding: wp('3.8%'),
   },
   recipeTitle: {
-    fontSize: 18,
+    fontSize: wp('4.5%'),
     fontWeight: 'bold',
     color: '#2c3e50',
-    marginBottom: 5,
+    marginBottom: hp('0.6%'),
   },
   recipeSource: {
-    fontSize: 14,
+    fontSize: wp('3.5%'),
     color: '#7f8c8d',
-    marginBottom: 10,
+    marginBottom: hp('1.2%'),
   },
   recipeStats: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 10,
+    marginBottom: hp('1.2%'),
   },
   statItem: {
     flex: 1,
     alignItems: 'center',
   },
   statLabel: {
-    fontSize: 12,
+    fontSize: wp('3%'),
     color: '#7f8c8d',
   },
   labelsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginTop: 5,
+    marginTop: hp('0.6%'),
   },
   dietLabel: {
     backgroundColor: '#e8f5e8',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginRight: 5,
-    marginBottom: 5,
+    paddingHorizontal: wp('2%'),
+    paddingVertical: hp('0.5%'),
+    borderRadius: wp('3%'),
+    marginRight: wp('1.2%'),
+    marginBottom: hp('0.6%'),
   },
   healthLabel: {
     backgroundColor: '#e3f2fd',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginRight: 5,
-    marginBottom: 5,
+    paddingHorizontal: wp('2%'),
+    paddingVertical: hp('0.5%'),
+    borderRadius: wp('3%'),
+    marginRight: wp('1.2%'),
+    marginBottom: hp('0.6%'),
   },
   labelText: {
-    fontSize: 10,
+    fontSize: wp('2.5%'),
     color: '#2c3e50',
     fontWeight: '500',
   },
   emptyContainer: {
     alignItems: 'center',
-    paddingVertical: 50,
+    paddingVertical: hp('6.2%'),
   },
   emptyText: {
-    fontSize: 18,
+    fontSize: wp('4.5%'),
     color: '#7f8c8d',
     fontWeight: '600',
   },
   emptySubtext: {
-    fontSize: 14,
+    fontSize: wp('3.5%'),
     color: '#bdc3c7',
-    marginTop: 5,
+    marginTop: hp('0.6%'),
     textAlign: 'center',
   },
   recentSearchItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: hp('1.5%'),
     borderBottomWidth: 0.5,
     borderBottomColor: '#f0f0f0',
   },
   recentSearchIcon: {
-    marginRight: 15,
+    marginRight: wp('3.8%'),
   },
   recentSearchText: {
     flex: 1,
-    fontSize: 16,
+    fontSize: wp('4%'),
     color: '#333',
   },
   removeButton: {
-    padding: 5,
+    padding: wp('1.2%'),
   },
   popularRecipesContainer: {
-    marginLeft: -20,
+    marginLeft: wp('-5%'),
   },
   popularRecipeCard: {
     alignItems: 'center',
-    marginLeft: 20,
-    width: 80,
+    marginLeft: wp('5%'),
+    width: wp('20%'),
   },
   firstCard: {
-    marginLeft: 20,
+    marginLeft: wp('5%'),
   },
   popularRecipeImage: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    marginBottom: 8,
+    width: wp('17.5%'),
+    height: wp('17.5%'),
+    borderRadius: wp('8.75%'),
+    marginBottom: hp('1%'),
   },
   popularRecipeTitle: {
-    fontSize: 12,
+    fontSize: wp('3%'),
     color: '#333',
     textAlign: 'center',
     fontWeight: '600',
-    marginBottom: 2,
+    marginBottom: hp('0.2%'),
   },
   recipeCategory: {
-    fontSize: 10,
+    fontSize: wp('2.5%'),
     color: '#666',
     textAlign: 'center',
     textTransform: 'capitalize',
-    marginBottom: 2,
+    marginBottom: hp('0.2%'),
   },
   recipeTime: {
-    fontSize: 10,
+    fontSize: wp('2.5%'),
     color: '#4CAF50',
     textAlign: 'center',
     fontWeight: '500',
@@ -1563,25 +1566,25 @@ const styles = StyleSheet.create({
   },
   loadingContainer: {
     alignItems: 'center',
-    paddingVertical: 30,
+    paddingVertical: hp('3.8%'),
   },
   loadingText: {
-    fontSize: 14,
+    fontSize: wp('3.5%'),
     color: '#666',
-    marginTop: 10,
+    marginTop: hp('1.2%'),
     fontWeight: '600',
   },
   loadingSubtext: {
-    fontSize: 12,
+    fontSize: wp('3%'),
     color: '#999',
-    marginTop: 5,
+    marginTop: hp('0.6%'),
     fontStyle: 'italic',
   },
   bottomNav: {
     flexDirection: 'row',
     backgroundColor: '#fff',
-    paddingVertical: 8,
-    paddingHorizontal: 10,
+    paddingVertical: hp('1%'),
+    paddingHorizontal: wp('2.5%'),
     borderTopWidth: 0.5,
     borderTopColor: '#e0e0e0',
     alignItems: 'center',
@@ -1595,9 +1598,9 @@ const styles = StyleSheet.create({
     // Active state styling
   },
   navLabel: {
-    fontSize: 12,
+    fontSize: wp('3%'),
     color: '#666',
-    marginTop: 4,
+    marginTop: hp('0.5%'),
     fontWeight: '500',
   },
   activeNavLabel: {
@@ -1606,12 +1609,12 @@ const styles = StyleSheet.create({
   centerNavButton: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginHorizontal: 10,
+    marginHorizontal: wp('2.5%'),
   },
   centerNavIcon: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: wp('12.5%'),
+    height: wp('12.5%'),
+    borderRadius: wp('6.25%'),
     backgroundColor: '#4CAF50',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1619,9 +1622,9 @@ const styles = StyleSheet.create({
   },
   generateAnotherButton: {
     backgroundColor: '#8A2BE2',
-    borderRadius: 12,
-    marginTop: 20,
-    marginBottom: 10,
+    borderRadius: wp('3%'),
+    marginTop: hp('2.5%'),
+    marginBottom: hp('1.2%'),
     elevation: 8,
     overflow: 'hidden',
   },
@@ -1629,21 +1632,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 18,
+    padding: wp('4.5%'),
   },
   generateAnotherTextContainer: {
     flex: 1,
-    marginLeft: 12,
+    marginLeft: wp('3%'),
   },
   generateAnotherText: {
     color: '#fff',
-    fontSize: 18,
+    fontSize: wp('4.5%'),
     fontWeight: '600',
   },
   generateAnotherSubtext: {
     color: 'rgba(255, 255, 255, 0.8)',
-    fontSize: 13,
-    marginTop: 2,
+    fontSize: wp('3.2%'),
+    marginTop: hp('0.2%'),
   },
 });
 
