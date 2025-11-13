@@ -7,6 +7,7 @@ import {
   Alert,
   StyleSheet
 } from 'react-native';
+import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCustomAuth } from '../hooks/use-custom-auth';
 import { newPasswordStyles } from '../assets/css/newPasswordStyles';
@@ -37,7 +38,7 @@ const NewPassword = () => {
 
     try {
       setLoading(true);
-      
+
       const { error } = await resetPassword(token, newPassword);
 
       if (error) {
@@ -62,15 +63,21 @@ const NewPassword = () => {
   };
 
   return (
-    <View style={newPasswordStyles.container}>
-      <Text style={newPasswordStyles.title}>Create New Password</Text>
-      
-      <Text style={newPasswordStyles.subtitle}>
+    <View style={[newPasswordStyles.container, { paddingHorizontal: wp('6%') }]}>
+      <Text style={[newPasswordStyles.title, { fontSize: wp('7.5%'), marginBottom: hp('2%') }]}>Create New Password</Text>
+
+      <Text style={[newPasswordStyles.subtitle, { fontSize: wp('3.8%'), marginBottom: hp('3%') }]}>
         Your new password must be different from previously used passwords.
       </Text>
-      
+
       <TextInput
-        style={newPasswordStyles.input}
+        style={[newPasswordStyles.input, {
+          paddingVertical: hp('1.5%'),
+          paddingHorizontal: wp('3.5%'),
+          fontSize: wp('4%'),
+          borderRadius: wp('2%'),
+          marginBottom: hp('1.5%')
+        }]}
         placeholder="New Password"
         value={newPassword}
         onChangeText={setNewPassword}
@@ -79,29 +86,44 @@ const NewPassword = () => {
       />
 
       <TextInput
-        style={newPasswordStyles.input}
+        style={[newPasswordStyles.input, {
+          paddingVertical: hp('1.5%'),
+          paddingHorizontal: wp('3.5%'),
+          fontSize: wp('4%'),
+          borderRadius: wp('2%'),
+          marginBottom: hp('2%')
+        }]}
         placeholder="Confirm New Password"
         value={confirmPassword}
         onChangeText={setConfirmPassword}
         secureTextEntry
         autoCapitalize="none"
       />
-      
+
       <TouchableOpacity
-        style={[newPasswordStyles.button, (!newPassword || !confirmPassword) && newPasswordStyles.buttonDisabled]}
+        style={[
+          newPasswordStyles.button,
+          (!newPassword || !confirmPassword) && newPasswordStyles.buttonDisabled,
+          {
+            paddingVertical: hp('1.8%'),
+            paddingHorizontal: wp('8%'),
+            borderRadius: wp('3%'),
+            marginTop: hp('2%')
+          }
+        ]}
         onPress={handleChangePassword}
         disabled={loading || !newPassword || !confirmPassword}
       >
-        <Text style={newPasswordStyles.buttonText}>
+        <Text style={[newPasswordStyles.buttonText, { fontSize: wp('4.5%') }]}>
           {loading ? 'Changing Password...' : 'Change Password'}
         </Text>
       </TouchableOpacity>
 
       <TouchableOpacity
-        style={newPasswordStyles.backButton}
+        style={[newPasswordStyles.backButton, { marginTop: hp('2%'), paddingVertical: hp('1.2%') }]}
         onPress={() => router.back()}
       >
-        <Text style={newPasswordStyles.backButtonText}>Back</Text>
+        <Text style={[newPasswordStyles.backButtonText, { fontSize: wp('4%') }]}>Back</Text>
       </TouchableOpacity>
     </View>
   );

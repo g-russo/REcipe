@@ -9,6 +9,7 @@ import {
   Image,
 } from 'react-native';
 import Svg, { Path, Circle } from 'react-native-svg';
+import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { useCustomAuth } from '../../hooks/use-custom-auth';
 import { router } from 'expo-router';
 import AuthGuard from '../../components/auth-guard';
@@ -75,7 +76,7 @@ const Home = () => {
     if (hour < 12) {
       // Morning - Sun icon
       return (
-        <Svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#81A969" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <Svg width={wp('6%')} height={wp('6%')} viewBox="0 0 24 24" fill="none" stroke="#81A969" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <Circle cx="12" cy="12" r="4" />
           <Path d="M12 2v2" />
           <Path d="M12 20v2" />
@@ -90,7 +91,7 @@ const Home = () => {
     } else if (hour < 18) {
       // Afternoon - Sun with clouds (custom SVG)
       return (
-        <Svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#81A969" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <Svg width={wp('6%')} height={wp('6%')} viewBox="0 0 24 24" fill="none" stroke="#81A969" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <Path d="M12 2v2" />
           <Path d="M4.93 4.93l1.41 1.41" />
           <Path d="M20 12h2" />
@@ -102,7 +103,7 @@ const Home = () => {
     } else {
       // Evening - Moon icon
       return (
-        <Svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#81A969" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <Svg width={wp('6%')} height={wp('6%')} viewBox="0 0 24 24" fill="none" stroke="#81A969" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <Path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
         </Svg>
       );
@@ -167,23 +168,34 @@ const Home = () => {
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.headerLeft}>
-              <View style={styles.greetingRow}>
+              <View style={[styles.greetingRow, { gap: wp('1.5%'), marginBottom: hp('0.1%'), marginTop: hp('5%') }]}>
                 {getGreetingIcon()}
-                <Text style={styles.greeting}>{greeting}</Text>
+                <Text style={[styles.greeting, { fontSize: wp('5%') }]}>
+                  {greeting}
+                </Text>
               </View>
-              <Text style={styles.userName}>{userName || 'User'}</Text>
+              <Text style={[styles.userName, { fontSize: wp('7.5%') }]}>
+                {userName || 'User'}
+              </Text>
             </View>
-            <TouchableOpacity 
-              style={styles.notificationButton}
+            <TouchableOpacity
+              style={[styles.notificationButton, { padding: wp('2%') }]}
               onPress={() => router.push('/notifications')}
             >
-              <Svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#81A969" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <Svg width={wp('6%')} height={wp('6%')} viewBox="0 0 24 24" fill="none" stroke="#81A969" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <Path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
                 <Path d="M13.73 21a2 2 0 0 1-3.46 0" />
               </Svg>
               {unreadCount > 0 && (
-                <View style={styles.notificationBadge}>
-                  <Text style={styles.notificationBadgeText}>
+                <View style={[styles.notificationBadge, {
+                  top: wp('0.5%'),
+                  right: wp('0.5%'),
+                  borderRadius: wp('2.5%'),
+                  minWidth: wp('4.5%'),
+                  height: wp('4.5%'),
+                  paddingHorizontal: wp('1%')
+                }]}>
+                  <Text style={[styles.notificationBadgeText, { fontSize: wp('2.5%') }]}>
                     {unreadCount > 99 ? '99+' : unreadCount}
                   </Text>
                 </View>
@@ -192,27 +204,45 @@ const Home = () => {
           </View>
 
           {/* Recipes from Your Pantry */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Recipes from Your Pantry</Text>
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false} 
-              style={styles.horizontalScroll}
-              contentContainerStyle={styles.pantryScrollContent}
+          <View style={[styles.section, { marginTop: hp('1.2%') }]}>
+            <Text style={[styles.sectionTitle, { fontSize: wp('7%'), paddingHorizontal: wp('5%'), marginBottom: 0 }]}>
+              Recipes from Your Pantry
+            </Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={[styles.horizontalScroll, { paddingLeft: wp('5%') }]}
+              contentContainerStyle={[styles.pantryScrollContent, { paddingVertical: hp('1.8%'), paddingRight: wp('5%') }]}
             >
               {pantryRecipes.map((recipe) => (
-                <TouchableOpacity key={recipe.id} style={styles.pantryCard}>
+                <TouchableOpacity key={recipe.id} style={[styles.pantryCard, {
+                  width: wp('70%'),
+                  height: hp('22%'),
+                  marginRight: wp('3.8%'),
+                  borderRadius: wp('5%'),
+                  elevation: 8
+                }]}>
                   <Image source={{ uri: recipe.image }} style={styles.pantryCardImage} />
-                  <View style={styles.pantryCardOverlay}>
-                    <Text style={styles.pantryCardTitle}>{recipe.title}</Text>
-                    <View style={styles.pantryCardInfo}>
-                      <Text style={styles.pantryCardCalories}>{recipe.calories} Kcal</Text>
-                      <View style={styles.pantryCardTime}>
-                        <Svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <View style={[styles.pantryCardOverlay, {
+                    height: hp('10%'),
+                    paddingHorizontal: wp('3.8%'),
+                    paddingVertical: hp('1.5%')
+                  }]}>
+                    <Text style={[styles.pantryCardTitle, { fontSize: wp('4%') }]}>
+                      {recipe.title}
+                    </Text>
+                    <View style={[styles.pantryCardInfo, { gap: wp('3.8%') }]}>
+                      <Text style={[styles.pantryCardCalories, { fontSize: wp('3.2%') }]}>
+                        {recipe.calories} Kcal
+                      </Text>
+                      <View style={[styles.pantryCardTime, { gap: wp('1%') }]}>
+                        <Svg width={wp('4%')} height={wp('4%')} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <Circle cx="12" cy="12" r="10" />
                           <Path d="M12 6v6l4 2" />
                         </Svg>
-                        <Text style={styles.pantryCardTimeText}>{recipe.time} Min</Text>
+                        <Text style={[styles.pantryCardTimeText, { fontSize: wp('3.2%') }]}>
+                          {recipe.time} Min
+                        </Text>
                       </View>
                     </View>
                   </View>
@@ -222,23 +252,46 @@ const Home = () => {
           </View>
 
           {/* Make It Again */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Make It Again</Text>
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false} 
-              style={styles.horizontalScroll}
-              contentContainerStyle={styles.makeAgainScrollContent}
+          <View style={[styles.section, { marginTop: hp('1.2%') }]}>
+            <Text style={[styles.sectionTitle, { fontSize: wp('7%'), paddingHorizontal: wp('5%'), marginBottom: 0 }]}>
+              Make It Again
+            </Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={[styles.horizontalScroll, { paddingLeft: wp('5%') }]}
+              contentContainerStyle={[styles.makeAgainScrollContent, { paddingVertical: hp('1.8%'), paddingRight: wp('5%') }]}
             >
               {makeItAgain.map((recipe) => (
-                <TouchableOpacity key={recipe.id} style={styles.makeAgainCard}>
-                  <Image source={{ uri: recipe.image }} style={styles.makeAgainImage} />
-                  <View style={styles.makeAgainInfo}>
-                    <Text style={styles.makeAgainTitle} numberOfLines={2}>{recipe.title}</Text>
-                    <Text style={styles.makeAgainTime}>{recipe.time}</Text>
+                <TouchableOpacity key={recipe.id} style={[styles.makeAgainCard, {
+                  width: wp('70%'),
+                  borderRadius: wp('3.8%'),
+                  padding: wp('3%'),
+                  marginRight: wp('3.8%'),
+                  elevation: 8
+                }]}>
+                  <Image source={{ uri: recipe.image }} style={[styles.makeAgainImage, {
+                    width: wp('17.5%'),
+                    height: wp('17.5%'),
+                    borderRadius: wp('3%')
+                  }]} />
+                  <View style={[styles.makeAgainInfo, {
+                    marginLeft: wp('3%'),
+                    marginRight: wp('2%')
+                  }]}>
+                    <Text style={[styles.makeAgainTitle, { fontSize: wp('3.5%'), marginBottom: hp('0.5%') }]} numberOfLines={2}>
+                      {recipe.title}
+                    </Text>
+                    <Text style={[styles.makeAgainTime, { fontSize: wp('3%') }]}>
+                      {recipe.time}
+                    </Text>
                   </View>
-                  <View style={styles.makeAgainButton}>
-                    <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <View style={[styles.makeAgainButton, {
+                    width: wp('9%'),
+                    height: wp('9%'),
+                    borderRadius: wp('2%')
+                  }]}>
+                    <Svg width={wp('5%')} height={wp('5%')} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <Path d="M5 12h14" />
                       <Path d="m12 5 7 7-7 7" />
                     </Svg>
@@ -249,40 +302,68 @@ const Home = () => {
           </View>
 
           {/* Try Something New */}
-          <View style={[styles.section, { marginBottom: 120 }]}>
-            <Text style={styles.sectionTitle}>Try Something New</Text>
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false} 
-              style={styles.horizontalScroll}
-              contentContainerStyle={styles.tryNewScrollContent}
+          <View style={[styles.section, { marginBottom: hp('15%'), marginTop: hp('1.2%') }]}>
+            <Text style={[styles.sectionTitle, { fontSize: wp('7%'), paddingHorizontal: wp('5%'), marginBottom: 0 }]}>
+              Try Something New
+            </Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={[styles.horizontalScroll, { paddingLeft: wp('5%') }]}
+              contentContainerStyle={[styles.tryNewScrollContent, { paddingVertical: hp('1.8%'), paddingRight: wp('5%') }]}
             >
               {tryNewRecipes.map((recipe) => (
-                <TouchableOpacity key={recipe.id} style={styles.tryNewCard}>
-                  <View style={styles.tryNewImageContainer}>
-                    <Image source={{ uri: recipe.image }} style={styles.tryNewImage} />
-                    <TouchableOpacity style={styles.favoriteButton}>
-                      <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <TouchableOpacity key={recipe.id} style={[styles.tryNewCard, {
+                  width: wp('57.5%'),
+                  borderRadius: wp('5%'),
+                  marginRight: wp('3.8%'),
+                  elevation: 6
+                }]}>
+                  <View style={[styles.tryNewImageContainer, {
+                    margin: wp('3.5%'),
+                    borderRadius: wp('4%')
+                  }]}>
+                    <Image source={{ uri: recipe.image }} style={[styles.tryNewImage, { height: hp('20%') }]} />
+                    <TouchableOpacity style={[styles.favoriteButton, {
+                      top: wp('3%'),
+                      right: wp('3%'),
+                      width: wp('10%'),
+                      height: wp('10%'),
+                      borderRadius: wp('5%')
+                    }]}>
+                      <Svg width={wp('5%')} height={wp('5%')} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <Path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
                       </Svg>
                     </TouchableOpacity>
                   </View>
-                  <View style={styles.tryNewContent}>
-                    <Text style={styles.tryNewTitle} numberOfLines={2}>{recipe.title}</Text>
+                  <View style={[styles.tryNewContent, {
+                    paddingHorizontal: wp('4%'),
+                    paddingBottom: wp('4%'),
+                    paddingTop: 0
+                  }]}>
+                    <Text style={[styles.tryNewTitle, { fontSize: wp('4.5%'), marginBottom: hp('1.5%') }]} numberOfLines={2}>
+                      {recipe.title}
+                    </Text>
                     <View style={styles.tryNewInfo}>
-                      <View style={styles.tryNewInfoItem}>
-                        <Svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <View style={[styles.tryNewInfoItem, { gap: wp('1.5%') }]}>
+                        <Svg width={wp('4%')} height={wp('4%')} viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <Path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
                         </Svg>
-                        <Text style={styles.tryNewInfoText}>{recipe.calories} Kcal</Text>
+                        <Text style={[styles.tryNewInfoText, { fontSize: wp('3.5%') }]}>
+                          {recipe.calories} Kcal
+                        </Text>
                       </View>
-                      <Text style={styles.tryNewDivider}>•</Text>
-                      <View style={styles.tryNewInfoItem}>
-                        <Svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <Text style={[styles.tryNewDivider, { fontSize: wp('3.5%'), marginHorizontal: wp('2.5%') }]}>
+                        •
+                      </Text>
+                      <View style={[styles.tryNewInfoItem, { gap: wp('1.5%') }]}>
+                        <Svg width={wp('4%')} height={wp('4%')} viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <Circle cx="12" cy="12" r="10" />
                           <Path d="M12 6v6l4 2" />
                         </Svg>
-                        <Text style={styles.tryNewInfoText}>{recipe.time} Min</Text>
+                        <Text style={[styles.tryNewInfoText, { fontSize: wp('3.5%') }]}>
+                          {recipe.time} Min
+                        </Text>
                       </View>
                     </View>
                   </View>
@@ -308,9 +389,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 30,
-    paddingBottom: 25,
+    paddingHorizontal: wp('5%'),
+    paddingTop: hp('3.8%'),
+    paddingBottom: hp('3.1%'),
   },
   headerLeft: {
     flex: 1,
@@ -318,75 +399,46 @@ const styles = StyleSheet.create({
   greetingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginBottom: 1,
-    marginTop: 40,
   },
   greeting: {
-    fontSize: 20,
     color: '#000',
     fontWeight: 'regular',
   },
   userName: {
-    fontSize: 30,
     fontWeight: 'bold',
     color: '#000',
   },
   notificationButton: {
-    padding: 8,
     position: 'relative',
   },
   notificationBadge: {
     position: 'absolute',
-    top: 4,
-    right: 4,
     backgroundColor: '#FF6B6B',
-    borderRadius: 10,
-    minWidth: 18,
-    height: 18,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 4,
   },
   notificationBadgeText: {
     color: '#fff',
-    fontSize: 10,
     fontWeight: 'bold',
   },
   section: {
-    marginTop: 10,
   },
   sectionTitle: {
-    fontSize: 28,
     fontWeight: 'bold',
     color: '#000',
-    paddingHorizontal: 20,
-    marginBottom: 0,
   },
   horizontalScroll: {
-    paddingLeft: 20,
   },
   pantryScrollContent: {
-    paddingVertical: 15,
-    paddingRight: 20,
   },
   makeAgainScrollContent: {
-    paddingVertical: 15,
-    paddingRight: 20,
   },
   tryNewScrollContent: {
-    paddingVertical: 15,
-    paddingRight: 20,
   },
   // Pantry Cards
   pantryCard: {
-    width: 280,
-    height: 180,
-    marginRight: 15,
-    borderRadius: 20,
     overflow: 'hidden',
     position: 'relative',
-    elevation: 8,
   },
   pantryCardImage: {
     width: '100%',
@@ -398,117 +450,76 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: 80,
-    paddingHorizontal: 15,
-    paddingVertical: 12,
     backgroundColor: 'rgba(129, 169, 105, 0.85)',
     justifyContent: 'space-between',
   },
   pantryCardTitle: {
-    fontSize: 16,
     fontWeight: '600',
     color: '#fff',
   },
   pantryCardInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 15,
   },
   pantryCardCalories: {
-    fontSize: 13,
     color: '#fff',
     fontWeight: '500',
   },
   pantryCardTime: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
   },
   pantryCardTimeText: {
-    fontSize: 13,
     color: '#fff',
     fontWeight: '500',
   },
   // Make It Again Cards
   makeAgainCard: {
-    width: 280,
     flexDirection: 'row',
     backgroundColor: '#fff',
-    borderRadius: 15,
-    padding: 12,
-    marginRight: 15,
     alignItems: 'center',
-    elevation: 8,
   },
   makeAgainImage: {
-    width: 70,
-    height: 70,
-    borderRadius: 12,
     resizeMode: 'cover',
   },
   makeAgainInfo: {
     flex: 1,
-    marginLeft: 12,
-    marginRight: 8,
   },
   makeAgainTitle: {
-    fontSize: 14,
     fontWeight: '600',
     color: '#000',
-    marginBottom: 4,
   },
   makeAgainTime: {
-    fontSize: 12,
     color: '#999',
   },
   makeAgainButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
     backgroundColor: '#81A969',
     alignItems: 'center',
     justifyContent: 'center',
   },
   // Try New Cards
   tryNewCard: {
-    width: 230,
     backgroundColor: '#fff',
-    borderRadius: 20,
-    marginRight: 15,
-    elevation: 6,
   },
   tryNewImageContainer: {
-    margin: 14,
-    borderRadius: 16,
     overflow: 'hidden',
     position: 'relative',
   },
   tryNewImage: {
     width: '100%',
-    height: 160,
     resizeMode: 'cover',
   },
   favoriteButton: {
     position: 'absolute',
-    top: 12,
-    right: 12,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
     backgroundColor: '#81A969',
     alignItems: 'center',
     justifyContent: 'center',
   },
   tryNewContent: {
-    paddingHorizontal: 16,
-    paddingBottom: 16,
-    paddingTop: 0,
   },
   tryNewTitle: {
-    fontSize: 18,
     fontWeight: 'bold',
     color: '#000',
-    marginBottom: 12,
   },
   tryNewInfo: {
     flexDirection: 'row',
@@ -517,16 +528,12 @@ const styles = StyleSheet.create({
   tryNewInfoItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
   },
   tryNewInfoText: {
-    fontSize: 14,
     color: '#666',
   },
   tryNewDivider: {
-    fontSize: 14,
     color: '#666',
-    marginHorizontal: 10,
   },
 });
 
