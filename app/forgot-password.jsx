@@ -9,7 +9,8 @@ import {
   ScrollView,
   Animated,
   Keyboard,
-  Platform
+  Platform,
+  StatusBar
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
@@ -119,9 +120,10 @@ const ForgotPassword = () => {
 
   return (
     <TopographicBackground>
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
       {/* Back button */}
       <TouchableOpacity style={[globalStyles.backButton, {
-        top: hp('5%'),
+        top: Platform.OS === 'android' ? hp('5%') + (StatusBar.currentHeight || 0) : hp('5%'),
         left: wp('5%'),
         padding: wp('2%')
       }]} onPress={goBack}>
@@ -131,15 +133,15 @@ const ForgotPassword = () => {
       </TouchableOpacity>
 
       <Animated.View style={[globalStyles.card, {
-        paddingTop: hp('1%'),
-        paddingBottom: hp('1.2%'),
+        paddingTop: hp('1.5%'),
+        paddingBottom: hp('1.5%'),
         paddingHorizontal: wp('6%'),
         position: 'absolute',
         bottom: 0,
         left: 0,
         right: 0,
         marginTop: 0,
-        minHeight: '60%',
+        minHeight: '65%',
         borderBottomLeftRadius: 0,
         borderBottomRightRadius: 0,
         transform: [{ translateY }]
