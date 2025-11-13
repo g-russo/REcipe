@@ -1,6 +1,9 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const GROUP_CARD_WIDTH = Math.min(SCREEN_WIDTH * 0.5, 200);
 
 /**
  * Inventory Groups Section Component
@@ -109,7 +112,7 @@ const styles = StyleSheet.create({
     paddingLeft: 20,
   },
   categoryCard: {
-    width: 200,
+    width: GROUP_CARD_WIDTH,
     marginRight: 15,
     borderRadius: 12,
     padding: 15,

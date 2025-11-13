@@ -8,9 +8,13 @@ import {
   StyleSheet,
   Image,
   ActivityIndicator,
+  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import PantryService from '../../services/pantry-service';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const MODAL_ITEM_WIDTH = (SCREEN_WIDTH - 60) / 2; // Account for padding and gap
 
 /**
  * Group Items Modal Component
@@ -314,7 +318,7 @@ const styles = StyleSheet.create({
     gap: 15,
   },
   itemCard: {
-    width: '47%',
+    width: MODAL_ITEM_WIDTH,
     backgroundColor: '#fff',
     borderRadius: 12,
     borderWidth: 1,
@@ -328,7 +332,7 @@ const styles = StyleSheet.create({
   },
   itemImageContainer: {
     width: '100%',
-    height: 120,
+    height: MODAL_ITEM_WIDTH * 0.75,
     backgroundColor: '#f5f5f5',
   },
   itemImage: {

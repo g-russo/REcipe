@@ -1,6 +1,9 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const BANNER_CARD_WIDTH = Math.min(SCREEN_WIDTH * 0.3, 120);
 
 /**
  * Expiring Items Banner Component
@@ -181,7 +184,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   itemCard: {
-    width: 120,
+    width: BANNER_CARD_WIDTH,
     marginRight: 10,
     padding: 10,
     borderRadius: 10,
