@@ -11,6 +11,7 @@ import {
   Platform
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
+import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useCustomAuth } from '../hooks/use-custom-auth';
 import { globalStyles } from '../assets/css/globalStyles';
@@ -64,7 +65,7 @@ const ForcePasswordChange = () => {
     const hasLowercase = /[a-z]/.test(password);
     const hasNumber = /\d/.test(password);
     const hasSpecialChar = /[!@#$%^&*(),.?":{}|<>]/.test(password);
-    
+
     return minLength && hasUppercase && hasLowercase && hasNumber && hasSpecialChar;
   };
 
@@ -77,9 +78,9 @@ const ForcePasswordChange = () => {
       /\d/.test(password),
       /[!@#$%^&*(),.?":{}|<>]/.test(password)
     ];
-    
+
     strength = checks.filter(Boolean).length;
-    
+
     if (strength <= 2) return { level: 'Weak', color: '#ff4757' };
     if (strength <= 3) return { level: 'Fair', color: '#ffa502' };
     if (strength <= 4) return { level: 'Good', color: '#2ed573' };
@@ -95,7 +96,7 @@ const ForcePasswordChange = () => {
 
     if (!validatePassword(password)) {
       Alert.alert(
-        'Invalid Password', 
+        'Invalid Password',
         'Password must be at least 8 characters long and contain uppercase, lowercase, number, and special character'
       );
       return;
@@ -110,18 +111,18 @@ const ForcePasswordChange = () => {
       setLoading(true);
       console.log('🔄 Starting forced password change...');
       console.log('📧 Email:', email);
-      
+
       const { data, error } = await forcePasswordChange(email, password);
-      
+
       console.log('🔍 Force password change result:', { data: !!data, error: !!error });
-      
+
       if (error) {
         console.error('❌ Password change error:', error);
-        
+
         // Check if it's a timeout - treat as success
         if (error.message.includes('timeout') || error.message.includes('timed out')) {
           console.log('⏰ Timeout detected - assuming success and redirecting to home');
-          
+
           Alert.alert(
             'Password Updated! 🎉',
             'Your password update took longer than expected, but it likely succeeded. You are being redirected to the home page.',
@@ -150,13 +151,13 @@ const ForcePasswordChange = () => {
         }
       } else {
         console.log('✅ Password change successful!');
-        
+
         // Check if we should redirect to home (including timeout cases)
         if (data.redirectToHome || data.passwordChanged) {
-          const sessionMessage = data.sessionRestored 
-            ? 'Your password has been updated, application state reloaded, and you are now signed in.' 
+          const sessionMessage = data.sessionRestored
+            ? 'Your password has been updated, application state reloaded, and you are now signed in.'
             : 'Your password has been updated and you are now signed in.';
-            
+
           Alert.alert(
             'Password Changed Successfully! 🎉',
             `${sessionMessage} Welcome to REcipe!`,
@@ -204,49 +205,60 @@ const ForcePasswordChange = () => {
   return (
     <TopographicBackground>
       {/* Back button */}
-      <TouchableOpacity style={globalStyles.backButton} onPress={goBack}>
-        <Svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#81A969" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <Path d="m15 18-6-6 6-6"/>
+      <TouchableOpacity style={[globalStyles.backButton, {
+        top: hp('5%'),
+        left: wp('5%'),
+        padding: wp('2%')
+      }]} onPress={goBack}>
+        <Svg width={wp('6%')} height={wp('6%')} viewBox="0 0 24 24" fill="none" stroke="#81A969" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <Path d="m15 18-6-6 6-6" />
         </Svg>
       </TouchableOpacity>
 
-      <Animated.View style={[globalStyles.card, { 
-        paddingTop: 8, 
-        paddingBottom: 10, 
+      <Animated.View style={[globalStyles.card, {
+        paddingTop: hp('1%'),
+        paddingBottom: hp('1.2%'),
+        paddingHorizontal: wp('6%'),
         position: 'absolute',
         bottom: 0,
         left: 0,
         right: 0,
         marginTop: 0,
         minHeight: '75%',
-        borderBottomLeftRadius: 0, 
+        borderBottomLeftRadius: 0,
         borderBottomRightRadius: 0,
         transform: [{ translateY }]
       }]}>
         <View style={[globalStyles.formContent, { flex: 0 }]}>
-          <View style={{ position: 'relative', alignSelf: 'flex-start', marginTop: 0, marginBottom: 20 }}>
-            <Text style={[globalStyles.title, { marginBottom: 6, paddingBottom: 0 }]}>Change Password</Text>
+          <View style={{ position: 'relative', alignSelf: 'flex-start', marginTop: 0, marginBottom: hp('2.5%') }}>
+            <Text style={[globalStyles.title, { marginBottom: hp('0.8%'), paddingBottom: 0, fontSize: wp('7.5%') }]}>Change Password</Text>
             <View
               style={{
                 position: 'absolute',
                 left: 0,
                 bottom: 0,
-                height: 4,
-                width: 180,
+                height: hp('0.5%'),
+                width: wp('45%'),
                 backgroundColor: '#97B88B',
-                borderRadius: 4,
+                borderRadius: hp('0.5%'),
               }}
             />
           </View>
 
-          <View style={[globalStyles.inputContainer, { marginBottom: 10, marginTop: 32 }]}>
-            <Text style={globalStyles.inputLabel}>New Password</Text>
+          <View style={[globalStyles.inputContainer, { marginBottom: hp('1.2%'), marginTop: hp('4%') }]}>
+            <Text style={[globalStyles.inputLabel, { fontSize: wp('4%'), marginBottom: hp('0.8%') }]}>New Password</Text>
             <View style={{ position: 'relative' }}>
               <TextInput
                 style={[
                   globalStyles.input,
                   passwordFocused && globalStyles.inputFocused,
-                  { paddingRight: 45 }
+                  {
+                    paddingRight: wp('12%'),
+                    paddingVertical: hp('1.5%'),
+                    paddingLeft: wp('3.5%'),
+                    fontSize: wp('4%'),
+                    borderRadius: wp('2%')
+                  }
                 ]}
                 value={password}
                 onChangeText={setPassword}
@@ -261,20 +273,20 @@ const ForcePasswordChange = () => {
               <TouchableOpacity
                 style={{
                   position: 'absolute',
-                  right: 12,
+                  right: wp('3%'),
                   top: '50%',
-                  transform: [{ translateY: -12 }],
-                  padding: 4,
+                  transform: [{ translateY: -hp('1.5%') }],
+                  padding: hp('0.5%'),
                 }}
                 onPress={() => setShowPassword(!showPassword)}
               >
                 {showPassword ? (
-                  <Svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7F8C8D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <Svg width={wp('6%')} height={wp('6%')} viewBox="0 0 24 24" fill="none" stroke="#7F8C8D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <Path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
                     <Path d="M1 1l22 22" />
                   </Svg>
                 ) : (
-                  <Svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7F8C8D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <Svg width={wp('6%')} height={wp('6%')} viewBox="0 0 24 24" fill="none" stroke="#7F8C8D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <Path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                     <Path d="M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z" />
                   </Svg>
@@ -282,20 +294,26 @@ const ForcePasswordChange = () => {
               </TouchableOpacity>
             </View>
             {password.length > 0 && (
-              <Text style={[styles.strengthText, { color: passwordStrength.color, marginTop: 6, marginLeft: 4 }]}>
+              <Text style={[styles.strengthText, { color: passwordStrength.color, marginTop: hp('0.8%'), marginLeft: wp('1%'), fontSize: wp('3.5%') }]}>
                 Strength: {passwordStrength.level}
               </Text>
             )}
           </View>
 
-          <View style={[globalStyles.inputContainer, { marginBottom: 10 }]}>
-            <Text style={globalStyles.inputLabel}>Confirm New Password</Text>
+          <View style={[globalStyles.inputContainer, { marginBottom: hp('1.2%') }]}>
+            <Text style={[globalStyles.inputLabel, { fontSize: wp('4%'), marginBottom: hp('0.8%') }]}>Confirm New Password</Text>
             <View style={{ position: 'relative' }}>
               <TextInput
                 style={[
                   globalStyles.input,
                   confirmPasswordFocused && globalStyles.inputFocused,
-                  { paddingRight: 45 }
+                  {
+                    paddingRight: wp('12%'),
+                    paddingVertical: hp('1.5%'),
+                    paddingLeft: wp('3.5%'),
+                    fontSize: wp('4%'),
+                    borderRadius: wp('2%')
+                  }
                 ]}
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
@@ -310,20 +328,20 @@ const ForcePasswordChange = () => {
               <TouchableOpacity
                 style={{
                   position: 'absolute',
-                  right: 12,
+                  right: wp('3%'),
                   top: '50%',
-                  transform: [{ translateY: -12 }],
-                  padding: 4,
+                  transform: [{ translateY: -hp('1.5%') }],
+                  padding: hp('0.5%'),
                 }}
                 onPress={() => setShowConfirmPassword(!showConfirmPassword)}
               >
                 {showConfirmPassword ? (
-                  <Svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7F8C8D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <Svg width={wp('6%')} height={wp('6%')} viewBox="0 0 24 24" fill="none" stroke="#7F8C8D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <Path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
                     <Path d="M1 1l22 22" />
                   </Svg>
                 ) : (
-                  <Svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7F8C8D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <Svg width={wp('6%')} height={wp('6%')} viewBox="0 0 24 24" fill="none" stroke="#7F8C8D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <Path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                     <Path d="M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z" />
                   </Svg>
@@ -332,23 +350,32 @@ const ForcePasswordChange = () => {
             </View>
           </View>
 
-          <View style={styles.requirementsContainer}>
-            <Text style={styles.requirementsTitle}>Password Requirements:</Text>
-            <Text style={styles.requirement}>• At least 8 characters long</Text>
-            <Text style={styles.requirement}>• Contains uppercase letter (A-Z)</Text>
-            <Text style={styles.requirement}>• Contains lowercase letter (a-z)</Text>
-            <Text style={styles.requirement}>• Contains number (0-9)</Text>
-            <Text style={styles.requirement}>• Contains special character (!@#$%^&*)</Text>
+          <View style={[styles.requirementsContainer, {
+            padding: wp('4%'),
+            borderRadius: wp('3%'),
+            marginTop: hp('1.5%'),
+            marginBottom: hp('1.2%')
+          }]}>
+            <Text style={[styles.requirementsTitle, { fontSize: wp('3.5%'), marginBottom: hp('1%') }]}>Password Requirements:</Text>
+            <Text style={[styles.requirement, { fontSize: wp('3.2%'), marginBottom: hp('0.4%') }]}>• At least 8 characters long</Text>
+            <Text style={[styles.requirement, { fontSize: wp('3.2%'), marginBottom: hp('0.4%') }]}>• Contains uppercase letter (A-Z)</Text>
+            <Text style={[styles.requirement, { fontSize: wp('3.2%'), marginBottom: hp('0.4%') }]}>• Contains lowercase letter (a-z)</Text>
+            <Text style={[styles.requirement, { fontSize: wp('3.2%'), marginBottom: hp('0.4%') }]}>• Contains number (0-9)</Text>
+            <Text style={[styles.requirement, { fontSize: wp('3.2%'), marginBottom: hp('0.4%') }]}>• Contains special character (!@#$%^&*)</Text>
           </View>
         </View>
 
-        <View style={[globalStyles.formActions, { marginTop: 48, marginBottom: 0, paddingTop: 0 }]}>
+        <View style={[globalStyles.formActions, { marginTop: hp('6%'), marginBottom: 0, paddingTop: 0 }]}>
           <TouchableOpacity
-            style={globalStyles.primaryButton}
+            style={[globalStyles.primaryButton, {
+              paddingVertical: hp('1.8%'),
+              paddingHorizontal: wp('8%'),
+              borderRadius: wp('3%')
+            }]}
             onPress={handleForcePasswordChange}
             disabled={loading}
           >
-            <Text style={globalStyles.primaryButtonText}>
+            <Text style={[globalStyles.primaryButtonText, { fontSize: wp('4.5%') }]}>
               {loading ? 'Updating Password...' : 'Change Password'}
             </Text>
           </TouchableOpacity>
