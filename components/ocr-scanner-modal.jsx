@@ -12,8 +12,6 @@ import {
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
-import { manipulateAsync, SaveFormat } from 'expo-image-manipulator'; // ✅ ADD THIS
-import Tesseract from 'tesseract.js'; // ✅ ADD THIS
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const FRAME_WIDTH = SCREEN_WIDTH * 0.85;
@@ -24,7 +22,7 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
   const [scanning, setScanning] = useState(false);
   const [extractedLines, setExtractedLines] = useState([]);
   const [selectedLines, setSelectedLines] = useState(new Set());
-  const [ocrProgress, setOcrProgress] = useState(0); // ✅ ADD PROGRESS
+  const [ocrProgress, setOcrProgress] = useState('');
   const cameraRef = useRef(null);
 
   useEffect(() => {
@@ -35,7 +33,7 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
       setExtractedLines([]);
       setSelectedLines(new Set());
       setScanning(false);
-      setOcrProgress(0);
+      setOcrProgress('');
     }
   }, [visible]);
 
@@ -43,93 +41,97 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
     if (scanning || !cameraRef.current) return;
     
     setScanning(true);
-    setOcrProgress(0);
+    setOcrProgress('Capturing image...');
     
     try {
       console.log('📷 Capturing image...');
       
       const photo = await cameraRef.current.takePictureAsync({
         quality: 0.8,
-        base64: false,
       });
 
-      console.log('✅ Image captured:', photo.uri);
-
-      // ✅ Optimize image for OCR (resize, increase contrast)
-      console.log('🔧 Processing image...');
-      const processedImage = await manipulateAsync(
-        photo.uri,
-        [
-          { resize: { width: 1024 } }, // Resize for faster processing
-        ],
-        { 
-          compress: 0.8, 
-          format: SaveFormat.JPEG 
-        }
-      );
+      console.log('✅ Image captured');
+      setOcrProgress('Processing image...');
 
       console.log('✅ Image processed, starting OCR...');
-      await performOCR(processedImage.uri);
+      setOcrProgress('Extracting text...');
+      
+      await performOCR(photo.uri);
       
     } catch (error) {
       console.error('❌ OCR error:', error);
       Alert.alert('Error', 'Failed to capture image. Please try again.');
       setScanning(false);
-      setOcrProgress(0);
+      setOcrProgress('');
     }
   };
 
-  const performOCR = async (imageUri) => {
+  const performOCR = async (photoUri) => {
     try {
-      console.log('🔍 Starting Tesseract OCR...');
+      console.log('🔍 Calling backend OCR endpoint...');
+      console.log('📸 Photo URI:', photoUri);
       
-      // ✅ Use Tesseract.js for client-side OCR
-      const result = await Tesseract.recognize(
-        imageUri,
-        'eng', // Language (English)
+      // Create form data with the image file
+      const formData = new FormData();
+      formData.append('file', {
+        uri: photoUri,
+        type: 'image/jpeg',
+        name: 'ocr-scan.jpg',
+      });
+
+      // Call backend OCR endpoint
+      const response = await fetch(
+        `${process.env.EXPO_PUBLIC_FOOD_API_URL}/ocr/extract`,
         {
-          logger: (m) => {
-            // Track OCR progress
-            if (m.status === 'recognizing text') {
-              const progress = Math.round(m.progress * 100);
-              setOcrProgress(progress);
-              console.log(`OCR Progress: ${progress}%`);
-            }
+          method: 'POST',
+          body: formData,
+          headers: {
+            'Content-Type': 'multipart/form-data',
           },
         }
       );
 
-      console.log('✅ OCR Complete!');
-      console.log('📝 Extracted text:', result.data.text);
+      const result = await response.json();
+      console.log('📥 Backend OCR Response:', JSON.stringify(result, null, 2));
+      
+      if (result.success && result.text) {
+        const detectedText = result.text;
+        
+        console.log('✅ OCR Complete!');
+        console.log('📝 Extracted text:', detectedText);
+        console.log('📏 Text Length:', result.length);
 
-      const text = result.data.text || '';
+        // Split text into lines
+        const lines = detectedText
+          .split('\n')
+          .map(line => line.trim())
+          .filter(line => line.length > 0);
 
-      // Split text into lines and filter empty lines
-      const lines = text
-        .split('\n')
-        .map(line => line.trim())
-        .filter(line => line.length > 0);
+        setExtractedLines(lines);
+        setScanning(false);
+        setOcrProgress('');
 
-      setExtractedLines(lines);
-      setScanning(false);
-      setOcrProgress(0);
-
-      if (lines.length === 0) {
-        Alert.alert(
-          'No Text Found',
-          'No text was detected in the image. Try again with better lighting or clearer text.',
-          [{ text: 'OK' }]
-        );
+        if (lines.length === 0) {
+          Alert.alert(
+            'No Text Found',
+            'No text was detected in the image. Try again with better lighting or clearer text.',
+            [{ text: 'OK' }]
+          );
+        }
+      } else {
+        throw new Error(result.error || 'No text detected');
       }
     } catch (error) {
       console.error('❌ OCR processing error:', error);
       Alert.alert(
         'Error',
-        'Failed to process text. Please try again.',
+        error.message === 'No text detected' 
+          ? 'No text was detected in the image. Please try again.'
+          : 'Failed to process text. Please try again.',
         [{ text: 'OK' }]
       );
       setScanning(false);
-      setOcrProgress(0);
+      setOcrProgress('');
     }
   };
 
@@ -234,19 +236,12 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
               <Ionicons name="document-text-outline" size={48} color="#fff" />
               <Text style={styles.instructionsText}>
                 {scanning 
-                  ? `Extracting text... ${ocrProgress}%` 
+                  ? ocrProgress
                   : 'Position text within the frame'}
               </Text>
               <Text style={styles.instructionsSubtext}>
                 Only text inside the frame will be scanned
               </Text>
-              
-              {/* ✅ Progress Bar */}
-              {scanning && ocrProgress > 0 && (
-                <View style={styles.progressBarContainer}>
-                  <View style={[styles.progressBar, { width: `${ocrProgress}%` }]} />
-                </View>
-              )}
               
               {scanning && <ActivityIndicator size="large" color="#fff" style={{ marginTop: 10 }} />}
             </View>
@@ -265,7 +260,7 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
             )}
           </View>
         ) : (
-          /* Results View - SAME AS BEFORE */
+          /* Results View - KEEP AS IS */
           <View style={styles.resultsContainer}>
             <View style={styles.resultsHeader}>
               <Text style={styles.resultsTitle}>Select Text Lines</Text>

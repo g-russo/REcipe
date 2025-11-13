@@ -47,14 +47,12 @@
           "defaultChannel": "default"
         }
       ],
-      "expo-barcode-scanner",
       [
         "expo-camera",
         {
           "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera to scan barcodes."
         }
-      ],
-      "react-native-vision-camera"
+      ]
     ],
     "extra": {
       "router": {},
