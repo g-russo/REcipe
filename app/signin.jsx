@@ -8,7 +8,8 @@ import {
   StyleSheet,
   Animated,
   Keyboard,
-  Platform
+  Platform,
+  StatusBar
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
@@ -123,13 +124,14 @@ const SignIn = () => {
 
   return (
     <TopographicBackground>
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
       <Animated.View style={[
         globalStyles.card,
         {
-          paddingTop: hp('1%'),
-          paddingBottom: hp('1.2%'),
+          paddingTop: hp('1.5%'),
+          paddingBottom: hp('1.5%'),
           paddingHorizontal: wp('6%'),
-          marginTop: '80%',
+          marginTop: Platform.OS === 'android' ? `${75 + (StatusBar.currentHeight || 0) / 8}%` : '80%',
           transform: [{ translateY }]
         }
       ]}>

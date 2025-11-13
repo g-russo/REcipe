@@ -5,8 +5,12 @@ import {
   TextInput,
   TouchableOpacity,
   Alert,
-  StyleSheet
+  StyleSheet,
+  StatusBar,
+  Platform
 } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
+import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useCustomAuth } from '../hooks/use-custom-auth';
 import { globalStyles } from '../assets/css/globalStyles';
@@ -36,7 +40,7 @@ const OTPVerification = () => {
   const handleOtpChange = (index, value) => {
     // Only allow numbers
     if (!/^\d*$/.test(value)) return;
-    
+
     const newOtp = [...otp];
     newOtp[index] = value;
     setOtp(newOtp);
@@ -55,7 +59,7 @@ const OTPVerification = () => {
 
   const handleVerifyOTP = async () => {
     const otpString = otp.join('');
-    
+
     if (otpString.length !== 6) {
       Alert.alert('Error', 'Please enter a valid 6-digit verification code');
       return;
@@ -132,28 +136,59 @@ const OTPVerification = () => {
 
   return (
     <TopographicBackground>
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
       {/* Back button */}
-      <TouchableOpacity style={globalStyles.backButton} onPress={goBack}>
-        <Text style={otpVerificationStyles.backArrow}>←</Text>
+      <TouchableOpacity style={[globalStyles.backButton, {
+        top: Platform.OS === 'android' ? hp('5%') + (StatusBar.currentHeight || 0) : hp('5%'),
+        left: wp('5%'),
+        padding: wp('2%')
+      }]} onPress={goBack}>
+        <Svg width={wp('6%')} height={wp('6%')} viewBox="0 0 24 24" fill="none" stroke="#81A969" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <Path d="m15 18-6-6 6-6" />
+        </Svg>
       </TouchableOpacity>
-      
-      <View style={globalStyles.card}>
+
+      <View style={[globalStyles.card, {
+        paddingTop: hp('1.5%'),
+        paddingBottom: hp('1.5%'),
+        paddingHorizontal: wp('6%')
+      }]}>
         <View style={globalStyles.formContent}>
-          <Text style={globalStyles.title}>Email Verification</Text>
-          
-          <Text style={globalStyles.subtitle}>
+          <View style={{ position: 'relative', alignSelf: 'flex-start', marginBottom: hp('2%') }}>
+            <Text style={[globalStyles.title, { marginBottom: hp('0.8%'), fontSize: wp('7.5%') }]}>Email Verification</Text>
+            <View
+              style={{
+                position: 'absolute',
+                left: 0,
+                bottom: 0,
+                height: hp('0.5%'),
+                width: wp('50%'),
+                backgroundColor: '#97B88B',
+                borderRadius: hp('0.5%'),
+              }}
+            />
+          </View>
+
+          <Text style={[globalStyles.subtitle, { marginLeft: wp('2%'), marginTop: hp('2%'), marginBottom: hp('3%'), fontSize: wp('3.8%') }]}>
             Enter the verification code we just sent to your email address.
           </Text>
-          
+
           {/* OTP Input Boxes */}
-          <View style={globalStyles.otpContainer}>
+          <View style={[globalStyles.otpContainer, { marginTop: hp('3%') }]}>
             {otp.map((digit, index) => (
               <TextInput
                 key={index}
                 ref={(ref) => inputRefs.current[index] = ref}
                 style={[
                   globalStyles.otpBox,
-                  digit && globalStyles.otpBoxFilled
+                  digit && globalStyles.otpBoxFilled,
+                  {
+                    width: wp('12%'),
+                    height: hp('7%'),
+                    fontSize: wp('6%'),
+                    borderRadius: wp('2%'),
+                    marginHorizontal: wp('1%')
+                  }
                 ]}
                 value={digit}
                 onChangeText={(value) => handleOtpChange(index, value)}
@@ -165,32 +200,38 @@ const OTPVerification = () => {
             ))}
           </View>
         </View>
-        
-        <View style={globalStyles.formActions}>
+
+        <View style={[globalStyles.formActions, { marginTop: hp('4%') }]}>
           <TouchableOpacity
-            style={globalStyles.primaryButton}
+            style={[globalStyles.primaryButton, {
+              paddingVertical: hp('1.8%'),
+              paddingHorizontal: wp('8%'),
+              borderRadius: wp('3%')
+            }]}
             onPress={handleVerifyOTP}
             disabled={loading || otp.join('').length !== 6}
           >
-            <Text style={globalStyles.primaryButtonText}>
+            <Text style={[globalStyles.primaryButtonText, { fontSize: wp('4.5%') }]}>
               {loading ? 'Verifying...' : 'Verify'}
             </Text>
           </TouchableOpacity>
-          
-          <View style={otpVerificationStyles.resendContainer}>
+
+          <View style={[otpVerificationStyles.resendContainer, { marginTop: hp('2%') }]}>
             {canResend ? (
               <TouchableOpacity
                 onPress={handleResendOTP}
                 disabled={resendLoading}
               >
-                <Text style={globalStyles.linkText}>
+                <Text style={[globalStyles.linkText, { fontSize: wp('3.8%') }]}>
                   {resendLoading ? 'Sending...' : 'Resend'}
                 </Text>
               </TouchableOpacity>
             ) : (
-              <Text style={globalStyles.grayText}>
-                Didn't receive email? Resend
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={[globalStyles.grayText, { fontSize: wp('3.8%') }]}>
+                  Didn't receive email? Resend in {countdown}s
+                </Text>
+              </View>
             )}
           </View>
         </View>
