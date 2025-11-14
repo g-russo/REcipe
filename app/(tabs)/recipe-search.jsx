@@ -370,34 +370,7 @@ const RecipeSearch = () => {
       return;
     }
 
-    // ✅ Add spell correction
-    const spellCheck = SpellCorrector.correctSpelling(query.trim());
-
-    if (spellCheck.hasCorrections && spellCheck.confidence > 0.7) {
-      // Show correction confirmation
-      Alert.alert(
-        '🔤 Did you mean?',
-        `"${spellCheck.corrected}"\n\nOriginal: "${query}"\nCorrected: "${spellCheck.corrected}"`,
-        [
-          {
-            text: 'No, keep original',
-            style: 'cancel',
-            onPress: () => performSearch(query.trim())
-          },
-          {
-            text: 'Yes, use correction',
-            style: 'default',
-            onPress: () => {
-              setSearchQuery(spellCheck.corrected);
-              performSearch(spellCheck.corrected);
-            }
-          }
-        ]
-      );
-      return;
-    }
-
-    // No corrections needed or low confidence - proceed with search
+    // Proceed with search
     performSearch(query.trim());
   };
 
@@ -459,10 +432,6 @@ const RecipeSearch = () => {
       console.log('📦 Cache service returned:', recipesResult?.length || 0, 'recipes');
       console.log('📦 First recipe:', recipesResult?.[0]?.label || 'No recipes');
 
-      // 🌐 Enhance search with multilingual support
-      const MultilingualSearch = require('../../utils/multilingual-search').default;
-      const enhancedSearch = MultilingualSearch.enhanceSearchQuery(query);
-
       // Cache service returns array directly, not { success, data }
       const recipes = Array.isArray(recipesResult) ? recipesResult : [];
       const result = { success: true, data: { recipes } };
@@ -471,24 +440,14 @@ const RecipeSearch = () => {
       if (result.success) {
         // ✅ ALWAYS check database for AI recipes (even if Edamam found results)
         console.log('🔍 Checking database for AI-generated recipes...');
-        console.log('🌐 Multilingual search queries:', enhancedSearch.searchQueries);
 
         let dbResult = { found: false, recipes: [], count: 0 };
         try {
           // ✅ Check if SousChefAIService and checkExistingRecipes exist
           if (SousChefAIService && typeof SousChefAIService.checkExistingRecipes === 'function') {
-            // Try all translated queries to find more matches
-            for (const searchQuery of enhancedSearch.searchQueries) {
-              const tempResult = await SousChefAIService.checkExistingRecipes(searchQuery, filters);
-              if (tempResult && tempResult.found && tempResult.recipes && tempResult.recipes.length > 0) {
-                // Merge results (avoid duplicates by recipeID)
-                const existingIds = new Set(dbResult.recipes.map(r => r.recipeID));
-                const newRecipes = tempResult.recipes.filter(r => !existingIds.has(r.recipeID));
-                dbResult.recipes.push(...newRecipes);
-                dbResult.found = true;
-                dbResult.count += newRecipes.length;
-              }
-            }
+            // Check database for existing AI recipes
+            dbResult = await SousChefAIService.checkExistingRecipes(query, filters);
+            console.log('✅ Database check completed:', dbResult);
           } else {
             console.warn('⚠️ SousChefAIService.checkExistingRecipes is not available');
           }
@@ -571,12 +530,18 @@ const RecipeSearch = () => {
 
           setAiRecipeCount(dbResult.count || 0);
           console.log(`✅ Displaying ${totalRecipes} total recipes (${dbResult.count} AI, ${result.data.recipes.length} Edamam)`);
-          setLoading(false);
+          
+          // Keep loading animation visible until recipes are fully rendered (5 seconds)
+          setTimeout(() => {
+            setLoading(false);
+          }, 5000);
         } else {
           // ❌ No results anywhere - Generate 1 AI recipe
           console.log('ℹ️ No existing recipes found, generating 1 AI recipe...');
           // ✅ Transition from search loading to AI generation loading
-          setLoading(false); // Stop search loading
+          setTimeout(() => {
+            setLoading(false); // Stop search loading after recipes render
+          }, 5000);
           setGeneratingAI(true); // Start AI loading
           setCurrentSearchQuery(query);
 
@@ -670,7 +635,9 @@ const RecipeSearch = () => {
         // API error
         Alert.alert('Search Error', result.error || 'Failed to search recipes. Please try again.');
         setRecipes([]);
-        setLoading(false);
+        setTimeout(() => {
+          setLoading(false);
+        }, 5000);
         setHasSearched(true); // ✅ Set hasSearched even on API error
       }
     } catch (error) {
@@ -682,7 +649,9 @@ const RecipeSearch = () => {
       console.error('='.repeat(60));
       Alert.alert('Error', 'Something went wrong while searching. Please try again.');
       setRecipes([]);
-      setLoading(false);
+      setTimeout(() => {
+        setLoading(false);
+      }, 5000);
       setGeneratingAI(false);
       setHasSearched(true); // ✅ Set hasSearched even on exception
     }

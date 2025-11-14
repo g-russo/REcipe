@@ -396,11 +396,23 @@ const Pantry = () => {
     });
   };
 
+  // Check if item is expired
+  const isItemExpired = (item) => {
+    if (!item.itemExpiration) return false;
+    const daysUntilExpiry = ExpirationNotificationService.calculateDaysUntilExpiration(item.itemExpiration);
+    return daysUntilExpiry < 0;
+  };
+
   // Handle delete item
   const handleDeleteItem = async (item) => {
+    const expired = isItemExpired(item);
+    const message = expired 
+      ? `"${item.itemName}" has expired. Do you want to delete it?`
+      : `Are you sure you want to delete "${item.itemName}"?`;
+    
     Alert.alert(
-      'Delete Item',
-      `Are you sure you want to delete "${item.itemName}"?`,
+      expired ? 'Delete Expired Item' : 'Delete Item',
+      message,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -421,15 +433,79 @@ const Pantry = () => {
     );
   };
 
+  // Handle delete all expired items
+  const handleDeleteAllExpired = async () => {
+    const expiredItems = items.filter(item => isItemExpired(item));
+    
+    if (expiredItems.length === 0) {
+      Alert.alert('No Expired Items', 'There are no expired items to delete.');
+      return;
+    }
+
+    Alert.alert(
+      'Delete All Expired Items',
+      `Found ${expiredItems.length} expired item(s). Delete all of them?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: `Delete ${expiredItems.length} Item(s)`,
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              console.log(`🗑️ Deleting ${expiredItems.length} expired items...`);
+              
+              // Delete all expired items
+              await Promise.all(
+                expiredItems.map(item => PantryService.deleteItem(item.itemID))
+              );
+              
+              await loadData();
+              Alert.alert(
+                'Success', 
+                `Deleted ${expiredItems.length} expired item(s) successfully`
+              );
+            } catch (error) {
+              console.error('Error deleting expired items:', error);
+              Alert.alert('Error', 'Failed to delete some expired items');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   // Handle item press
   const handleItemPress = (item) => {
     if (selectionMode) {
       toggleItemSelection(item.itemID);
     } else {
+      const expired = isItemExpired(item);
+      const daysUntilExpiry = item.itemExpiration 
+        ? ExpirationNotificationService.calculateDaysUntilExpiration(item.itemExpiration)
+        : null;
+      
+      let expiryText = 'No expiry';
+      if (item.itemExpiration) {
+        if (expired) {
+          const daysExpired = Math.abs(daysUntilExpiry);
+          expiryText = daysExpired === 0 
+            ? '⚠️ EXPIRED TODAY' 
+            : `⚠️ EXPIRED ${daysExpired} day(s) ago`;
+        } else if (daysUntilExpiry === 0) {
+          expiryText = '⚠️ Expires TODAY';
+        } else if (daysUntilExpiry === 1) {
+          expiryText = '⏰ Expires TOMORROW';
+        } else if (daysUntilExpiry <= 3) {
+          expiryText = `⏰ Expires in ${daysUntilExpiry} days`;
+        } else {
+          expiryText = item.itemExpiration;
+        }
+      }
+      
       // Show item details or navigate to detail screen
       Alert.alert(
         item.itemName,
-        `Category: ${item.itemCategory}\nQuantity: ${item.quantity} ${item.unit}\nExpires: ${item.itemExpiration || 'No expiry'}`,
+        `Category: ${item.itemCategory}\nQuantity: ${item.quantity} ${item.unit}\nExpires: ${expiryText}`,
         [
           {
             text: 'Edit',
@@ -439,7 +515,7 @@ const Pantry = () => {
             },
           },
           {
-            text: 'Delete',
+            text: expired ? 'Delete Expired Item' : 'Delete',
             style: 'destructive',
             onPress: () => handleDeleteItem(item),
           },
@@ -760,6 +836,7 @@ const Pantry = () => {
             expiringItems={expiringItems}
             onItemPress={handleItemPress}
             onViewAll={handleViewAllExpiring}
+            onDeleteAllExpired={handleDeleteAllExpired}
           />
 
           {/* Inventory Groups Section */}
