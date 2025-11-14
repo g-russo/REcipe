@@ -9,28 +9,36 @@ const BANNER_CARD_WIDTH = Math.min(SCREEN_WIDTH * 0.3, 120);
  * Expiring Items Banner Component
  * Shows items expiring within 3 days at the top of pantry
  */
-const ExpiringItemsBanner = ({ expiringItems, onItemPress, onViewAll }) => {
+const ExpiringItemsBanner = ({ expiringItems, onItemPress, onViewAll, onDeleteAllExpired }) => {
   if (!expiringItems || expiringItems.length === 0) {
     return null;
   }
 
   // Group by urgency
+  const expired = expiringItems.filter(item => item.daysUntilExpiry < 0);
   const today = expiringItems.filter(item => item.daysUntilExpiry === 0);
   const tomorrow = expiringItems.filter(item => item.daysUntilExpiry === 1);
   const soon = expiringItems.filter(item => item.daysUntilExpiry > 1 && item.daysUntilExpiry <= 3);
 
   // Get urgency level for styling
   const getUrgencyStyle = (days) => {
+    if (days < 0) return { bg: '#ffcccc', border: '#cc0000', text: '#cc0000', icon: 'close-circle' };
     if (days === 0) return { bg: '#ffe5e5', border: '#ff4d4d', text: '#ff4d4d', icon: 'alert-circle' };
     if (days === 1) return { bg: '#fff3e0', border: '#FF9800', text: '#FF9800', icon: 'time' };
     return { bg: '#fff9e6', border: '#FFC107', text: '#F57C00', icon: 'notifications' };
   };
 
   const getDaysText = (days) => {
+    if (days < 0) {
+      const daysExpired = Math.abs(days);
+      return daysExpired === 1 ? 'Expired Yesterday' : `Expired ${daysExpired} days ago`;
+    }
     if (days === 0) return 'Expires Today';
     if (days === 1) return 'Expires Tomorrow';
     return `Expires in ${days} days`;
   };
+
+  const hasExpiredItems = expired.length > 0;
 
   return (
     <View style={styles.container}>
@@ -38,15 +46,28 @@ const ExpiringItemsBanner = ({ expiringItems, onItemPress, onViewAll }) => {
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Ionicons name="warning" size={20} color="#FF9800" />
-          <Text style={styles.headerTitle}>Expiring Soon</Text>
+          <Text style={styles.headerTitle}>
+            {hasExpiredItems ? 'Expired & Expiring Soon' : 'Expiring Soon'}
+          </Text>
           <View style={styles.badge}>
             <Text style={styles.badgeText}>{expiringItems.length}</Text>
           </View>
         </View>
-        <TouchableOpacity onPress={onViewAll} style={styles.viewAllButton}>
-          <Text style={styles.viewAllText}>View All</Text>
-          <Ionicons name="chevron-forward" size={16} color="#8BC34A" />
-        </TouchableOpacity>
+        <View style={styles.headerRight}>
+          {hasExpiredItems && onDeleteAllExpired && (
+            <TouchableOpacity 
+              onPress={onDeleteAllExpired} 
+              style={styles.deleteAllButton}
+            >
+              <Ionicons name="trash" size={16} color="#ff4d4d" />
+              <Text style={styles.deleteAllText}>Delete Expired</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity onPress={onViewAll} style={styles.viewAllButton}>
+            <Text style={styles.viewAllText}>View All</Text>
+            <Ionicons name="chevron-forward" size={16} color="#8BC34A" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Items List */}
@@ -55,6 +76,31 @@ const ExpiringItemsBanner = ({ expiringItems, onItemPress, onViewAll }) => {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.itemsContainer}
       >
+        {/* Expired Items */}
+        {expired.map(item => {
+          const style = getUrgencyStyle(item.daysUntilExpiry);
+          return (
+            <TouchableOpacity
+              key={item.itemID}
+              style={[styles.itemCard, { backgroundColor: style.bg, borderColor: style.border }]}
+              onPress={() => onItemPress(item)}
+            >
+              <View style={styles.itemHeader}>
+                <Ionicons name={style.icon} size={18} color={style.text} />
+                <Text style={[styles.urgencyText, { color: style.text }]}>
+                  {getDaysText(item.daysUntilExpiry)}
+                </Text>
+              </View>
+              <Text style={styles.itemName} numberOfLines={2}>
+                {item.itemName}
+              </Text>
+              <Text style={styles.itemQuantity}>
+                {item.quantity} {item.unit || 'unit(s)'}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+
         {/* Today */}
         {today.map(item => {
           const style = getUrgencyStyle(0);
@@ -151,6 +197,12 @@ const styles = StyleSheet.create({
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
+    flex: 1,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
   headerTitle: {
     fontSize: 14,
@@ -168,6 +220,20 @@ const styles = StyleSheet.create({
   badgeText: {
     color: '#fff',
     fontSize: 11,
+    fontWeight: '600',
+  },
+  deleteAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    backgroundColor: '#ffe5e5',
+    borderRadius: 6,
+  },
+  deleteAllText: {
+    color: '#ff4d4d',
+    fontSize: 12,
     fontWeight: '600',
   },
   viewAllButton: {

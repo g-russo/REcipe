@@ -766,6 +766,13 @@ class PantryService {
         await this.deleteItemImage(item.imageURL);
       }
 
+      // Remove item from any groups it belongs to
+      console.log('🗑️ Removing item from groups...');
+      await supabase
+        .from('tbl_group_items')
+        .delete()
+        .eq('itemID', itemID);
+
       const { error } = await supabase
         .from('tbl_items')
         .delete()
@@ -776,6 +783,7 @@ class PantryService {
       // Update inventory item count
       await this.updateInventoryItemCount(item.inventoryID);
 
+      console.log('✅ Item deleted successfully (including group associations)');
       return true;
     } catch (error) {
       console.error('Error deleting item:', error);
