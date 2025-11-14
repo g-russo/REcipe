@@ -7,8 +7,8 @@ import * as SplashScreen from 'expo-splash-screen';
 import * as Font from 'expo-font';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SupabaseProvider } from '../contexts/supabase-context';
-import { 
-  registerForPushNotificationsAsync, 
+import {
+  registerForPushNotificationsAsync,
   savePushToken,
   addNotificationResponseListener,
   addNotificationReceivedListener
@@ -32,7 +32,7 @@ export default function RootLayout() {
     async function initializeApp() {
       try {
         console.log('🚀 RootLayout: Background initialization starting...');
-        
+
         // Background font loading
         await Font.loadAsync({
           // Add custom fonts here if needed
@@ -68,13 +68,13 @@ export default function RootLayout() {
     async function setupNotifications() {
       try {
         console.log('📱 Setting up push notifications...');
-        
+
         // Register for push notifications
         const token = await registerForPushNotificationsAsync();
-        
+
         if (token) {
           console.log('✅ Push token received:', token.substring(0, 20) + '...');
-          
+
           // Get current user and save token
           const { data: { user } } = await supabase.auth.getUser();
           if (user) {
@@ -89,7 +89,7 @@ export default function RootLayout() {
         notificationResponseSubscription = addNotificationResponseListener(response => {
           console.log('📱 Notification tapped:', response);
           const data = response.notification.request.content.data;
-          
+
           // Navigate based on notification data
           if (data?.screen === 'pantry') {
             // TODO: Navigate to pantry screen
