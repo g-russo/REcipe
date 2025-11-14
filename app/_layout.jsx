@@ -1,7 +1,7 @@
 // Do not remove, this is required for the app to run
 // Add routing here
 import { Stack } from 'expo-router';
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Font from 'expo-font';
@@ -19,7 +19,15 @@ import { useRouter } from 'expo-router';
 // Keep the splash screen visible while we initialize
 SplashScreen.preventAutoHideAsync();
 
+// Set the animation options for splash screen
+SplashScreen.setOptions({
+  duration: 1000,
+  fade: true,
+});
+
 export default function RootLayout() {
+  const [appIsReady, setAppIsReady] = useState(false);
+
   useEffect(() => {
     async function initializeApp() {
       try {
@@ -37,13 +45,20 @@ export default function RootLayout() {
       } catch (error) {
         console.error('❌ RootLayout initialization error:', error);
       } finally {
-        // Hide splash screen
-        await SplashScreen.hideAsync();
+        // Mark app as ready
+        setAppIsReady(true);
       }
     }
 
     initializeApp();
   }, []);
+
+  // Hide splash screen when app is ready
+  useEffect(() => {
+    if (appIsReady) {
+      SplashScreen.hideAsync();
+    }
+  }, [appIsReady]);
 
   // Register for push notifications
   useEffect(() => {
