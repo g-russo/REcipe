@@ -170,17 +170,24 @@ const CookingSteps = () => {
             if (pantryItem) {
               // Check if units match, if not, convert
               let quantityToSubtract = ingredient.quantity;
+              let isEstimate = false;
               
               if (pantryItem.unit.toLowerCase() !== ingredient.unit.toLowerCase()) {
                 // Units don't match - need to convert
                 const converted = convertUnit(ingredient.quantity, ingredient.unit, pantryItem.unit);
                 
-                if (converted !== null) {
-                  quantityToSubtract = converted;
-                  console.log(`    🔄 Converted ${ingredient.quantity} ${ingredient.unit} → ${converted.toFixed(3)} ${pantryItem.unit}`);
+                quantityToSubtract = converted;
+                
+                // Check if this was an exact conversion or estimate
+                const countingUnits = ['pcs', 'pc', 'piece', 'pieces', 'each', 'whole', 'count', ''];
+                const isCountingConversion = countingUnits.includes(ingredient.unit.toLowerCase()) && 
+                                             countingUnits.includes(pantryItem.unit.toLowerCase());
+                
+                if (converted === ingredient.quantity && !isCountingConversion) {
+                  isEstimate = true;
+                  console.log(`    � Using 1:1 estimate: ${ingredient.quantity} ${ingredient.unit} → ${converted} ${pantryItem.unit}`);
                 } else {
-                  console.warn(`    ⚠️ Cannot convert ${ingredient.unit} to ${pantryItem.unit} - skipping subtraction`);
-                  continue; // Skip this ingredient
+                  console.log(`    � Converted ${ingredient.quantity} ${ingredient.unit} → ${converted.toFixed(3)} ${pantryItem.unit}`);
                 }
               }
               

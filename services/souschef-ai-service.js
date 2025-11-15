@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { OPENAI_API_KEY } from '@env';
+// Remove @env import - use process.env for EAS compatibility
 import ImageGenerationService from './image-generation-service';
 
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
@@ -265,7 +265,7 @@ class SousChefAIService {
   async generateSingleRecipe(searchQuery, filters = {}, pantryItems = [], existingCount = 0, existingRecipesInUI = []) {
     try {
       console.log(`🤖 Generating 1 recipe with SousChef AI (${existingCount + 1}/5)...`);
-      console.log('📝 API Key Status:', OPENAI_API_KEY ? `Loaded (${OPENAI_API_KEY.substring(0, 10)}...)` : '❌ Missing');
+      console.log('📝 API Key Status:', process.env.OPENAI_API_KEY ? `Loaded (${process.env.OPENAI_API_KEY.substring(0, 10)}...)` : '❌ Missing');
 
       // Build prompt for 1 recipe only
       const prompt = this.buildRecipePrompt(searchQuery, filters, pantryItems, 1);
@@ -277,7 +277,7 @@ class SousChefAIService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${OPENAI_API_KEY}`
+          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
         },
         body: JSON.stringify({
           model: 'gpt-4o-mini',
@@ -334,7 +334,7 @@ class SousChefAIService {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${OPENAI_API_KEY}`
+            'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
           },
           body: JSON.stringify({
             model: 'gpt-4o-mini',
@@ -431,7 +431,7 @@ class SousChefAIService {
   async generateCustomRecipes(searchQuery, filters = {}, pantryItems = []) {
     try {
       console.log('🤖 Generating recipes with SousChef AI...');
-      console.log('📝 API Key Status:', OPENAI_API_KEY ? `Loaded (${OPENAI_API_KEY.substring(0, 10)}...)` : '❌ Missing');
+      console.log('📝 API Key Status:', process.env.OPENAI_API_KEY ? `Loaded (${process.env.OPENAI_API_KEY.substring(0, 10)}...)` : '❌ Missing');
 
       // Step 1: Generate recipe content
       const prompt = this.buildRecipePrompt(searchQuery, filters, pantryItems);
@@ -443,7 +443,7 @@ class SousChefAIService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${OPENAI_API_KEY}`
+          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
         },
         body: JSON.stringify({
           model: 'gpt-4o-mini', // Updated model - cheaper and faster than GPT-4 Turbo

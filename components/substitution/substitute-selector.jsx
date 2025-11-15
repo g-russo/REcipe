@@ -304,6 +304,25 @@ const SubstituteSelector = ({
                 In pantry: {substitute.quantity} {substitute.unit || ''}
               </Text>
 
+              {/* AI reasoning (if available) */}
+              {substitute.reason && (
+                <View style={styles.aiReasoningBadge}>
+                  <Ionicons name="bulb" size={10} color="#8A2BE2" />
+                  <Text style={styles.aiReasoningText} numberOfLines={2}>
+                    {substitute.reason}
+                  </Text>
+                </View>
+              )}
+
+              {/* Confidence score (if AI-powered) */}
+              {substitute.confidence && (
+                <View style={styles.confidenceBadge}>
+                  <Text style={styles.confidenceText}>
+                    {Math.round(substitute.confidence * 100)}% match
+                  </Text>
+                </View>
+              )}
+
               {/* Conversion Notice */}
               {substitute.unit !== converted.convertedUnit && (
                 <View style={styles.conversionNotice}>
@@ -480,6 +499,37 @@ const styles = StyleSheet.create({
     color: '#666',
     textAlign: 'center',
     marginTop: 4,
+  },
+  aiReasoningBadge: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+    backgroundColor: '#F3E5F5',
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#CE93D8',
+  },
+  aiReasoningText: {
+    fontSize: 9,
+    color: '#6A1B9A',
+    marginLeft: 4,
+    flex: 1,
+    lineHeight: 12,
+  },
+  confidenceBadge: {
+    marginTop: 4,
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+    backgroundColor: '#E8F5E9',
+    borderRadius: 4,
+    alignSelf: 'center',
+  },
+  confidenceText: {
+    fontSize: 9,
+    color: '#2E7D32',
+    fontWeight: '600',
   },
   conversionNotice: {
     flexDirection: 'row',

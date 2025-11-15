@@ -504,6 +504,146 @@ class IngredientSubstitutionService {
   }
 
   /**
+   * Get AI-powered substitutions for a missing ingredient
+   * Uses OpenAI GPT-4o-mini to suggest intelligent substitutes from pantry
+   * @param {string} missingIngredient - The ingredient to substitute
+   * @param {Array} pantryItems - User's pantry items
+   * @param {string} recipeName - Name of the recipe (for context)
+   * @param {string} cookingMethod - Cooking method (e.g., "baking", "frying", "boiling")
+   * @returns {Promise<Array>} Array of suggested substitutes with reasoning
+   */
+  async getAISubstitutions(missingIngredient, pantryItems, recipeName = '', cookingMethod = '') {
+    try {
+      console.log('🤖 Getting AI substitutions for:', missingIngredient);
+      console.log('📦 Available pantry items:', pantryItems.length);
+
+      // Format pantry items for AI
+      const pantryList = pantryItems.map(item => 
+        `${item.itemName} (${item.quantity} ${item.unit || 'pcs'})`
+      ).join(', ');
+
+      const prompt = `You are a professional chef assistant. A user is cooking "${recipeName}" and needs to substitute "${missingIngredient}".
+
+Available pantry items:
+${pantryList}
+
+Cooking method: ${cookingMethod || 'not specified'}
+
+Provide the TOP 5 BEST substitutes from the pantry items listed above. Consider:
+- Flavor profile compatibility
+- Cooking method (${cookingMethod})
+- Texture and consistency
+- Filipino and international cuisines
+- Nutritional similarity
+- Common substitution ratios
+
+Respond in JSON format:
+{
+  "substitutes": [
+    {
+      "name": "exact pantry item name",
+      "reason": "why this works",
+      "ratio": "substitution ratio (e.g., 1:1, 2:1)",
+      "quantity": 1.0,
+      "unit": "unit from pantry",
+      "confidence": 0.95
+    }
+  ]
+}
+
+Only suggest items that are ACTUALLY in the pantry list above. Return empty array if no good substitutes exist.`;
+
+      // Get API key (try EXPO_PUBLIC first, fallback to regular)
+      const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+      
+      if (!apiKey) {
+        console.error('❌ OpenAI API key not found in environment variables');
+        throw new Error('OpenAI API key not configured');
+      }
+
+      console.log('⏱️ Starting AI substitution request...');
+      const startTime = Date.now();
+
+      // Create abort controller for timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a professional chef and ingredient substitution expert. You understand both Filipino and international ingredients. Always respond in valid JSON format.'
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          temperature: 0.3,
+          max_tokens: 500, // Reduced from 800 for faster response
+          response_format: { type: 'json_object' }
+        })
+      });
+
+      clearTimeout(timeoutId);
+      const endTime = Date.now();
+      console.log(`✅ AI response received in ${endTime - startTime}ms`);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ OpenAI API error response:', errorText);
+        throw new Error(`OpenAI API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const result = JSON.parse(data.choices[0].message.content);
+
+      console.log('✅ AI suggested', result.substitutes?.length || 0, 'substitutes');
+
+      // Match AI suggestions with actual pantry items to get full data
+      const matchedSubstitutes = [];
+      for (const suggestion of result.substitutes || []) {
+        const pantryItem = pantryItems.find(item => 
+          this.normalizeIngredientName(item.itemName) === 
+          this.normalizeIngredientName(suggestion.name)
+        );
+
+        if (pantryItem) {
+          matchedSubstitutes.push({
+            name: pantryItem.itemName,
+            quantity: pantryItem.quantity,
+            unit: pantryItem.unit || 'pcs',
+            category: pantryItem.itemCategory || 'general',
+            reason: suggestion.reason,
+            ratio: suggestion.ratio,
+            confidence: suggestion.confidence,
+            itemID: pantryItem.itemID
+          });
+        }
+      }
+
+      return matchedSubstitutes;
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        console.error('⏱️ AI substitution timeout after 15 seconds');
+      } else {
+        console.error('❌ AI substitution error:', error.message);
+      }
+      // Fallback to rule-based substitution
+      console.log('⚠️ Falling back to rule-based substitution');
+      return this.findSubstitutes(missingIngredient, pantryItems);
+    }
+  }
+
+  /**
    * Get smart substitutions for missing ingredients using pantry
    * @param {Array} missingIngredients - Missing ingredients
    * @param {Array} pantryItems - User's pantry items
@@ -989,41 +1129,151 @@ class IngredientSubstitutionService {
    * @returns {number} Converted value
    */
   convertUnit(value, fromUnit, toUnit) {
-    // Normalize units
-    const from = fromUnit?.toLowerCase().trim() || '';
-    const to = toUnit?.toLowerCase().trim() || '';
+    // Normalize units - handle plural forms and common abbreviations
+    const normalizeUnit = (unit) => {
+      if (!unit) return '';
+      let normalized = unit.toLowerCase().trim();
+      
+      // Remove trailing 's' for plural forms
+      if (normalized.endsWith('s') && normalized.length > 2) {
+        // Don't remove 's' from 'oz' or 'lbs'
+        if (!['oz', 'lbs'].includes(normalized)) {
+          normalized = normalized.slice(0, -1);
+        }
+      }
+      
+      // Map common variations to standard units
+      const unitMap = {
+        // Weight units
+        'gram': 'g', 'grams': 'g', 'gr': 'g',
+        'kilogram': 'kg', 'kilograms': 'kg', 'kilo': 'kg',
+        'ounce': 'oz', 'ounces': 'oz',
+        'pound': 'lb', 'pounds': 'lb', 'lbs': 'lb',
+        
+        // Volume units
+        'milliliter': 'ml', 'milliliters': 'ml', 'millilitre': 'ml', 'millilitres': 'ml',
+        'liter': 'l', 'liters': 'l', 'litre': 'l', 'litres': 'l',
+        'tablespoon': 'tbsp', 'tablespoons': 'tbsp', 'tbs': 'tbsp', 'tb': 'tbsp', 'T': 'tbsp',
+        'teaspoon': 'tsp', 'teaspoons': 'tsp', 't': 'tsp',
+        'cups': 'cup', 'c': 'cup',
+        'fluid ounce': 'fl oz', 'fluid ounces': 'fl oz', 'floz': 'fl oz',
+        
+        // Counting units
+        'piece': 'pcs', 'pieces': 'pcs', 'pc': 'pcs', 'pcs': 'pcs', 'piece': 'pcs',
+        'whole': 'pcs', 'each': 'pcs', 'count': 'pcs',
+        
+        // Filipino units
+        'salop': 'salop', 'ganta': 'ganta', 'chupa': 'chupa',
+      };
+      
+      return unitMap[normalized] || normalized;
+    };
+
+    const from = normalizeUnit(fromUnit);
+    const to = normalizeUnit(toUnit);
+
+    console.log(`🔄 Unit conversion: ${value} ${from} → ${to}`);
 
     if (from === to) return value;
 
-    // Weight conversions
+    // Counting units (all equivalent) - treat as 1:1
+    const countingUnits = ['pcs', 'pc', 'piece', 'each', 'whole', 'count', ''];
+    if (countingUnits.includes(from) && countingUnits.includes(to)) {
+      console.log(`✓ Counting unit conversion: ${value} ${from} = ${value} ${to} (1:1)`);
+      return value;
+    }
+
+    // Weight conversions (comprehensive)
     const weightConversions = {
       'g': { 'kg': 0.001, 'oz': 0.035274, 'lb': 0.00220462, 'g': 1 },
       'kg': { 'g': 1000, 'oz': 35.274, 'lb': 2.20462, 'kg': 1 },
       'oz': { 'g': 28.3495, 'kg': 0.0283495, 'lb': 0.0625, 'oz': 1 },
-      'lb': { 'g': 453.592, 'kg': 0.453592, 'oz': 16, 'lb': 1 },
+      'lb': { 'g': 453.592, 'kg': 0.453592, 'oz': 16, 'lb': 1, 'pound': 1 },
     };
 
-    // Volume conversions
+    // Volume conversions (comprehensive)
     const volumeConversions = {
-      'ml': { 'l': 0.001, 'cup': 0.00422675, 'tbsp': 0.067628, 'tsp': 0.202884, 'fl oz': 0.033814, 'ml': 1 },
-      'l': { 'ml': 1000, 'cup': 4.22675, 'tbsp': 67.628, 'tsp': 202.884, 'fl oz': 33.814, 'l': 1 },
-      'cup': { 'ml': 236.588, 'l': 0.236588, 'tbsp': 16, 'tsp': 48, 'fl oz': 8, 'cup': 1 },
-      'tbsp': { 'ml': 14.7868, 'l': 0.0147868, 'cup': 0.0625, 'tsp': 3, 'fl oz': 0.5, 'tbsp': 1 },
-      'tsp': { 'ml': 4.92892, 'l': 0.00492892, 'cup': 0.0208333, 'tbsp': 0.333333, 'fl oz': 0.166667, 'tsp': 1 },
-      'fl oz': { 'ml': 29.5735, 'l': 0.0295735, 'cup': 0.125, 'tbsp': 2, 'tsp': 6, 'fl oz': 1 },
+      'ml': { 
+        'l': 0.001, 
+        'liter': 0.001,
+        'cup': 0.00422675, 
+        'tbsp': 0.067628, 
+        'tsp': 0.202884, 
+        'fl oz': 0.033814, 
+        'ml': 1 
+      },
+      'l': { 
+        'ml': 1000, 
+        'liter': 1,
+        'cup': 4.22675, 
+        'tbsp': 67.628, 
+        'tsp': 202.884, 
+        'fl oz': 33.814, 
+        'l': 1 
+      },
+      'liter': {
+        'ml': 1000,
+        'l': 1,
+        'liter': 1,
+        'cup': 4.22675,
+        'tbsp': 67.628,
+        'tsp': 202.884,
+        'fl oz': 33.814,
+      },
+      'cup': { 
+        'ml': 236.588, 
+        'l': 0.236588, 
+        'liter': 0.236588,
+        'tbsp': 16, 
+        'tsp': 48, 
+        'fl oz': 8, 
+        'cup': 1 
+      },
+      'tbsp': { 
+        'ml': 14.7868, 
+        'l': 0.0147868, 
+        'liter': 0.0147868,
+        'cup': 0.0625, 
+        'tsp': 3, 
+        'fl oz': 0.5, 
+        'tbsp': 1 
+      },
+      'tsp': { 
+        'ml': 4.92892, 
+        'l': 0.00492892, 
+        'liter': 0.00492892,
+        'cup': 0.0208333, 
+        'tbsp': 0.333333, 
+        'fl oz': 0.166667, 
+        'tsp': 1 
+      },
+      'fl oz': { 
+        'ml': 29.5735, 
+        'l': 0.0295735, 
+        'liter': 0.0295735,
+        'cup': 0.125, 
+        'tbsp': 2, 
+        'tsp': 6, 
+        'fl oz': 1 
+      },
     };
 
     // Try weight conversion
     if (weightConversions[from]?.[to]) {
-      return parseFloat((value * weightConversions[from][to]).toFixed(2));
+      const result = parseFloat((value * weightConversions[from][to]).toFixed(3));
+      console.log(`✓ Weight conversion: ${value} ${from} = ${result} ${to}`);
+      return result;
     }
 
     // Try volume conversion
     if (volumeConversions[from]?.[to]) {
-      return parseFloat((value * volumeConversions[from][to]).toFixed(2));
+      const result = parseFloat((value * volumeConversions[from][to]).toFixed(3));
+      console.log(`✓ Volume conversion: ${value} ${from} = ${result} ${to}`);
+      return result;
     }
 
     // No conversion available, return original value
+    console.log(`⚠️ No conversion available from ${from} to ${to}`);
     return value;
   }
 
@@ -1099,29 +1349,34 @@ class IngredientSubstitutionService {
         let modifiedStep = typeof step === 'string' ? step : step.instruction;
         
         Object.entries(substitutions).forEach(([original, substitute]) => {
-          // Extract the base ingredient name from original (remove descriptors and quantity)
-          const parsedOriginal = this.parseQuantityFromText(original);
+          // Get the base ingredient names
           const normalizedOriginal = this.normalizeIngredientName(original);
-          
-          // Get substitute name
           const substituteName = substitute.name;
           
-          // Try multiple patterns to replace the ingredient in instructions
-          // Pattern 1: Full original text (e.g., "1 handful frozen prawns" → "shrimp")
-          const fullRegex = new RegExp(original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-          modifiedStep = modifiedStep.replace(fullRegex, substituteName);
+          // Remove quantities and common descriptors to get base ingredient
+          const quantityPattern = /^\d+\.?\d*\s*(\d+\/\d+)?\s*(cups?|tbsps?|tsps?|tablespoons?|teaspoons?|oz|ounces?|g|grams?|kg|kilograms?|lbs?|pounds?|ml|l|liters?|pcs?|pieces?|each|whole)?\s*/i;
+          const baseOriginal = normalizedOriginal.replace(quantityPattern, '').trim();
           
-          // Pattern 2: Normalized ingredient with common descriptors (e.g., "frozen prawns" → "shrimp")
-          const descriptorPattern = /\b(fresh|frozen|raw|cooked|diced|chopped|sliced|minced|ground|whole|canned|dried|smoked)\s+/gi;
-          const baseIngredient = normalizedOriginal.replace(descriptorPattern, '').trim();
-          if (baseIngredient) {
-            // Match descriptor + ingredient (e.g., "frozen prawns")
-            const descriptorRegex = new RegExp(`\\b(fresh|frozen|raw|cooked|diced|chopped|sliced|minced|ground|whole|canned|dried|smoked)\\s+${baseIngredient}\\b`, 'gi');
-            modifiedStep = modifiedStep.replace(descriptorRegex, substituteName);
+          // Common descriptors that might appear before ingredient
+          const descriptors = '(fresh|frozen|raw|cooked|diced|chopped|sliced|minced|ground|whole|canned|dried|smoked|peeled|cored|quartered|halved|large|small|medium)';
+          
+          if (baseOriginal) {
+            console.log(`🔄 Replacing "${baseOriginal}" with "${substituteName}" in instructions`);
             
-            // Match just the ingredient without descriptor (e.g., "prawns")
-            const bareRegex = new RegExp(`\\b${baseIngredient}\\b`, 'gi');
+            // Pattern 1: Match with descriptors (e.g., "fresh tarragon" → "basil")
+            const descriptorRegex = new RegExp(`\\b${descriptors}\\s+${baseOriginal}\\b`, 'gi');
+            modifiedStep = modifiedStep.replace(descriptorRegex, (match) => {
+              const descriptor = match.split(/\s+/)[0]; // Get the descriptor word
+              return `${descriptor} ${substituteName}`;
+            });
+            
+            // Pattern 2: Match bare ingredient (e.g., "tarragon" → "basil")
+            const bareRegex = new RegExp(`\\b${baseOriginal}\\b`, 'gi');
             modifiedStep = modifiedStep.replace(bareRegex, substituteName);
+            
+            // Pattern 3: Match full original text for exact matches
+            const fullRegex = new RegExp(original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+            modifiedStep = modifiedStep.replace(fullRegex, substituteName);
           }
         });
         

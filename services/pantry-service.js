@@ -687,6 +687,12 @@ class PantryService {
       await this.updateInventoryItemCount(inventoryID);
 
       console.log('✅ Inventory count updated');
+
+      // Check expiration and create notification if needed
+      if (itemExpiration && userID) {
+        await this.checkAndCreateExpirationNotification(data.itemID, itemName, itemExpiration, userID);
+      }
+
       return data;
     } catch (error) {
       console.error('Error creating item:', error);
@@ -738,6 +744,17 @@ class PantryService {
         .single();
 
       if (error) throw error;
+
+      // Check expiration if date was updated
+      if (otherUpdates.itemExpiration && userID) {
+        await this.checkAndCreateExpirationNotification(
+          itemID,
+          itemName || data.itemName,
+          otherUpdates.itemExpiration,
+          userID
+        );
+      }
+
       return data;
     } catch (error) {
       console.error('Error updating item:', error);
@@ -1250,6 +1267,148 @@ class PantryService {
       if (updateError) throw updateError;
     } catch (error) {
       console.error('Error updating group item count:', error);
+    }
+  }
+
+  // =====================================================
+  // EXPIRATION NOTIFICATION SYSTEM
+  // =====================================================
+
+  /**
+   * Check item expiration and create notification if within threshold
+   * Automatically called when items are added or updated
+   * @param {number} itemID - The item ID
+   * @param {string} itemName - The item name
+   * @param {string} itemExpiration - ISO date string
+   * @param {number} userID - User ID
+   */
+  async checkAndCreateExpirationNotification(itemID, itemName, itemExpiration, userID) {
+    try {
+      if (!itemExpiration) return;
+
+      const expirationDate = new Date(itemExpiration);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      expirationDate.setHours(0, 0, 0, 0);
+
+      const daysUntilExpiration = Math.floor((expirationDate - today) / (1000 * 60 * 60 * 24));
+
+      console.log(`⏰ Item "${itemName}" expires in ${daysUntilExpiration} days`);
+
+      // Check if notification already exists for this item
+      const { data: existing } = await supabase
+        .from('tbl_notifications')
+        .select('notificationID')
+        .eq('userID', userID)
+        .eq('type', 'pantry_expiration')
+        .eq('data->>itemID', itemID.toString())
+        .eq('isDeleted', false)
+        .maybeSingle();
+
+      if (existing) {
+        console.log('⚠️ Notification already exists for this item');
+        return;
+      }
+
+      let notificationTitle = null;
+      let notificationBody = null;
+      let notificationData = {
+        itemID,
+        itemName,
+        expirationDate: itemExpiration,
+        daysUntilExpiration,
+      };
+
+      // Create notifications based on expiration threshold
+      if (daysUntilExpiration === 0) {
+        notificationTitle = '🚨 Item Expired Today!';
+        notificationBody = `"${itemName}" has expired today. Please remove it from your pantry.`;
+      } else if (daysUntilExpiration === 1) {
+        notificationTitle = '⚠️ Item Expiring Tomorrow';
+        notificationBody = `"${itemName}" will expire tomorrow. Use it soon!`;
+      } else if (daysUntilExpiration === 3) {
+        notificationTitle = '⏰ Item Expiring in 3 Days';
+        notificationBody = `"${itemName}" will expire in 3 days. Plan to use it!`;
+      } else if (daysUntilExpiration === 7) {
+        notificationTitle = '📅 Item Expiring in 1 Week';
+        notificationBody = `"${itemName}" will expire in 1 week.`;
+      } else if (daysUntilExpiration < 0) {
+        notificationTitle = '🚨 Item Expired!';
+        notificationBody = `"${itemName}" expired ${Math.abs(daysUntilExpiration)} days ago. Please remove it.`;
+      }
+
+      // Only create notification if within threshold
+      if (notificationTitle) {
+        console.log(`🔔 Creating expiration notification for "${itemName}"`);
+        
+        const { data, error } = await supabase
+          .from('tbl_notifications')
+          .insert({
+            userID,
+            title: notificationTitle,
+            body: notificationBody,
+            type: 'pantry_expiration',
+            data: notificationData,
+            isRead: false,
+            isDeleted: false,
+          })
+          .select()
+          .single();
+
+        if (error) {
+          console.error('❌ Error creating notification:', error);
+          throw error;
+        }
+
+        console.log('✅ Expiration notification created:', data.notificationID);
+        return data;
+      } else {
+        console.log(`✅ Item not within expiration threshold (${daysUntilExpiration} days)`);
+      }
+    } catch (error) {
+      console.error('❌ Error checking expiration notification:', error);
+      // Don't throw - notification failure shouldn't block item creation
+    }
+  }
+
+  /**
+   * Check all items for expiration and create notifications
+   * Can be called manually or via cron job
+   * @param {number} userID - User ID
+   */
+  async checkAllItemsForExpiration(userID) {
+    try {
+      console.log('🔍 Checking all items for expiration...');
+
+      // Get all inventories for user
+      const inventories = await this.getInventories(userID);
+      
+      let checkedCount = 0;
+      let notificationCount = 0;
+
+      for (const inventory of inventories) {
+        // Get all items in inventory
+        const items = await this.getItems(inventory.inventoryID);
+        
+        for (const item of items) {
+          if (item.itemExpiration) {
+            checkedCount++;
+            const notification = await this.checkAndCreateExpirationNotification(
+              item.itemID,
+              item.itemName,
+              item.itemExpiration,
+              userID
+            );
+            if (notification) notificationCount++;
+          }
+        }
+      }
+
+      console.log(`✅ Checked ${checkedCount} items, created ${notificationCount} notifications`);
+      return { checkedCount, notificationCount };
+    } catch (error) {
+      console.error('❌ Error checking all items:', error);
+      throw error;
     }
   }
 }
