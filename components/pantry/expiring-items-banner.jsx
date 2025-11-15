@@ -1,15 +1,10 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Dimensions } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const BANNER_CARD_WIDTH = Math.min(SCREEN_WIDTH * 0.3, 120);
-
-/**
- * Expiring Items Banner Component
- * Shows items expiring within 3 days at the top of pantry
- */
 const ExpiringItemsBanner = ({ expiringItems, onItemPress, onViewAll, onDeleteAllExpired }) => {
+  const [expanded, setExpanded] = useState(false);
+
   if (!expiringItems || expiringItems.length === 0) {
     return null;
   }
@@ -38,244 +33,186 @@ const ExpiringItemsBanner = ({ expiringItems, onItemPress, onViewAll, onDeleteAl
     return `Expires in ${days} days`;
   };
 
+  const getPillText = (days) => {
+    if (days < 0) return 'Expired';
+    if (days === 0) return 'Today';
+    if (days === 1) return 'Tomorrow';
+    return `In ${days}d`;
+  };
+
   const hasExpiredItems = expired.length > 0;
 
   return (
-    <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
+    <View style={styles.dropdownContainer}>
+      {/* Header (toggle) */}
+      <TouchableOpacity style={styles.dropdownHeader} activeOpacity={0.7} onPress={() => setExpanded(prev => !prev)}>
         <View style={styles.headerLeft}>
-          <Ionicons name="warning" size={20} color="#FF9800" />
-          <Text style={styles.headerTitle}>
-            {hasExpiredItems ? 'Expired & Expiring Soon' : 'Expiring Soon'}
-          </Text>
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>{expiringItems.length}</Text>
+          <Ionicons name="warning-outline" size={20} color="#FF9800" />
+          <Text style={styles.headerTitle}>{hasExpiredItems ? 'Expired & Expiring Soon' : 'Expiring Soon'}</Text>
+          <View style={styles.countBadge}>
+            <Text style={styles.countBadgeText}>{expiringItems.length}</Text>
           </View>
         </View>
         <View style={styles.headerRight}>
           {hasExpiredItems && onDeleteAllExpired && (
-            <TouchableOpacity 
-              onPress={onDeleteAllExpired} 
-              style={styles.deleteAllButton}
-            >
-              <Ionicons name="trash" size={16} color="#ff4d4d" />
-              <Text style={styles.deleteAllText}>Delete Expired</Text>
+            <TouchableOpacity onPress={onDeleteAllExpired} style={styles.deleteExpiredBtn}>
+              <Ionicons name="trash-outline" size={14} color="#ff4d4d" />
+              <Text style={styles.deleteExpiredText}>Delete Expired</Text>
             </TouchableOpacity>
           )}
-          <TouchableOpacity onPress={onViewAll} style={styles.viewAllButton}>
-            <Text style={styles.viewAllText}>View All</Text>
-            <Ionicons name="chevron-forward" size={16} color="#8BC34A" />
+          <TouchableOpacity onPress={() => { onViewAll && onViewAll(); setExpanded(false); }} style={styles.viewAllSimpleBtn}>
+            <Text style={styles.viewAllSimpleText}>View All</Text>
           </TouchableOpacity>
+          <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color="#999" />
         </View>
-      </View>
+      </TouchableOpacity>
 
-      {/* Items List */}
-      <ScrollView 
-        horizontal 
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.itemsContainer}
-      >
-        {/* Expired Items */}
-        {expired.map(item => {
-          const style = getUrgencyStyle(item.daysUntilExpiry);
-          return (
-            <TouchableOpacity
-              key={item.itemID}
-              style={[styles.itemCard, { backgroundColor: style.bg, borderColor: style.border }]}
-              onPress={() => onItemPress(item)}
-            >
-              <View style={styles.itemHeader}>
-                <Ionicons name={style.icon} size={18} color={style.text} />
-                <Text style={[styles.urgencyText, { color: style.text }]}>
-                  {getDaysText(item.daysUntilExpiry)}
-                </Text>
-              </View>
-              <Text style={styles.itemName} numberOfLines={2}>
-                {item.itemName}
-              </Text>
-              <Text style={styles.itemQuantity}>
-                {item.quantity} {item.unit || 'unit(s)'}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-
-        {/* Today */}
-        {today.map(item => {
-          const style = getUrgencyStyle(0);
-          return (
-            <TouchableOpacity
-              key={item.itemID}
-              style={[styles.itemCard, { backgroundColor: style.bg, borderColor: style.border }]}
-              onPress={() => onItemPress(item)}
-            >
-              <View style={styles.itemHeader}>
-                <Ionicons name={style.icon} size={18} color={style.text} />
-                <Text style={[styles.urgencyText, { color: style.text }]}>
-                  {getDaysText(0)}
-                </Text>
-              </View>
-              <Text style={styles.itemName} numberOfLines={2}>
-                {item.itemName}
-              </Text>
-              <Text style={styles.itemQuantity}>
-                {item.quantity} {item.unit || 'unit(s)'}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-
-        {/* Tomorrow */}
-        {tomorrow.map(item => {
-          const style = getUrgencyStyle(1);
-          return (
-            <TouchableOpacity
-              key={item.itemID}
-              style={[styles.itemCard, { backgroundColor: style.bg, borderColor: style.border }]}
-              onPress={() => onItemPress(item)}
-            >
-              <View style={styles.itemHeader}>
-                <Ionicons name={style.icon} size={18} color={style.text} />
-                <Text style={[styles.urgencyText, { color: style.text }]}>
-                  {getDaysText(1)}
-                </Text>
-              </View>
-              <Text style={styles.itemName} numberOfLines={2}>
-                {item.itemName}
-              </Text>
-              <Text style={styles.itemQuantity}>
-                {item.quantity} {item.unit || 'unit(s)'}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-
-        {/* Soon (2-3 days) */}
-        {soon.map(item => {
-          const style = getUrgencyStyle(item.daysUntilExpiry);
-          return (
-            <TouchableOpacity
-              key={item.itemID}
-              style={[styles.itemCard, { backgroundColor: style.bg, borderColor: style.border }]}
-              onPress={() => onItemPress(item)}
-            >
-              <View style={styles.itemHeader}>
-                <Ionicons name={style.icon} size={18} color={style.text} />
-                <Text style={[styles.urgencyText, { color: style.text }]}>
-                  {getDaysText(item.daysUntilExpiry)}
-                </Text>
-              </View>
-              <Text style={styles.itemName} numberOfLines={2}>
-                {item.itemName}
-              </Text>
-              <Text style={styles.itemQuantity}>
-                {item.quantity} {item.unit || 'unit(s)'}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
+      {/* Dropdown content */}
+      {expanded && (
+        <View style={styles.listCard}>
+          {[...expired, ...today, ...tomorrow, ...soon].map(item => {
+            const pillStyleData = getUrgencyStyle(item.daysUntilExpiry);
+            return (
+              <TouchableOpacity
+                key={item.itemID}
+                style={styles.row}
+                activeOpacity={0.7}
+                onPress={() => onItemPress(item)}
+              >
+                <View style={styles.rowIconBox}>
+                  <Ionicons name="time-outline" size={20} color="#FF9800" />
+                </View>
+                <View style={styles.rowTextWrap}>
+                  <Text style={styles.rowName} numberOfLines={1}>{item.itemName}</Text>
+                  <Text style={styles.rowSub}>{item.quantity} {item.unit || 'unit'}</Text>
+                </View>
+                <View style={[styles.expiryPill, { backgroundColor: pillStyleData.bg }]}>
+                  <Text style={[styles.expiryPillText, { color: pillStyleData.text }]}>{getPillText(item.daysUntilExpiry)}</Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    backgroundColor: '#fff',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  dropdownContainer: {
     paddingHorizontal: 20,
-    marginBottom: 8,
+    paddingTop: 10,
+    paddingBottom: 4,
+    backgroundColor: '#fff',
+  },
+  dropdownHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 6,
   },
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
-  },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+    flexShrink: 1,
   },
   headerTitle: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
     color: '#333',
     marginLeft: 8,
   },
-  badge: {
+  countBadge: {
     backgroundColor: '#FF9800',
     borderRadius: 10,
     paddingHorizontal: 6,
-    paddingVertical: 1,
+    paddingVertical: 2,
     marginLeft: 6,
   },
-  badgeText: {
+  countBadgeText: {
     color: '#fff',
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: '700',
   },
-  deleteAllButton: {
+  headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    backgroundColor: '#ffe5e5',
-    borderRadius: 6,
+    gap: 10,
   },
-  deleteAllText: {
+  deleteExpiredBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffe5e5',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    gap: 4,
+  },
+  deleteExpiredText: {
+    fontSize: 11,
+    fontWeight: '600',
     color: '#ff4d4d',
+  },
+  viewAllSimpleBtn: {
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+  },
+  viewAllSimpleText: {
     fontSize: 12,
     fontWeight: '600',
+    color: '#8ac551',
   },
-  viewAllButton: {
+  listCard: {
+    marginTop: 6,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e9e9e9',
+    overflow: 'hidden',
+  },
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f2f2f2',
   },
-  viewAllText: {
-    color: '#8BC34A',
-    fontSize: 13,
-    fontWeight: '600',
-    marginRight: 4,
-  },
-  itemsContainer: {
-    paddingHorizontal: 20,
-  },
-  itemCard: {
-    width: BANNER_CARD_WIDTH,
-    marginRight: 10,
-    padding: 10,
-    borderRadius: 10,
-    borderWidth: 1.5,
-  },
-  itemHeader: {
-    flexDirection: 'row',
+  rowIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    backgroundColor: '#fff9e6',
     alignItems: 'center',
-    marginBottom: 6,
+    justifyContent: 'center',
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: '#FFE5AA',
   },
-  urgencyText: {
-    fontSize: 10,
+  rowTextWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  rowName: {
+    fontSize: 14,
     fontWeight: '600',
-    marginLeft: 4,
+    color: '#222',
+    marginBottom: 2,
   },
-  itemName: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 3,
-    minHeight: 32,
-  },
-  itemQuantity: {
-    fontSize: 11,
+  rowSub: {
+    fontSize: 12,
     color: '#666',
+  },
+  expiryPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    minWidth: 70,
+    alignItems: 'center',
+  },
+  expiryPillText: {
+    fontSize: 11,
+    fontWeight: '700',
   },
 });
 
