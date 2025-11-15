@@ -2,9 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
-  Modal,
   TouchableOpacity,
   StyleSheet,
+  Modal,
   Alert,
   ActivityIndicator,
   ScrollView,
@@ -12,6 +12,8 @@ import {
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
+import { extractText } from '../services/food-recog-api'; // ✅ Use the service
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const FRAME_WIDTH = SCREEN_WIDTH * 0.85;
@@ -37,6 +39,68 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
     }
   }, [visible]);
 
+  // ✅ Gallery picker for OCR
+  const pickImageFromGallery = async () => {
+    if (scanning) return;
+
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Please allow access to your photos.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.85,
+        allowsMultipleSelection: false,
+      });
+
+      if (result.canceled || !result.assets?.[0]) return;
+
+      const uri = result.assets[0].uri;
+      
+      setScanning(true);
+      setOcrProgress('Processing image...');
+
+      console.log('📸 Processing gallery image for OCR...');
+      
+      const ocrResult = await extractText(uri);
+      
+      if (ocrResult?.success && ocrResult?.text) {
+        const lines = ocrResult.text
+          .split('\n')
+          .map(line => line.trim())
+          .filter(line => line.length > 0);
+
+        if (lines.length === 0) {
+          Alert.alert(
+            'No Text Found',
+            'No text was detected in the image. Try again with better lighting or clearer text.',
+            [{ text: 'OK' }]
+          );
+        } else {
+          setExtractedLines(lines);
+          setSelectedLines(new Set());
+        }
+      } else {
+        throw new Error('No text detected');
+      }
+    } catch (error) {
+      console.error('❌ OCR gallery error:', error);
+      Alert.alert(
+        'Error',
+        error.message === 'No text detected' 
+          ? 'No text was detected in the image. Please try again.'
+          : 'Failed to process text. Please try again.',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setScanning(false);
+      setOcrProgress('');
+    }
+  };
+
   const captureAndExtractText = async () => {
     if (scanning || !cameraRef.current) return;
     
@@ -50,59 +114,13 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
         quality: 0.8,
       });
 
-      console.log('✅ Image captured');
-      setOcrProgress('Processing image...');
-
-      console.log('✅ Image processed, starting OCR...');
+      console.log('✅ Image captured, starting OCR...');
       setOcrProgress('Extracting text...');
       
-      await performOCR(photo.uri);
+      const ocrResult = await extractText(photo.uri);
       
-    } catch (error) {
-      console.error('❌ OCR error:', error);
-      Alert.alert('Error', 'Failed to capture image. Please try again.');
-      setScanning(false);
-      setOcrProgress('');
-    }
-  };
-
-  const performOCR = async (photoUri) => {
-    try {
-      console.log('🔍 Calling backend OCR endpoint...');
-      console.log('📸 Photo URI:', photoUri);
-      
-      // Create form data with the image file
-      const formData = new FormData();
-      formData.append('file', {
-        uri: photoUri,
-        type: 'image/jpeg',
-        name: 'ocr-scan.jpg',
-      });
-
-      // Call backend OCR endpoint
-      const response = await fetch(
-        `${process.env.EXPO_PUBLIC_FOOD_API_URL}/ocr/extract`,
-        {
-          method: 'POST',
-          body: formData,
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-        }
-      );
-
-      const result = await response.json();
-      console.log('📥 Backend OCR Response:', JSON.stringify(result, null, 2));
-      
-      if (result.success && result.text) {
-        const detectedText = result.text;
-        
-        console.log('✅ OCR Complete!');
-        console.log('📝 Extracted text:', detectedText);
-        console.log('📏 Text Length:', result.length);
-
-        // Split text into lines
-        const lines = detectedText
+      if (ocrResult?.success && ocrResult?.text) {
+        const lines = ocrResult.text
           .split('\n')
           .map(line => line.trim())
           .filter(line => line.length > 0);
@@ -119,15 +137,13 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
           );
         }
       } else {
-        throw new Error(result.error || 'No text detected');
+        throw new Error('No text detected');
       }
     } catch (error) {
-      console.error('❌ OCR processing error:', error);
+      console.error('❌ OCR error:', error);
       Alert.alert(
         'Error',
-        error.message === 'No text detected' 
-          ? 'No text was detected in the image. Please try again.'
-          : 'Failed to process text. Please try again.',
+        'Failed to capture image. Please try again.',
         [{ text: 'OK' }]
       );
       setScanning(false);
@@ -246,21 +262,33 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
               {scanning && <ActivityIndicator size="large" color="#fff" style={{ marginTop: 10 }} />}
             </View>
 
-            {/* Capture Button */}
+            {/* Buttons Container */}
             {!scanning && (
-              <View style={styles.captureContainer}>
+              <View style={styles.buttonsContainer}>
+                {/* Gallery Button */}
+                <TouchableOpacity
+                  style={styles.galleryButton}
+                  onPress={pickImageFromGallery}
+                >
+                  <Ionicons name="images" size={24} color="#fff" />
+                  <Text style={styles.galleryButtonText}>Gallery</Text>
+                </TouchableOpacity>
+
+                {/* Capture Button */}
                 <TouchableOpacity
                   style={styles.captureButton}
                   onPress={captureAndExtractText}
                 >
                   <Ionicons name="camera" size={32} color="#fff" />
                 </TouchableOpacity>
-                <Text style={styles.captureHint}>Tap to scan</Text>
+
+                {/* Placeholder for symmetry */}
+                <View style={styles.galleryButton} />
               </View>
             )}
           </View>
         ) : (
-          /* Results View - KEEP AS IS */
+          /* Results View */
           <View style={styles.resultsContainer}>
             <View style={styles.resultsHeader}>
               <Text style={styles.resultsTitle}>Select Text Lines</Text>
@@ -433,7 +461,7 @@ const styles = StyleSheet.create({
   },
   instructionsContainer: {
     position: 'absolute',
-    bottom: 150,
+    bottom: 200,
     left: 0,
     right: 0,
     alignItems: 'center',
@@ -453,12 +481,15 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     opacity: 0.8,
   },
-  captureContainer: {
+  buttonsContainer: {
     position: 'absolute',
     bottom: 40,
     left: 0,
     right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
     alignItems: 'center',
+    paddingHorizontal: 40,
   },
   captureButton: {
     width: 70,
@@ -475,11 +506,20 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
   },
-  captureHint: {
+  galleryButton: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: 'rgba(255, 152, 0, 0.8)',
+    borderRadius: 12,
+  },
+  galleryButtonText: {
     color: '#fff',
-    fontSize: 14,
-    marginTop: 8,
-    fontWeight: '500',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 4,
   },
   resultsContainer: {
     flex: 1,
@@ -636,19 +676,5 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
-  },
-  // ✅ Add progress bar styles
-  progressBarContainer: {
-    width: '80%',
-    height: 6,
-    backgroundColor: 'rgba(255,255,255,0.3)',
-    borderRadius: 3,
-    marginTop: 12,
-    overflow: 'hidden',
-  },
-  progressBar: {
-    height: '100%',
-    backgroundColor: '#FF9800',
-    borderRadius: 3,
   },
 });
