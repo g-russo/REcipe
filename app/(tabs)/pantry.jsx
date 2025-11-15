@@ -63,22 +63,6 @@ const Pantry = () => {
   const [expiringItems, setExpiringItems] = useState([]);
   const [notificationSummary, setNotificationSummary] = useState(null);
 
-  // NEW: Category filter state
-  const [filterDropdownVisible, setFilterDropdownVisible] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState(null);
-
-  // Categories (same list used in forms)
-  const foodCategories = [
-    'Fruits', 'Vegetables', 'Meat & Poultry', 'Seafood', 'Dairy & Eggs',
-    'Grains & Pasta', 'Canned & Jarred', 'Condiments & Sauces', 
-    'Spices & Herbs', 'Snacks', 'Beverages', 'Frozen', 'Baking', 'Other'
-  ];
-
-  // Derived filtered items
-  const filteredItems = selectedCategory
-    ? items.filter(i => (i.itemCategory || '').toLowerCase() === selectedCategory.toLowerCase())
-    : items;
-
   // Initialize notifications on mount
   useEffect(() => {
     initializeNotifications();
@@ -890,8 +874,8 @@ const Pantry = () => {
             />
           )}
 
-          <ScrollView 
-            style={styles.scrollView} 
+          <ScrollView
+            style={styles.scrollView}
             contentContainerStyle={styles.scrollViewContent}
             showsVerticalScrollIndicator={false}
           >
@@ -911,82 +895,16 @@ const Pantry = () => {
               />
             </View>
 
-            {/* Items section wrapper to overlay filter icon next to existing header */}
-            <View style={styles.itemsSectionWrapper}>
-              {/* Active filter chip (optional, aligned under header) */}
-              {selectedCategory && (
-                <View style={styles.activeFilterChipBar}>
-                  <TouchableOpacity
-                    onPress={() => setSelectedCategory(null)}
-                    style={styles.activeFilterChip}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.activeFilterChipText}>{selectedCategory}</Text>
-                    <Ionicons name="close" size={14} color="#8ac551" />
-                  </TouchableOpacity>
-                </View>
-              )}
-
-              {/* Small filter icon inside the items container so it aligns with the header/plus */}
-              <TouchableOpacity
-                style={styles.filterIconAbs}
-                onPress={() => setFilterDropdownVisible(v => !v)}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="funnel-outline" size={20} color="#333" />
-              </TouchableOpacity>
-
-              {/* Scoped dropdown anchored to the icon; scrollable, shows 5 max */}
-              {filterDropdownVisible && (
-                <>
-                  <TouchableOpacity
-                    style={styles.sectionOverlay}
-                    activeOpacity={1}
-                    onPress={() => setFilterDropdownVisible(false)}
-                  />
-                  <View style={styles.filterDropdown}>
-                    <TouchableOpacity
-                      style={styles.dropdownItem}
-                      onPress={() => {
-                        setSelectedCategory(null);
-                        setFilterDropdownVisible(false);
-                      }}
-                    >
-                      <Text style={[styles.dropdownItemText, { fontWeight: '700' }]}>All Categories</Text>
-                    </TouchableOpacity>
-
-                    <ScrollView
-                      style={styles.dropdownList}
-                      showsVerticalScrollIndicator={true} // ensure scroll indicator shows
-                    >
-                      {foodCategories.map(cat => (
-                        <TouchableOpacity
-                          key={cat}
-                          style={styles.dropdownItem}
-                          onPress={() => {
-                            setSelectedCategory(cat);
-                            setFilterDropdownVisible(false);
-                          }}
-                        >
-                          <Text style={styles.dropdownItemText}>{cat}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </View>
-                </>
-              )}
-
-              <PantryItemsGrid
-                items={filteredItems}
-                onAddItem={() => setItemFormVisible(true)}
-                onItemPress={handleItemPress}
-                onItemLongPress={handleItemLongPress}
-                onItemMenuPress={handleItemMenuPress}
-                selectionMode={selectionMode}
-                selectedItems={selectedItems}
-                highlightedItemId={highlightedItemId}
-              />
-            </View>
+            <PantryItemsGrid
+              items={items}
+              onAddItem={() => setItemFormVisible(true)}
+              onItemPress={handleItemPress}
+              onItemLongPress={handleItemLongPress}
+              onItemMenuPress={handleItemMenuPress}
+              selectionMode={selectionMode}
+              selectedItems={selectedItems}
+              highlightedItemId={highlightedItemId}
+            />
           </ScrollView>
 
           <SearchFilterModal
@@ -1034,7 +952,7 @@ const Pantry = () => {
           />
         </SafeAreaView>
         
-        {/* FAB with debugging */}
+        {/* 💡 FAB (FIXED) - Sibling to SafeAreaView, positioned by container */}
         {(() => {
           const shouldShow = selectionMode && selectedItems.length > 0;
           console.log('🔍 FAB Debug:', {
@@ -1086,95 +1004,11 @@ const styles = StyleSheet.create({
     paddingTop: 12, // adds space below the banner
   },
 
-  // Wrapper to position filter icon relative to the existing header inside PantryItemsGrid
-  itemsSectionWrapper: {
-    position: 'relative',
-  },
-
-  // A small bar under the header to show/clear active filter
-  activeFilterChipBar: {
-    paddingHorizontal: 20,
-    marginBottom: 6,
-  },
-  activeFilterChip: {
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 14,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: '#eaf6de',
-    borderWidth: 1,
-    borderColor: '#cfeab3',
-    gap: 6,
-  },
-  activeFilterChipText: {
-    color: '#8ac551',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-
-  // Absolute filter icon placed within the same container as the items header
-  // Size matches the green plus (adjust if your plus differs)
-  filterIconAbs: {
-    position: 'absolute',
-    top: 4,       // aligns with header row; tweak if needed
-    right: 64,    // leaves space for the green plus on the far right
-    width: 44,    // same size as plus
-    height: 44,   // same size as plus
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: '#e5e5e5',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#fff',
-    zIndex: 10,
-  },
-
-  // Overlay to close dropdown when tapping outside (scoped to section)
-  sectionOverlay: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0, bottom: 0,
-    zIndex: 9,
-  },
-
-  // Dropdown anchored under the icon
-  filterDropdown: {
-    position: 'absolute',
-    top: 52, // just below the 44px icon with small gap
-    right: 20,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#e9e9e9',
-    overflow: 'hidden',
-    elevation: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    minWidth: 220,
-    zIndex: 11,
-  },
-  dropdownList: {
-    maxHeight: 44 * 5, // show 5; scroll to see the rest
-  },
-  dropdownItem: {
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f2f2f2',
-    backgroundColor: '#fff',
-  },
-  dropdownItemText: {
-    fontSize: 14,
-    color: '#333',
-  },
-
+  // 💡 FAB STYLES (FIXED)
   fabContainer: {
     position: 'absolute',
-    bottom: 130, // Moved higher from 90
-    right: 20,   // Positioned from right instead of centered
+    bottom: 130, // Moved higher
+    right: 20,   
     pointerEvents: 'box-none',
     zIndex: 1000,
   },
