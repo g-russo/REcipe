@@ -95,7 +95,7 @@ const GroupItemsModal = ({
       <View style={styles.modalOverlay}>
         <View style={styles.modalContent}>
           {/* Header */}
-          <View style={[styles.modalHeader, { backgroundColor: group.groupColor || '#8BC34A' }]}>
+          <View style={[styles.modalHeader, { backgroundColor: group.groupColor || '#8ac551' }]}>
             <View style={styles.headerLeft}>
               <View style={styles.groupIconContainer}>
                 <Text style={styles.groupIcon}>
@@ -144,7 +144,7 @@ const GroupItemsModal = ({
           >
             {loading ? (
               <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color="#8BC34A" />
+                <ActivityIndicator size="large" color="#8ac551" />
                 <Text style={styles.loadingText}>Loading items...</Text>
               </View>
             ) : items.length === 0 ? (
@@ -250,7 +250,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
+    paddingTop: 32, // was 20
+    paddingHorizontal: 20,
+    paddingBottom: 20, // explicit bottom padding
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
   },
@@ -316,7 +318,7 @@ const styles = StyleSheet.create({
   actionButtonText: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#8BC34A',
+    color: '#8ac551',
   },
   deleteButtonText: {
     color: '#ff4d4d',
@@ -439,7 +441,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#8BC34A',
+    backgroundColor: '#8ac551',
     paddingVertical: 16,
     borderRadius: 12,
     gap: 10,
