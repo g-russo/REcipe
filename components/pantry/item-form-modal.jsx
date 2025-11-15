@@ -222,6 +222,10 @@ const ItemFormModal = ({
         itemExpiration: '',
         imageURL: null,
       });
+      // Also ensure any pickers/modals are closed
+      setCategoryModalVisible(false);
+      setUnitModalVisible(false);
+      setShowDatePicker(false);
       onClose();
     } catch (e) {
       // If save fails, keep draft
