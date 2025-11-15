@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
-  Modal,
-  TouchableOpacity,
   StyleSheet,
+  TouchableOpacity,
+  Modal,
   Alert,
   ActivityIndicator,
   ScrollView,
@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import BarcodeScannerService from '../services/barcode-scanner-service';
 import PantryService from '../services/pantry-service';
 import { supabase } from '../lib/supabase'; // ✅ Import supabase directly
@@ -24,6 +25,7 @@ export default function QRScannerModal({ visible, onClose, onFoodFound }) {
   const [productData, setProductData] = useState(null);
   const [scannedCode, setScannedCode] = useState(null);
   const [adding, setAdding] = useState(false);
+  const cameraRef = useRef(null);
 
   useEffect(() => {
     if (visible && !permission?.granted) {
@@ -154,6 +156,40 @@ export default function QRScannerModal({ visible, onClose, onFoodFound }) {
     
     now.setDate(now.getDate() + (daysToAdd[category] || 14));
     return now.toISOString().split('T')[0];
+  };
+
+  // ✅ NEW: Gallery picker for QR images
+  const pickImageFromGallery = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Please allow access to your photos.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 1,
+        allowsMultipleSelection: false,
+      });
+
+      if (result.canceled) return;
+
+      setLoading(true);
+
+      // Note: For production, you'd need a QR decoding library
+      Alert.alert(
+        'Feature Coming Soon',
+        'QR code scanning from gallery images will be available in a future update. Please use the camera for now.',
+        [{ text: 'OK' }]
+      );
+
+      setLoading(false);
+    } catch (error) {
+      console.error('❌ Gallery picker error:', error);
+      Alert.alert('Error', 'Failed to pick image: ' + error.message);
+      setLoading(false);
+    }
   };
 
   if (!permission) {
@@ -301,53 +337,58 @@ export default function QRScannerModal({ visible, onClose, onFoodFound }) {
   return (
     <Modal visible={visible} animationType="slide">
       <View style={styles.container}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={onClose} style={styles.closeIconButton}>
-            <Ionicons name="close" size={28} color="#fff" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Scan QR Code</Text>
-          <View style={{ width: 28 }} />
-        </View>
+        <CameraView
+          ref={cameraRef}
+          style={styles.camera}
+          facing="back"
+          onBarcodeScanned={scanned ? undefined : handleQRScanned}
+          barcodeScannerSettings={{
+            barcodeTypes: ['qr'],
+          }}
+        />
 
-        {/* Scanner */}
-        <View style={styles.scannerContainer}>
-          <CameraView
-            onBarcodeScanned={scanned ? undefined : handleQRScanned}
-            style={StyleSheet.absoluteFillObject}
-            facing="back"
-            barcodeScannerSettings={{
-              barcodeTypes: ['qr'], // Only QR codes
-            }}
-          />
-
-          {/* Overlay with square frame for QR */}
-          <View style={styles.overlay}>
-            <View style={styles.unfocusedContainer} />
-            <View style={styles.middleContainer}>
-              <View style={styles.unfocusedContainer} />
-              <View style={styles.focusedContainer}>
-                <View style={[styles.corner, styles.topLeft]} />
-                <View style={[styles.corner, styles.topRight]} />
-                <View style={[styles.corner, styles.bottomLeft]} />
-                <View style={[styles.corner, styles.bottomRight]} />
-              </View>
-              <View style={styles.unfocusedContainer} />
+        {/* Scanning Overlay */}
+        <View style={styles.overlay}>
+          <View style={styles.topOverlay} />
+          <View style={styles.middleRow}>
+            <View style={styles.sideOverlay} />
+            <View style={styles.scanArea}>
+              <View style={[styles.corner, styles.topLeft]} />
+              <View style={[styles.corner, styles.topRight]} />
+              <View style={[styles.corner, styles.bottomLeft]} />
+              <View style={[styles.corner, styles.bottomRight]} />
             </View>
-            <View style={styles.unfocusedContainer} />
+            <View style={styles.sideOverlay} />
           </View>
-
-          {/* Instructions */}
-          <View style={styles.instructionsContainer}>
-            <Ionicons name="qr-code-outline" size={48} color="#fff" />
-            <Text style={styles.instructionsText}>
-              {loading ? 'Searching FatSecret and OpenFoodFacts...' :
-               scanned ? 'Processing...' :
-               'Align QR code within frame'}
+          <View style={styles.bottomOverlay}>
+            <Text style={styles.instructionText}>
+              {scanned ? 'Looking up product...' : 'Align QR code within the frame'}
             </Text>
-            {loading && <ActivityIndicator size="large" color="#fff" style={{ marginTop: 10 }} />}
+            
+            {/* ✅ NEW: Gallery Button */}
+            <TouchableOpacity
+              style={styles.galleryButton}
+              onPress={pickImageFromGallery}
+              disabled={loading}
+            >
+              <Ionicons name="images-outline" size={24} color="#FFF" />
+              <Text style={styles.galleryButtonText}>Choose from Gallery</Text>
+            </TouchableOpacity>
           </View>
         </View>
+
+        {/* Loading Indicator */}
+        {loading && (
+          <View style={styles.loadingOverlay}>
+            <ActivityIndicator size="large" color="#FFF" />
+            <Text style={styles.loadingText}>Processing QR code...</Text>
+          </View>
+        )}
+
+        {/* Close Button */}
+        <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+          <Ionicons name="close" size={32} color="#FFF" />
+        </TouchableOpacity>
       </View>
     </Modal>
   );
@@ -358,93 +399,118 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000',
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 50,
-    paddingBottom: 16,
-    backgroundColor: 'rgba(0,0,0,0.8)',
-  },
-  closeIconButton: {
-    padding: 8,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  scannerContainer: {
+  camera: {
     flex: 1,
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    justifyContent: 'space-between',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  unfocusedContainer: {
+  topOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    width: '100%',
+  },
+  middleRow: {
+    flexDirection: 'row',
+    height: 300,
+  },
+  sideOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
   },
-  middleContainer: {
-    flexDirection: 'row',
-  },
-  focusedContainer: {
-    width: 250,
-    height: 250,
+  scanArea: {
+    width: 300,
+    height: 300,
     position: 'relative',
   },
   corner: {
     position: 'absolute',
-    width: 40,
-    height: 40,
+    width: 30,
+    height: 30,
     borderColor: '#2196F3',
-    borderWidth: 4,
   },
   topLeft: {
     top: 0,
     left: 0,
-    borderBottomWidth: 0,
-    borderRightWidth: 0,
+    borderTopWidth: 4,
+    borderLeftWidth: 4,
   },
   topRight: {
     top: 0,
     right: 0,
-    borderBottomWidth: 0,
-    borderLeftWidth: 0,
+    borderTopWidth: 4,
+    borderRightWidth: 4,
   },
   bottomLeft: {
     bottom: 0,
     left: 0,
-    borderTopWidth: 0,
-    borderRightWidth: 0,
+    borderBottomWidth: 4,
+    borderLeftWidth: 4,
   },
   bottomRight: {
     bottom: 0,
     right: 0,
-    borderTopWidth: 0,
-    borderLeftWidth: 0,
+    borderBottomWidth: 4,
+    borderRightWidth: 4,
   },
-  instructionsContainer: {
-    position: 'absolute',
-    bottom: 100,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    paddingHorizontal: 20,
-  },
-  instructionsText: {
-    color: '#fff',
-    fontSize: 16,
-    marginTop: 10,
-    textAlign: 'center',
-    fontWeight: '500',
-  },
-  permissionContainer: {
+  bottomOverlay: {
     flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    width: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingBottom: 40,
+  },
+  instructionText: {
+    color: '#FFF',
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  galleryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#2196F3',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 25,
+    marginTop: 16,
+  },
+  galleryButtonText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.8)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  loadingText: {
+    color: '#FFF',
+    fontSize: 16,
+    marginTop: 12,
+  },
+  closeButton: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 20,
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  permissionContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
   },
   permissionBox: {
     backgroundColor: '#fff',
