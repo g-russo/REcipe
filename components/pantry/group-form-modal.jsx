@@ -15,6 +15,14 @@ import { Ionicons } from '@expo/vector-icons';
  * Group Form Modal Component
  * Reusable modal for creating/editing inventory groups
  */
+
+// 💡 FIX: Define default state outside the component
+const defaultFormState = {
+  groupTitle: '',
+  groupColor: '#8BC34A',
+  groupCategory: '',
+};
+
 const GroupFormModal = ({
   visible,
   onClose,
@@ -23,12 +31,18 @@ const GroupFormModal = ({
 }) => {
   const isEditMode = !!initialData;
 
-  // Form state
-  const [formData, setFormData] = useState({
-    groupTitle: '',
-    groupColor: '#8BC34A',
-    groupCategory: '', // NEW: Optional category
+  // 💡 FIX: Use a lazy initializer for useState to set correct initial state
+  const [formData, setFormData] = useState(() => {
+    if (initialData) {
+      return {
+        groupTitle: initialData.groupTitle || '',
+        groupColor: initialData.groupColor || '#8BC34A',
+        groupCategory: initialData.groupCategory || '',
+      };
+    }
+    return defaultFormState;
   });
+
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
 
   // Simplified food categories (matching item categories)
@@ -52,16 +66,23 @@ const GroupFormModal = ({
     '#795548', // Brown
   ];
 
-  // Update form when initial data changes
+  // 💡 FIX: Update useEffect to also reset form when opening in "create" mode
   useEffect(() => {
-    if (initialData) {
-      setFormData({
-        groupTitle: initialData.groupTitle || '',
-        groupColor: initialData.groupColor || '#8BC34A',
-        groupCategory: initialData.groupCategory || '',
-      });
+    // Only update state when visibility changes to true
+    if (visible) {
+      if (initialData) {
+        // Edit Mode: set form to initialData
+        setFormData({
+          groupTitle: initialData.groupTitle || '',
+          groupColor: initialData.groupColor || '#8BC34A',
+          groupCategory: initialData.groupCategory || '',
+        });
+      } else {
+        // Create Mode: reset form to default
+        setFormData(defaultFormState);
+      }
     }
-  }, [initialData]);
+  }, [initialData, visible]); // Depend on both initialData and visible
 
   // Update field
   const updateField = (field, value) => {
@@ -75,25 +96,15 @@ const GroupFormModal = ({
       return;
     }
 
-    onSave(formData);
-    
-    // Reset form
-    setFormData({
-      groupTitle: '',
-      groupColor: '#8BC34A',
-      groupCategory: '',
-    });
-    onClose();
+    onSave(formData); // Pass the current state
+    onClose(); // Close the modal
+    // 💡 FIX: Remove setFormData from here. useEffect will handle the reset.
   };
 
-  // Close modal and reset
+  // Close modal
   const handleClose = () => {
-    setFormData({
-      groupTitle: '',
-      groupColor: '#8BC34A',
-      groupCategory: '',
-    });
-    onClose();
+    onClose(); // Close the modal
+    // 💡 FIX: Remove setFormData from here. useEffect will handle the reset.
   };
 
   return (
@@ -149,6 +160,7 @@ const GroupFormModal = ({
                       : styles.dropdownPlaceholder
                   }
                 >
+                  {/* This will now correctly show the selected category */}
                   {formData.groupCategory || 'None - No auto-suggestions'}
                 </Text>
                 <Ionicons name="chevron-down" size={18} color="#999" />
@@ -249,6 +261,7 @@ const GroupFormModal = ({
   );
 };
 
+// ... (styles remain exactly the same)
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,

@@ -949,7 +949,7 @@ class PantryService {
   /**
    * Create a new group within user's inventory
    * @param {number} userID - User ID
-   * @param {Object} groupData - { groupTitle, groupColor, groupImg (imageUri) }
+   * @param {Object} groupData - { groupTitle, groupColor, groupCategory, imageUri }
    * @returns {Promise<Object>} Created group
    */
   async createGroup(userID, groupData = {}) {
@@ -968,9 +968,11 @@ class PantryService {
         throw new Error('User must have an inventory before creating groups');
       }
 
+      //  FIX: Destructure groupCategory from the form data
       const {
         groupTitle = 'New Group',
         groupColor = '#8BC34A',
+        groupCategory = '', // Default to empty string if not provided
         imageUri = null,
       } = groupData;
 
@@ -988,6 +990,7 @@ class PantryService {
             inventoryID: inventory.inventoryID,
             groupTitle: groupTitle,
             groupColor: groupColor,
+            groupCategory: groupCategory, // 💡 FIX: Add groupCategory to the insert object
             groupImg: groupImg,
             itemCount: 0,
           },

@@ -1,59 +1,49 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const IS_SMALL_SCREEN = SCREEN_WIDTH < 375;
-
 /**
- * Selection Mode Header Component
- * Shows when user is in selection mode for adding items to groups
+ * Header component for item selection mode
+ * 💡 REDESIGNED based on user feedback
  */
-const SelectionModeHeader = ({ 
-  selectedCount, 
-  onCancel, 
+const SelectionModeHeader = ({
+  selectedCount,
+  onCancel,
   onAddToGroup,
-  onFindRecipe, // NEW
-  isDisabled 
+  onDeleteSelected, // NEW: Prop for deleting items
+  isDisabled,
 }) => {
+  const appGreen = '#4CAF50'; // Using the app's green color
+  const appRed = '#FF3B30';
+  const disabledColor = '#aaa';
+
   return (
-    <View style={styles.selectionModeHeader}>
-      <TouchableOpacity 
-        style={styles.selectionModeButton} 
-        onPress={onCancel}
-      >
-        <Ionicons name="close-outline" size={24} color="#fff" />
-        <Text style={styles.selectionModeButtonText}>Cancel</Text>
+    <View style={styles.container}>
+      {/* Left Action: Cancel */}
+      <TouchableOpacity style={styles.actionButton} onPress={onCancel}>
+        <Ionicons name="close" size={26} color={appGreen} />
+        <Text style={[styles.actionText, { color: appGreen }]}>Cancel</Text>
       </TouchableOpacity>
-      
-      <Text style={styles.selectionModeTitle}>
-        {selectedCount} selected
-      </Text>
-      
-      <View style={styles.actionButtons}>
-        <TouchableOpacity 
-          style={[
-            styles.selectionModeButton, 
-            isDisabled && styles.disabledButton
-          ]} 
-          onPress={onFindRecipe}
-          disabled={isDisabled}
-        >
-          <Ionicons name="restaurant-outline" size={20} color="#fff" />
-          <Text style={styles.selectionModeButtonText}>Find Recipe</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={[
-            styles.selectionModeButton, 
-            isDisabled && styles.disabledButton,
-            { marginLeft: 12 }
-          ]} 
+
+      {/* Center: Count */}
+      <Text style={styles.countText}>{selectedCount} Selected</Text>
+
+      {/* Right Actions: Add to Group & Delete */}
+      <View style={styles.rightActions}>
+        <TouchableOpacity
+          style={[styles.actionButton, isDisabled && styles.disabledButton]}
           onPress={onAddToGroup}
           disabled={isDisabled}
         >
-          <Ionicons name="folder-outline" size={20} color="#fff" />
-          <Text style={styles.selectionModeButtonText}>Add to Group</Text>
+          <Ionicons name="folder-open-outline" size={24} color={isDisabled ? disabledColor : appGreen} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.actionButton, isDisabled && styles.disabledButton]}
+          onPress={onDeleteSelected}
+          disabled={isDisabled}
+        >
+          <Ionicons name="trash-outline" size={24} color={isDisabled ? disabledColor : appRed} />
         </TouchableOpacity>
       </View>
     </View>
@@ -61,36 +51,40 @@ const SelectionModeHeader = ({
 };
 
 const styles = StyleSheet.create({
-  selectionModeHeader: {
+  container: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#8BC34A',
-    paddingHorizontal: IS_SMALL_SCREEN ? 12 : 20,
-    paddingVertical: 15,
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    backgroundColor: '#fff', // Cleaner white background
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0', // Lighter border
+    paddingTop: Platform.OS === 'android' ? 10 : 0,
+    height: Platform.OS === 'android' ? 60 : 50,
   },
-  selectionModeButton: {
+  actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    padding: 8, // A bit more touch area
+    marginHorizontal: 5,
   },
-  selectionModeButtonText: {
-    color: '#fff',
-    fontSize: IS_SMALL_SCREEN ? 12 : 14,
-    fontWeight: '600',
+  actionText: {
+    fontSize: 17,
+    marginLeft: 5,
+    fontWeight: '500',
   },
-  selectionModeTitle: {
-    color: '#fff',
-    fontSize: IS_SMALL_SCREEN ? 14 : 16,
+  countText: {
+    fontSize: 18,
     fontWeight: '600',
+    color: '#333',
+  },
+  rightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   disabledButton: {
-    opacity: 0.5,
-  },
-  actionButtons: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: IS_SMALL_SCREEN ? 8 : 12,
+    opacity: 0.4,
   },
 });
 
