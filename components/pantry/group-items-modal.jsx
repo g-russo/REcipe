@@ -9,8 +9,10 @@ import {
   Image,
   ActivityIndicator,
   Dimensions,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import PantryService from '../../services/pantry-service';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -30,6 +32,7 @@ const GroupItemsModal = ({
 }) => {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
+  const router = useRouter();
 
   // Load items when modal opens or group changes
   useEffect(() => {
@@ -50,6 +53,34 @@ const GroupItemsModal = ({
     } finally {
       setLoading(false);
     }
+  };
+
+  // NEW: Handle find recipe with all group items
+  const handleFindRecipe = () => {
+    if (items.length === 0) {
+      Alert.alert('No Items', 'This group has no items to search recipes with');
+      return;
+    }
+
+    // Get all item names from the group
+    const itemNames = items.map(item => item.itemName);
+    const searchQuery = itemNames.join(', ');
+
+    console.log('🍽️ Finding recipes with group items:', searchQuery);
+
+    // Close modal first
+    onClose();
+
+    // Navigate to recipe search with auto-search
+    setTimeout(() => {
+      router.push({
+        pathname: '/(tabs)/recipe-search',
+        params: {
+          searchQuery: searchQuery,
+          autoSearch: 'true'
+        }
+      });
+    }, 300);
   };
 
   if (!group) return null;
@@ -81,7 +112,7 @@ const GroupItemsModal = ({
             </TouchableOpacity>
           </View>
 
-          {/* Action Buttons */}
+          {/* Action Buttons - Edit and Delete only */}
           <View style={styles.actionButtons}>
             <TouchableOpacity 
               style={styles.actionButton}
@@ -183,6 +214,19 @@ const GroupItemsModal = ({
               </View>
             )}
           </ScrollView>
+
+          {/* Find Recipe Button - Fixed at bottom */}
+          {items.length > 0 && (
+            <View style={styles.bottomButtonContainer}>
+              <TouchableOpacity 
+                style={styles.findRecipeButton}
+                onPress={handleFindRecipe}
+              >
+                <Ionicons name="restaurant" size={20} color="#fff" />
+                <Text style={styles.findRecipeButtonText}>Find a Recipe</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       </View>
     </Modal>
@@ -384,6 +428,31 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#666',
     fontWeight: '500',
+  },
+  bottomButtonContainer: {
+    padding: 16,
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  findRecipeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#8BC34A',
+    paddingVertical: 16,
+    borderRadius: 12,
+    gap: 10,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  findRecipeButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
   },
 });
 

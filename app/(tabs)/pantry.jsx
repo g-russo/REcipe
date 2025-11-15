@@ -5,6 +5,9 @@ import {
   StatusBar,
   Alert,
   StyleSheet,
+  TouchableOpacity, // 💡 ADDED
+  Text,             // 💡 ADDED
+  View,             // 💡 ADDED
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useCustomAuth } from '../../hooks/use-custom-auth';
@@ -13,6 +16,7 @@ import PantryService from '../../services/pantry-service';
 import ExpirationNotificationService from '../../services/expiration-notification-service';
 import BackgroundNotificationRefresh from '../../services/background-notification-refresh';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons'; // 💡 ADDED
 
 // Components
 import PantryHeader from '../../components/pantry/pantry-header';
@@ -33,7 +37,7 @@ const Pantry = () => {
   const { user, customUserData } = useCustomAuth();
   const params = useLocalSearchParams();
   const scrollViewRef = useRef(null);
-  const router = useRouter(); // NEW
+  const router = useRouter();
   
   // State
   const [inventories, setInventories] = useState([]);
@@ -58,6 +62,9 @@ const Pantry = () => {
   // Expiring items
   const [expiringItems, setExpiringItems] = useState([]);
   const [notificationSummary, setNotificationSummary] = useState(null);
+
+  // ... (All functions from initializeNotifications down to handleSaveGroup remain the same) ...
+  // ... (No changes needed in that block) ...
 
   // Initialize notifications on mount
   useEffect(() => {
@@ -565,10 +572,16 @@ const Pantry = () => {
   // Toggle item selection
   const toggleItemSelection = (itemID) => {
     setSelectedItems(prev => {
-      if (prev.includes(itemID)) {
-        return prev.filter(id => id !== itemID);
+      const newSelectedItems = prev.includes(itemID)
+        ? prev.filter(id => id !== itemID)
+        : [...prev, itemID];
+      
+      // 💡 If no items are selected, exit selection mode
+      if (newSelectedItems.length === 0) {
+        setSelectionMode(false);
       }
-      return [...prev, itemID];
+      
+      return newSelectedItems;
     });
   };
 
@@ -665,6 +678,42 @@ const Pantry = () => {
       groupButtons
     );
   };
+  
+  // 💡 NEW: Handle deleting multiple selected items
+  const handleDeleteSelectedItems = () => {
+    if (selectedItems.length === 0) {
+      Alert.alert('No Items Selected', 'Please select items to delete');
+      return;
+    }
+
+    Alert.alert(
+      'Delete Items',
+      `Are you sure you want to delete ${selectedItems.length} selected item(s)?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              console.log(`🗑️ Deleting ${selectedItems.length} items...`);
+              // Use Promise.all to delete all items concurrently
+              await Promise.all(
+                selectedItems.map(itemID => PantryService.deleteItem(itemID))
+              );
+              
+              Alert.alert('Success', `Deleted ${selectedItems.length} item(s)`);
+              exitSelectionMode();
+              await loadData(); // Reload data after deletion
+            } catch (error) {
+              console.error('Error deleting selected items:', error);
+              Alert.alert('Error', 'Failed to delete selected items');
+            }
+          },
+        },
+      ]
+    );
+  };
 
   // Handle group press
   const handleGroupPress = (group) => {
@@ -756,7 +805,7 @@ const Pantry = () => {
     // The modal will open with "Expiring Soon" filter pre-applied
   };
 
-  // NEW: Handle find recipe with selected items
+  // Handle find recipe with selected items
   const handleFindRecipe = async () => {
     if (selectedItems.length === 0) {
       Alert.alert('No Items Selected', 'Please select items to find recipes');
@@ -799,7 +848,7 @@ const Pantry = () => {
     }
   };
 
-  // NEW: Handle back button press to navigate to homepage
+  // Handle back button press to navigate to homepage
   const handleBackPress = () => {
     router.back();
   };
@@ -809,20 +858,19 @@ const Pantry = () => {
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="dark-content" backgroundColor="#fff" />
         
-        {/* Header */}
-        <PantryHeader 
-          onSearchPress={() => setSearchModalVisible(true)}
-          onBackPress={handleBackPress}
-        />
-
-        {/* Selection Mode Header */}
-        {selectionMode && (
+        {/* 💡 CONDITIONAL HEADER */}
+        {selectionMode ? (
           <SelectionModeHeader
             selectedCount={selectedItems.length}
             onCancel={exitSelectionMode}
             onAddToGroup={handleAddToGroup}
-            onFindRecipe={handleFindRecipe}
+            onDeleteSelected={handleDeleteSelectedItems} // 💡 PASS NEW HANDLER
             isDisabled={selectedItems.length === 0}
+          />
+        ) : (
+          <PantryHeader 
+            onSearchPress={() => setSearchModalVisible(true)}
+            onBackPress={handleBackPress}
           />
         )}
 
@@ -831,7 +879,7 @@ const Pantry = () => {
           contentContainerStyle={styles.scrollViewContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* Expiring Items Banner */}
+          {/* ... (Rest of your components: ExpiringItemsBanner, InventoryGroupsSection, PantryItemsGrid) ... */}
           <ExpiringItemsBanner
             expiringItems={expiringItems}
             onItemPress={handleItemPress}
@@ -839,7 +887,6 @@ const Pantry = () => {
             onDeleteAllExpired={handleDeleteAllExpired}
           />
 
-          {/* Inventory Groups Section */}
           <InventoryGroupsSection
             groups={groups}
             onGroupPress={handleGroupPress}
@@ -847,7 +894,6 @@ const Pantry = () => {
             userName={customUserData?.userName || user?.user_metadata?.name || 'My'}
           />
 
-          {/* Items Grid */}
           <PantryItemsGrid
             items={items}
             onAddItem={() => setItemFormVisible(true)}
@@ -860,7 +906,18 @@ const Pantry = () => {
           />
         </ScrollView>
 
-        {/* Search/Filter Modal */}
+        {/* 💡 NEW: Floating Action Button for Find Recipe */}
+        {selectionMode && selectedItems.length > 0 && (
+          <TouchableOpacity
+            style={styles.fab}
+            onPress={handleFindRecipe}
+          >
+            <Ionicons name="restaurant-outline" size={24} color="#fff" />
+            <Text style={styles.fabText}>Find Recipe ({selectedItems.length})</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* ... (Rest of your Modals: SearchFilterModal, ItemFormModal, etc.) ... */}
         <SearchFilterModal
           visible={searchModalVisible}
           onClose={() => setSearchModalVisible(false)}
@@ -869,7 +926,6 @@ const Pantry = () => {
           onResultPress={handleSearchResultPress}
         />
 
-        {/* Item Form Modal */}
         <ItemFormModal
           visible={itemFormVisible}
           onClose={() => {
@@ -881,7 +937,6 @@ const Pantry = () => {
           inventories={inventories}
         />
 
-        {/* Group Form Modal */}
         <GroupFormModal
           visible={groupFormVisible}
           onClose={() => {
@@ -892,7 +947,6 @@ const Pantry = () => {
           initialData={editingGroup}
         />
 
-        {/* Group Items Modal */}
         <GroupItemsModal
           visible={groupItemsModalVisible}
           onClose={() => {
@@ -921,7 +975,33 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollViewContent: {
-    paddingBottom: 100, // Add space at bottom for navbar
+    paddingBottom: 100, // Add space at bottom
+  },
+  // 💡 NEW: Styles for the Floating Action Button (FAB)
+  fab: {
+    position: 'absolute',
+    bottom: 30, // Positioned from the bottom
+    alignSelf: 'center', // Center it horizontally
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#4CAF50', // Main app green color
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 30,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    elevation: 8,
+  },
+  fabText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 10,
   },
 });
 
