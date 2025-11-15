@@ -1,9 +1,31 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Dimensions } from 'react-native';
+// MODIFIED: Use a more direct import for MaterialCommunityIcons
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+// We also need Ionicons for the original fallback (just in case)
 import { Ionicons } from '@expo/vector-icons';
+
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const GROUP_CARD_WIDTH = Math.min(SCREEN_WIDTH * 0.5, 200);
+
+// MODIFIED: Updated map with 'soy-sauce'
+const categoryIconMap = {
+  'Fruits': 'food-apple-outline',
+  'Vegetables': 'carrot',
+  'Meat & Poultry': 'food-drumstick-outline',
+  'Seafood': 'fish',
+  'Dairy & Eggs': 'egg-outline',
+  'Grains & Pasta': 'pasta',
+  'Canned & Jarred': 'canned-food',
+  'Condiments & Sauces': 'soy-sauce', // CHANGED
+  'Spices & Herbs': 'mortar-pestle',
+  'Snacks': 'cookie-outline',
+  'Beverages': 'coffee-outline',
+  'Frozen': 'snowflake',
+  'Baking': 'rolling-pin',
+  'Other': 'help-circle-outline',
+};
 
 /**
  * Inventory Groups Section Component
@@ -15,13 +37,38 @@ const InventoryGroupsSection = ({
   onCreateGroup,
   userName = 'My'
 }) => {
+  
+  // Helper function to render icon or letter
+  const renderGroupIcon = (group) => {
+    const iconName = categoryIconMap[group.groupCategory];
+
+    if (iconName) {
+      // Render MaterialCommunityIcons
+      return (
+        <MaterialCommunityIcons 
+          name={iconName} 
+          size={28} 
+          color="#fff" 
+        />
+      );
+    }
+
+    // Fallback to the letter
+    return (
+      <Text style={styles.categoryLetter}>
+        {group.groupTitle?.charAt(0).toUpperCase() || 'G'}
+      </Text>
+    );
+  };
+  
   if (groups.length === 0) {
     return (
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Groups</Text>
         <View style={styles.emptyStateContainer}>
           <View style={styles.emptyIconContainer}>
-            <Ionicons name="folder-outline" size={70} color="#ccc" />
+            {/* Use folder-outline from MaterialCommunityIcons now */}
+            <MaterialCommunityIcons name="folder-outline" size={70} color="#ccc" />
           </View>
           <Text style={styles.emptyTitle}>No groups created yet</Text>
           <Text style={styles.emptySubtitle}>Create groups to organize your pantry items</Text>
@@ -52,26 +99,24 @@ const InventoryGroupsSection = ({
             onPress={() => onGroupPress(group)}
           >
             <View style={styles.categoryLetterContainer}>
-              <Text style={styles.categoryLetter}>
-                {group.groupTitle?.charAt(0).toUpperCase() || 'G'}
-              </Text>
+              {renderGroupIcon(group)}
             </View>
+            
             <View style={styles.categoryDetails}>
               <View style={styles.categoryHeaderRow}>
                 <Text style={styles.categoryName}>
                   {group.groupTitle || 'Untitled Group'}
                 </Text>
                 <View style={styles.arrowContainer}>
-                  <Ionicons name="chevron-forward" size={18} color="#fff" />
+                  <MaterialCommunityIcons name="chevron-right" size={18} color="#fff" />
                 </View>
               </View>
               <Text style={styles.itemCount}>{group.itemCount || 0} items</Text>
               
-              {/* NEW: Show category badge if set */}
               {group.groupCategory && (
                 <View style={styles.categoryBadge}>
                   <Text style={styles.categoryBadgeText}>
-                    📂 {group.groupCategory}
+                    <MaterialCommunityIcons name="folder-open-outline" size={10} color="#fff" /> {group.groupCategory}
                   </Text>
                 </View>
               )}
@@ -86,7 +131,7 @@ const InventoryGroupsSection = ({
         >
           <View style={styles.addNewContent}>
             <View style={styles.addIconContainer}>
-              <Ionicons name="add-circle-outline" size={40} color="#777" />
+              <MaterialCommunityIcons name="plus-circle-outline" size={40} color="#777" />
             </View>
             <Text style={styles.addNewText}>Add New Group</Text>
             <Text style={styles.addNewSubtext}>Organize your ingredients</Text>
@@ -97,6 +142,7 @@ const InventoryGroupsSection = ({
   );
 };
 
+// ... (Styles are unchanged)
 const styles = StyleSheet.create({
   section: {
     marginBottom: 20,
