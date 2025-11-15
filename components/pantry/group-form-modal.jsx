@@ -19,7 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 // 💡 FIX: Define default state outside the component
 const defaultFormState = {
   groupTitle: '',
-  groupColor: '#8BC34A',
+  groupColor: '#8ac551',
   groupCategory: '',
 };
 
@@ -36,7 +36,7 @@ const GroupFormModal = ({
     if (initialData) {
       return {
         groupTitle: initialData.groupTitle || '',
-        groupColor: initialData.groupColor || '#8BC34A',
+        groupColor: initialData.groupColor || '#8ac551',
         groupCategory: initialData.groupCategory || '',
       };
     }
@@ -54,7 +54,7 @@ const GroupFormModal = ({
 
   // Available colors
   const colorOptions = [
-    '#8BC34A', // Green
+    '#8ac551', // Green
     '#FF5722', // Red
     '#2196F3', // Blue
     '#9C27B0', // Purple
@@ -74,7 +74,7 @@ const GroupFormModal = ({
         // Edit Mode: set form to initialData
         setFormData({
           groupTitle: initialData.groupTitle || '',
-          groupColor: initialData.groupColor || '#8BC34A',
+          groupColor: initialData.groupColor || '#8ac551',
           groupCategory: initialData.groupCategory || '',
         });
       } else {
@@ -103,8 +103,13 @@ const GroupFormModal = ({
 
   // Close modal
   const handleClose = () => {
-    onClose(); // Close the modal
-    // 💡 FIX: Remove setFormData from here. useEffect will handle the reset.
+    onClose();
+  };
+
+  // NEW: Explicit cancel to clear form before closing
+  const handleCancel = () => {
+    setFormData(defaultFormState);
+    onClose();
   };
 
   return (
@@ -206,7 +211,7 @@ const GroupFormModal = ({
             
             <TouchableOpacity 
               style={styles.cancelButton}
-              onPress={handleClose}
+              onPress={handleCancel} // CHANGED (was handleClose)
             >
               <Text style={styles.cancelButtonText}>Cancel</Text>
             </TouchableOpacity>
@@ -272,7 +277,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    paddingTop: 20,
+    paddingTop: 32, // was 20
     paddingBottom: 30,
     maxHeight: '85%',
   },
@@ -292,7 +297,7 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     paddingHorizontal: 20,
-    paddingTop: 20,
+    paddingTop: 28, // was 20
   },
   label: {
     fontSize: 16,
@@ -376,7 +381,7 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   saveButton: {
-    backgroundColor: '#8BC34A',
+    backgroundColor: '#8ac551',
     paddingVertical: 15,
     borderRadius: 8,
     alignItems: 'center',

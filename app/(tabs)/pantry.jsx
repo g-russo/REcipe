@@ -5,9 +5,9 @@ import {
   StatusBar,
   Alert,
   StyleSheet,
-  TouchableOpacity, // 💡 ADDED
-  Text,             // 💡 ADDED
-  View,             // 💡 ADDED
+  TouchableOpacity,
+  Text,
+  View,
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useCustomAuth } from '../../hooks/use-custom-auth';
@@ -16,7 +16,7 @@ import PantryService from '../../services/pantry-service';
 import ExpirationNotificationService from '../../services/expiration-notification-service';
 import BackgroundNotificationRefresh from '../../services/background-notification-refresh';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons'; // 💡 ADDED
+import { Ionicons } from '@expo/vector-icons';
 
 // Components
 import PantryHeader from '../../components/pantry/pantry-header';
@@ -62,9 +62,6 @@ const Pantry = () => {
   // Expiring items
   const [expiringItems, setExpiringItems] = useState([]);
   const [notificationSummary, setNotificationSummary] = useState(null);
-
-  // ... (All functions from initializeNotifications down to handleSaveGroup remain the same) ...
-  // ... (No changes needed in that block) ...
 
   // Initialize notifications on mount
   useEffect(() => {
@@ -171,7 +168,7 @@ const Pantry = () => {
         console.log('📦 No inventory found, creating default...');
         try {
           const newInventory = await PantryService.createInventory(customUserData.userID, {
-            inventoryColor: '#8BC34A',
+            inventoryColor: '#8ac551',
             inventoryTags: [],
             maxItems: 100,
           });
@@ -199,7 +196,7 @@ const Pantry = () => {
       try {
         console.log('📦 No inventory found, creating default inventory...');
         const newInventory = await PantryService.createInventory(customUserData.userID, {
-          inventoryColor: '#8BC34A',
+          inventoryColor: '#8ac551',
           inventoryTags: [],
           maxItems: 100,
         });
@@ -855,113 +852,136 @@ const Pantry = () => {
 
   return (
     <AuthGuard>
-      <SafeAreaView style={styles.container}>
-        <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-        
-        {/* 💡 CONDITIONAL HEADER */}
-        {selectionMode ? (
-          <SelectionModeHeader
-            selectedCount={selectedItems.length}
-            onCancel={exitSelectionMode}
-            onAddToGroup={handleAddToGroup}
-            onDeleteSelected={handleDeleteSelectedItems} // 💡 PASS NEW HANDLER
-            isDisabled={selectedItems.length === 0}
-          />
-        ) : (
-          <PantryHeader 
-            onSearchPress={() => setSearchModalVisible(true)}
-            onBackPress={handleBackPress}
-          />
-        )}
+      {/* 💡 WRAP in a standard View. This is now the positioning parent for the FAB. */}
+      <View style={styles.container}>
+        {/* 💡 Apply a new style to SafeAreaView */}
+        <SafeAreaView style={styles.safeArea}>
+          <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+          
+          {/* CONDITIONAL HEADER */}
+          {selectionMode ? (
+            <SelectionModeHeader
+              selectedCount={selectedItems.length}
+              onCancel={exitSelectionMode}
+              onAddToGroup={handleAddToGroup}
+              onDeleteSelected={handleDeleteSelectedItems}
+              isDisabled={selectedItems.length === 0}
+            />
+          ) : (
+            <PantryHeader 
+              onSearchPress={() => setSearchModalVisible(true)}
+              onBackPress={handleBackPress}
+            />
+          )}
 
-        <ScrollView 
-          style={styles.scrollView} 
-          contentContainerStyle={styles.scrollViewContent}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* ... (Rest of your components: ExpiringItemsBanner, InventoryGroupsSection, PantryItemsGrid) ... */}
-          <ExpiringItemsBanner
-            expiringItems={expiringItems}
-            onItemPress={handleItemPress}
-            onViewAll={handleViewAllExpiring}
-            onDeleteAllExpired={handleDeleteAllExpired}
-          />
-
-          <InventoryGroupsSection
-            groups={groups}
-            onGroupPress={handleGroupPress}
-            onCreateGroup={handleCreateGroup}
-            userName={customUserData?.userName || user?.user_metadata?.name || 'My'}
-          />
-
-          <PantryItemsGrid
-            items={items}
-            onAddItem={() => setItemFormVisible(true)}
-            onItemPress={handleItemPress}
-            onItemLongPress={handleItemLongPress}
-            onItemMenuPress={handleItemMenuPress}
-            selectionMode={selectionMode}
-            selectedItems={selectedItems}
-            highlightedItemId={highlightedItemId}
-          />
-        </ScrollView>
-
-        {/* 💡 NEW: Floating Action Button for Find Recipe */}
-        {selectionMode && selectedItems.length > 0 && (
-          <TouchableOpacity
-            style={styles.fab}
-            onPress={handleFindRecipe}
+          <ScrollView 
+            style={styles.scrollView} 
+            contentContainerStyle={styles.scrollViewContent}
+            showsVerticalScrollIndicator={false}
           >
-            <Ionicons name="restaurant-outline" size={24} color="#fff" />
-            <Text style={styles.fabText}>Find Recipe ({selectedItems.length})</Text>
-          </TouchableOpacity>
-        )}
+            <ExpiringItemsBanner
+              expiringItems={expiringItems}
+              onItemPress={handleItemPress}
+              onViewAll={handleViewAllExpiring}
+              onDeleteAllExpired={handleDeleteAllExpired}
+            />
 
-        {/* ... (Rest of your Modals: SearchFilterModal, ItemFormModal, etc.) ... */}
-        <SearchFilterModal
-          visible={searchModalVisible}
-          onClose={() => setSearchModalVisible(false)}
-          items={items}
-          inventories={inventories}
-          onResultPress={handleSearchResultPress}
-        />
+            {/* Spacer wrapper to separate from banner */}
+            <View style={styles.groupsSectionSpacer}>
+              <InventoryGroupsSection
+                groups={groups}
+                onGroupPress={handleGroupPress}
+                onCreateGroup={handleCreateGroup}
+                userName={customUserData?.userName || user?.user_metadata?.name || 'My'}
+              />
+            </View>
 
-        <ItemFormModal
-          visible={itemFormVisible}
-          onClose={() => {
-            setItemFormVisible(false);
-            setEditingItem(null);
-          }}
-          onSave={handleSaveItem}
-          initialData={editingItem}
-          inventories={inventories}
-        />
+            <PantryItemsGrid
+              items={items}
+              onAddItem={() => setItemFormVisible(true)}
+              onItemPress={handleItemPress}
+              onItemLongPress={handleItemLongPress}
+              onItemMenuPress={handleItemMenuPress}
+              selectionMode={selectionMode}
+              selectedItems={selectedItems}
+              highlightedItemId={highlightedItemId}
+            />
+          </ScrollView>
 
-        <GroupFormModal
-          visible={groupFormVisible}
-          onClose={() => {
-            setGroupFormVisible(false);
-            setEditingGroup(null);
-          }}
-          onSave={handleSaveGroup}
-          initialData={editingGroup}
-        />
+          <SearchFilterModal
+            visible={searchModalVisible}
+            onClose={() => setSearchModalVisible(false)}
+            items={items}
+            inventories={inventories}
+            onResultPress={handleSearchResultPress}
+          />
 
-        <GroupItemsModal
-          visible={groupItemsModalVisible}
-          onClose={() => {
-            setGroupItemsModalVisible(false);
-            setSelectedGroup(null);
-          }}
-          group={selectedGroup}
-          onItemPress={handleItemPress}
-          onEditGroup={() => {
-            setEditingGroup(selectedGroup);
-            setGroupFormVisible(true);
-          }}
-          onDeleteGroup={() => handleDeleteGroup(selectedGroup)}
-        />
-      </SafeAreaView>
+          <ItemFormModal
+            visible={itemFormVisible}
+            onClose={() => {
+              setItemFormVisible(false);
+              setEditingItem(null);
+            }}
+            onSave={handleSaveItem}
+            initialData={editingItem}
+            inventories={inventories}
+          />
+
+          <GroupFormModal
+            visible={groupFormVisible}
+            onClose={() => {
+              setGroupFormVisible(false);
+              setEditingGroup(null);
+            }}
+            onSave={handleSaveGroup}
+            initialData={editingGroup}
+          />
+
+          <GroupItemsModal
+            visible={groupItemsModalVisible}
+            onClose={() => {
+              setGroupItemsModalVisible(false);
+              setSelectedGroup(null);
+            }}
+            group={selectedGroup}
+            onItemPress={handleItemPress}
+            onEditGroup={() => {
+              setEditingGroup(selectedGroup);
+              setGroupFormVisible(true);
+            }}
+            onDeleteGroup={() => handleDeleteGroup(selectedGroup)}
+          />
+        </SafeAreaView>
+        
+        {/* FAB with debugging */}
+        {(() => {
+          const shouldShow = selectionMode && selectedItems.length > 0;
+          console.log('🔍 FAB Debug:', {
+            selectionMode,
+            selectedItemsLength: selectedItems.length,
+            shouldShow
+          });
+          
+          if (shouldShow) {
+            return (
+              <View style={styles.fabContainer}>
+                <TouchableOpacity
+                  style={styles.fab}
+                  onPress={() => {
+                    console.log('🍽️ FAB pressed!');
+                    handleFindRecipe();
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="restaurant-outline" size={24} color="#fff" />
+                  <Text style={styles.fabText}>Find Recipe ({selectedItems.length})</Text>
+                </TouchableOpacity>
+              </View>
+            );
+          }
+          return null;
+        })()}
+      </View>
     </AuthGuard>
   );
 };
@@ -971,20 +991,27 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
   },
+  safeArea: {
+    flex: 1,
+    paddingTop: 12, // added extra top space
+  },
   scrollView: {
     flex: 1,
   },
   scrollViewContent: {
-    paddingBottom: 100, // Add space at bottom
+    paddingBottom: 100,
   },
-  // 💡 NEW: Styles for the Floating Action Button (FAB)
-  fab: {
+  fabContainer: {
     position: 'absolute',
-    bottom: 30, // Positioned from the bottom
-    alignSelf: 'center', // Center it horizontally
+    bottom: 130, // Moved higher from 90
+    right: 20,   // Positioned from right instead of centered
+    pointerEvents: 'box-none',
+    zIndex: 1000,
+  },
+  fab: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#4CAF50', // Main app green color
+    backgroundColor: '#8ac551',
     paddingVertical: 14,
     paddingHorizontal: 24,
     borderRadius: 30,
@@ -996,12 +1023,16 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 5,
     elevation: 8,
+    minWidth: 200,
   },
   fabText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
     marginLeft: 10,
+  },
+  groupsSectionSpacer: {
+    paddingTop: 12, // adds space below the banner
   },
 });
 

@@ -16,6 +16,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 /**
  * Item Form Modal Component
@@ -60,9 +61,51 @@ const ItemFormModal = ({
     'slice', 'package', 'can', 'bottle', 'box'
   ];
 
-  // Update form field
+  const DRAFT_KEY = 'itemFormDraft';
+
+  // Load draft when opening (create mode only)
+  useEffect(() => {
+    const loadDraftIfNeeded = async () => {
+      if (visible && !initialData) {
+        try {
+          const draftString = await AsyncStorage.getItem(DRAFT_KEY);
+            if (draftString) {
+              const draft = JSON.parse(draftString);
+              setFormData(prev => ({
+                ...prev,
+                ...draft,
+                inventoryID: draft.inventoryID || inventories[0]?.inventoryID || null
+              }));
+            }
+        } catch (e) {
+          console.log('Draft load error', e);
+        }
+      }
+    };
+    loadDraftIfNeeded();
+  }, [visible, initialData, inventories]);
+
+  const saveDraft = async (data = formData) => {
+    try {
+      await AsyncStorage.setItem(DRAFT_KEY, JSON.stringify(data));
+    } catch (e) {
+      console.log('Draft save error', e);
+    }
+  };
+
+  const clearDraft = async () => {
+    try {
+      await AsyncStorage.removeItem(DRAFT_KEY);
+    } catch (e) {
+      console.log('Draft clear error', e);
+    }
+  };
+
+  // Update form field (persist draft)
   const updateField = (field, value) => {
-    setFormData({ ...formData, [field]: value });
+    const next = { ...formData, [field]: value };
+    setFormData(next);
+    saveDraft(next);
   };
 
   // Get current date
@@ -148,28 +191,53 @@ const ItemFormModal = ({
     );
   };
 
-  // Validate and save
-  const handleSave = () => {
+  // Validate and save (preserve draft on invalid, clear on success)
+  const handleSave = async () => {
     console.log('📋 Item Form - Validating and saving...', formData);
-    
     if (!formData.itemName.trim()) {
       console.log('❌ Validation failed: Missing item name');
+      await saveDraft();
       Alert.alert('Error', 'Please enter an item name');
       return;
     }
     if (!formData.itemCategory) {
       console.log('❌ Validation failed: Missing category');
+      await saveDraft();
       Alert.alert('Error', 'Please select a category');
       return;
     }
 
     console.log('✅ Validation passed, calling onSave...');
-    onSave(formData);
-    handleClose();
+    try {
+      await onSave(formData);
+      await clearDraft();
+      // Reset after successful save
+      setFormData({
+        itemName: '',
+        inventoryID: inventories[0]?.inventoryID || null,
+        quantity: '',
+        unit: '',
+        itemCategory: '',
+        itemDescription: '',
+        itemExpiration: '',
+        imageURL: null,
+      });
+      onClose();
+    } catch (e) {
+      // If save fails, keep draft
+      await saveDraft();
+      Alert.alert('Error', e.message || 'Save failed');
+    }
   };
 
-  // Close modal and reset
-  const handleClose = () => {
+  // Close modal without clearing draft (used for system close)
+  const handleClose = async () => {
+    await saveDraft();
+    onClose();
+  };
+
+  // NEW: Explicit cancel (user tapped Cancel) - clear form + draft
+  const handleCancel = async () => {
     setFormData({
       itemName: '',
       inventoryID: inventories[0]?.inventoryID || null,
@@ -180,6 +248,7 @@ const ItemFormModal = ({
       itemExpiration: '',
       imageURL: null,
     });
+    await clearDraft();
     onClose();
   };
 
@@ -366,7 +435,7 @@ const ItemFormModal = ({
                   
                   <TouchableOpacity 
                     style={styles.cancelButton}
-                    onPress={handleClose}
+                    onPress={handleCancel} // CHANGED (was handleClose)
                   >
                     <Text style={styles.cancelButtonText}>Cancel</Text>
                   </TouchableOpacity>
@@ -481,7 +550,7 @@ const styles = StyleSheet.create({
   imageUploadArea: {
     width: '100%',
     height: 200,
-    backgroundColor: '#8BC34A',
+    backgroundColor: '#8ac551',
     borderRadius: 12,
     marginBottom: 20,
     overflow: 'hidden',
@@ -609,7 +678,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   saveButton: {
-    backgroundColor: '#8BC34A',
+    backgroundColor: '#8ac551',
     paddingVertical: 15,
     borderRadius: 8,
     alignItems: 'center',
