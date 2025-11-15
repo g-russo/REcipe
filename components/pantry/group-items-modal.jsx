@@ -11,12 +11,31 @@ import {
   Dimensions,
   Alert,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+// MODIFIED: Import MaterialCommunityIcons
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useRouter } from 'expo-router';
 import PantryService from '../../services/pantry-service';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const MODAL_ITEM_WIDTH = (SCREEN_WIDTH - 60) / 2; // Account for padding and gap
+
+// NEW: Map categories to MaterialCommunityIcons
+const categoryIconMap = {
+  'Fruits': 'food-apple-outline',
+  'Vegetables': 'carrot',
+  'Meat & Poultry': 'food-drumstick-outline',
+  'Seafood': 'fish',
+  'Dairy & Eggs': 'egg-outline',
+  'Grains & Pasta': 'pasta',
+  'Canned & Jarred': 'canned-food',
+  'Condiments & Sauces': 'soy-sauce',
+  'Spices & Herbs': 'mortar-pestle',
+  'Snacks': 'cookie-outline',
+  'Beverages': 'coffee-outline',
+  'Frozen': 'snowflake',
+  'Baking': 'rolling-pin',
+  'Other': 'help-circle-outline',
+};
 
 /**
  * Group Items Modal Component
@@ -85,6 +104,29 @@ const GroupItemsModal = ({
 
   if (!group) return null;
 
+  // NEW: Helper function to render icon or letter
+  const renderGroupIcon = (groupData) => {
+    const targetGroup = groupData || group; 
+    const iconName = categoryIconMap[targetGroup?.groupCategory];
+
+    if (iconName) {
+      return (
+        <MaterialCommunityIcons 
+          name={iconName} 
+          size={24} 
+          color="#fff" 
+        />
+      );
+    }
+
+    // Fallback to the letter
+    return (
+      <Text style={styles.groupIcon}>
+        {targetGroup?.groupTitle?.charAt(0).toUpperCase() || 'G'}
+      </Text>
+    );
+  };
+
   return (
     <Modal
       animationType="slide"
@@ -97,18 +139,20 @@ const GroupItemsModal = ({
           {/* Header */}
           <View style={[styles.modalHeader, { backgroundColor: group.groupColor || '#8ac551' }]}>
             <View style={styles.headerLeft}>
+              
+              {/* MODIFIED: Use renderGroupIcon */}
               <View style={styles.groupIconContainer}>
-                <Text style={styles.groupIcon}>
-                  {group.groupTitle?.charAt(0).toUpperCase() || 'G'}
-                </Text>
+                {renderGroupIcon(group)}
               </View>
+              
               <View>
                 <Text style={styles.modalTitle}>{group.groupTitle}</Text>
                 <Text style={styles.itemCount}>{items.length} items</Text>
               </View>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <Ionicons name="close" size={28} color="#fff" />
+              {/* MODIFIED: Use MaterialCommunityIcons */}
+              <MaterialCommunityIcons name="close" size={28} color="#fff" />
             </TouchableOpacity>
           </View>
 
@@ -121,7 +165,8 @@ const GroupItemsModal = ({
                 onEditGroup();
               }}
             >
-              <Ionicons name="create-outline" size={20} color="#8BC34A" />
+              {/* MODIFIED: Use MaterialCommunityIcons */}
+              <MaterialCommunityIcons name="pencil-outline" size={20} color="#8BC34A" />
               <Text style={styles.actionButtonText}>Edit Group</Text>
             </TouchableOpacity>
             
@@ -132,7 +177,8 @@ const GroupItemsModal = ({
                 onDeleteGroup();
               }}
             >
-              <Ionicons name="trash-outline" size={20} color="#ff4d4d" />
+              {/* MODIFIED: Use MaterialCommunityIcons */}
+              <MaterialCommunityIcons name="trash-can-outline" size={20} color="#ff4d4d" />
               <Text style={[styles.actionButtonText, styles.deleteButtonText]}>Delete</Text>
             </TouchableOpacity>
           </View>
@@ -149,7 +195,8 @@ const GroupItemsModal = ({
               </View>
             ) : items.length === 0 ? (
               <View style={styles.emptyContainer}>
-                <Ionicons name="cube-outline" size={80} color="#ccc" />
+                {/* MODIFIED: Use MaterialCommunityIcons */}
+                <MaterialCommunityIcons name="cube-outline" size={80} color="#ccc" />
                 <Text style={styles.emptyTitle}>No items yet</Text>
                 <Text style={styles.emptySubtitle}>
                   Add items to this group to see them here
@@ -177,7 +224,8 @@ const GroupItemsModal = ({
                         />
                       ) : (
                         <View style={styles.itemImagePlaceholder}>
-                          <Ionicons name="image-outline" size={32} color="#ccc" />
+                          {/* MODIFIED: Use MaterialCommunityIcons */}
+                          <MaterialCommunityIcons name="image-outline" size={32} color="#ccc" />
                         </View>
                       )}
                     </View>
@@ -202,7 +250,8 @@ const GroupItemsModal = ({
                       {/* Expiration Badge */}
                       {item.itemExpiration && (
                         <View style={styles.expirationBadge}>
-                          <Ionicons name="time-outline" size={12} color="#666" />
+                          {/* MODIFIED: Use MaterialCommunityIcons */}
+                          <MaterialCommunityIcons name="clock-outline" size={12} color="#666" />
                           <Text style={styles.expirationText}>
                             {new Date(item.itemExpiration).toLocaleDateString()}
                           </Text>
@@ -222,7 +271,8 @@ const GroupItemsModal = ({
                 style={styles.findRecipeButton}
                 onPress={handleFindRecipe}
               >
-                <Ionicons name="restaurant" size={20} color="#fff" />
+                {/* MODIFIED: Use MaterialCommunityIcons */}
+                <MaterialCommunityIcons name="silverware-fork-knife" size={20} color="#fff" />
                 <Text style={styles.findRecipeButtonText}>Find a Recipe</Text>
               </TouchableOpacity>
             </View>
