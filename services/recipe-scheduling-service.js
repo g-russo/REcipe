@@ -89,7 +89,7 @@ class RecipeSchedulingService {
   }
 
   /**
-   * Schedule notifications for a recipe (3 days before, 1 day before, and on the day)
+   * Schedule notifications for a recipe - all reminders at 9:00 AM daily
    * @param {number} userID - User's ID
    * @param {string} recipeName - Name of the recipe
    * @param {Date} scheduledDate - Cooking date
@@ -103,20 +103,25 @@ class RecipeSchedulingService {
       // Set time to 9:00 AM for all notifications
       cookingDate.setHours(9, 0, 0, 0);
 
-      // Calculate notification dates for 1 week, 3 days, 2 days, 1 day before, and cooking day
+      // Calculate notification dates - 1 week before, then daily from 3 days before
       const oneWeekBefore = new Date(cookingDate);
       oneWeekBefore.setDate(oneWeekBefore.getDate() - 7);
+      oneWeekBefore.setHours(9, 0, 0, 0); // 9 AM reminder
 
       const threeDaysBefore = new Date(cookingDate);
       threeDaysBefore.setDate(threeDaysBefore.getDate() - 3);
+      threeDaysBefore.setHours(9, 0, 0, 0); // 9 AM reminder
 
       const twoDaysBefore = new Date(cookingDate);
       twoDaysBefore.setDate(twoDaysBefore.getDate() - 2);
+      twoDaysBefore.setHours(9, 0, 0, 0); // 9 AM reminder
 
       const oneDayBefore = new Date(cookingDate);
       oneDayBefore.setDate(oneDayBefore.getDate() - 1);
+      oneDayBefore.setHours(9, 0, 0, 0); // 9 AM reminder
 
       const onCookingDay = new Date(cookingDate);
+      onCookingDay.setHours(9, 0, 0, 0); // 9 AM reminder
 
       // Schedule 1 week before notification
       if (oneWeekBefore > now) {

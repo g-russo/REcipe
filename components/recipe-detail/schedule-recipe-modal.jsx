@@ -52,7 +52,7 @@ const ScheduleRecipeModal = ({ visible, onClose, recipe, userID }) => {
       if (result.success) {
         Alert.alert(
           'Recipe Scheduled! 📅',
-          `"${recipe.label || recipe.recipeName}" is scheduled for ${selectedDate.toLocaleDateString()}.\n\nYou'll receive notifications:\n• 1 week before (yellow)\n• Daily from 3 days before\n• On cooking day`,
+          `"${recipe.label || recipe.recipeName}" is scheduled for ${selectedDate.toLocaleDateString()}.\n\nYou'll receive daily reminders at 9:00 AM:\n• 1 week before\n• 3 days before\n• 2 days before\n• 1 day before\n• On cooking day`,
           [
             {
               text: 'OK',
