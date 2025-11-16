@@ -1,12 +1,14 @@
 import os
-import time
-import requests
+from dotenv import load_dotenv
 
-FATSECRET_TOKEN_URL = "https://oauth.fatsecret.com/connect/token"
-FATSECRET_SERVER_API = "https://platform.fatsecret.com/rest/server.api"
+# ✅ CRITICAL: Load .env file
+load_dotenv()
 
 CLIENT_ID = os.getenv("FATSECRET_CLIENT_ID")
 CLIENT_SECRET = os.getenv("FATSECRET_CLIENT_SECRET")
+
+FATSECRET_TOKEN_URL = "https://oauth.fatsecret.com/connect/token"
+FATSECRET_SERVER_API = "https://platform.fatsecret.com/rest/server.api"
 
 _token_cache = {"access_token": None, "expires_at": 0}
 
