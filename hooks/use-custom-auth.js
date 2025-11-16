@@ -127,51 +127,60 @@ export function useCustomAuth() {
         console.log('🔄 Supabase auth user created successfully:', authData.user.id)
         console.log('📝 Now attempting to create custom user record...')
         
-        try {
-          // Hash the password for secure storage
-          const hashedPassword = await simpleHash(password)
-          
-          const { data: customUserData, error: customUserError } = await supabase
-            .from('tbl_users')
-            .insert({
-              userName: userData.name,
-              userEmail: email,
-              userPassword: hashedPassword,
-              userBday: userData.birthdate,
-              isVerified: false
-            })
-            .select()
+        // Hash the password for secure storage
+        const hashedPassword = await simpleHash(password)
+        
+        const { data: customUserData, error: customUserError } = await supabase
+          .from('tbl_users')
+          .insert({
+            userName: userData.name,
+            userEmail: email,
+            userPassword: hashedPassword,
+            userBday: userData.birthdate,
+            isVerified: false
+          })
+          .select()
 
-          if (customUserError) {
-            console.error('❌ Error creating custom user:', customUserError)
-            console.error('❌ Error details:', {
-              code: customUserError.code,
-              message: customUserError.message,
-              details: customUserError.details,
-              hint: customUserError.hint
-            })
-            
-            // Provide specific guidance based on error type
-            if (customUserError.code === 'PGRST116' || customUserError.message.includes('does not exist')) {
-              console.log('🚨 DATABASE TABLES DO NOT EXIST!')
-              console.log('📝 You need to create the tables in Supabase SQL Editor')
-              console.log('📝 1. Go to Supabase Dashboard > SQL Editor')
-              console.log('📝 2. Copy and run the SQL from database/schema.sql OR database/fix-schema.sql')
-            } else if (customUserError.message.includes('column') && customUserError.message.includes('does not exist')) {
-              console.log('🚨 TABLE STRUCTURE IS WRONG!')
-              console.log('📝 Run the fix-schema.sql to recreate tables with correct structure')
+        if (customUserError) {
+          console.error('❌ Error creating custom user:', customUserError)
+          console.error('❌ Error details:', {
+            code: customUserError.code,
+            message: customUserError.message,
+            details: customUserError.details,
+            hint: customUserError.hint
+          })
+          
+          // Handle duplicate email in custom table (database constraint violation)
+          if (customUserError.code === '23505' && customUserError.message.includes('tbl_users_useremail_key')) {
+            console.error('❌ Duplicate email detected in custom table')
+            // Clean up the Supabase auth user that was just created
+            try {
+              await supabase.auth.admin.deleteUser(authData.user.id)
+              console.log('🧹 Cleaned up Supabase auth user')
+            } catch (cleanupError) {
+              console.error('⚠️ Could not clean up auth user:', cleanupError)
             }
-            
-            // Don't throw error here - let the auth flow continue with Supabase's built-in system
-            console.log('⚠️ Continuing with Supabase-only authentication for now...')
-          } else {
-            console.log('✅ Custom user created successfully:', customUserData)
-            console.log('🎉 User now exists in BOTH Supabase auth AND custom tbl_users table!')
-            console.log('📧 Supabase will send OTP email for verification')
+            // Re-throw with user-friendly message
+            throw new Error('This email address is already registered. Please sign in instead or use a different email address.')
           }
-        } catch (tableError) {
-          console.error('❌ Database table error:', tableError)
-          console.log('⚠️ Tables may not be set up yet. Using Supabase auth only for now.')
+          
+          // Provide specific guidance based on error type
+          if (customUserError.code === 'PGRST116' || customUserError.message.includes('does not exist')) {
+            console.log('🚨 DATABASE TABLES DO NOT EXIST!')
+            console.log('📝 You need to create the tables in Supabase SQL Editor')
+            console.log('📝 1. Go to Supabase Dashboard > SQL Editor')
+            console.log('📝 2. Copy and run the SQL from database/schema.sql OR database/fix-schema.sql')
+          } else if (customUserError.message.includes('column') && customUserError.message.includes('does not exist')) {
+            console.log('🚨 TABLE STRUCTURE IS WRONG!')
+            console.log('📝 Run the fix-schema.sql to recreate tables with correct structure')
+          }
+          
+          // Don't throw error here - let the auth flow continue with Supabase's built-in system
+          console.log('⚠️ Continuing with Supabase-only authentication for now...')
+        } else {
+          console.log('✅ Custom user created successfully:', customUserData)
+          console.log('🎉 User now exists in BOTH Supabase auth AND custom tbl_users table!')
+          console.log('📧 Supabase will send OTP email for verification')
         }
       }
 
