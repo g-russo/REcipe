@@ -205,7 +205,9 @@ const SignUp = () => {
             </View>
 
             <View style={[globalStyles.inputContainer, { marginBottom: hp('1%') }]}>
-              <Text style={[globalStyles.inputLabel, { fontSize: wp('4.2%'), marginBottom: hp('0.6%') }]}>Name</Text>
+              <Text style={[globalStyles.inputLabel, { fontSize: wp('4.2%'), marginBottom: hp('0.6%') }]}>
+                Name <Text style={{ color: '#E74C3C' }}>*</Text>
+              </Text>
               <TextInput
                 style={[globalStyles.input, nameFocused && globalStyles.inputFocused, {
                   paddingVertical: hp('1.3%'),
@@ -225,7 +227,9 @@ const SignUp = () => {
             </View>
 
             <View style={[globalStyles.inputContainer, { marginBottom: hp('1%') }]}>
-              <Text style={[globalStyles.inputLabel, { fontSize: wp('4.2%'), marginBottom: hp('0.6%') }]}>Birthday</Text>
+              <Text style={[globalStyles.inputLabel, { fontSize: wp('4.2%'), marginBottom: hp('0.6%') }]}>
+                Birthday <Text style={{ color: '#E74C3C' }}>*</Text>
+              </Text>
               <TextInput
                 style={[globalStyles.input, birthdateFocused && globalStyles.inputFocused, {
                   paddingVertical: hp('1.3%'),
@@ -246,7 +250,9 @@ const SignUp = () => {
             </View>
 
             <View style={[globalStyles.inputContainer, { marginBottom: hp('1%') }]}>
-              <Text style={[globalStyles.inputLabel, { fontSize: wp('4.2%'), marginBottom: hp('0.6%') }]}>Email</Text>
+              <Text style={[globalStyles.inputLabel, { fontSize: wp('4.2%'), marginBottom: hp('0.6%') }]}>
+                Email <Text style={{ color: '#E74C3C' }}>*</Text>
+              </Text>
               <TextInput
                 style={[globalStyles.input, emailFocused && globalStyles.inputFocused, {
                   paddingVertical: hp('1.3%'),
@@ -268,7 +274,9 @@ const SignUp = () => {
             </View>
 
             <View style={[globalStyles.inputContainer, { marginBottom: hp('0.8%') }]}>
-              <Text style={[globalStyles.inputLabel, { fontSize: wp('4.2%'), marginBottom: hp('0.6%') }]}>Password</Text>
+              <Text style={[globalStyles.inputLabel, { fontSize: wp('4.2%'), marginBottom: hp('0.6%') }]}>
+                Password <Text style={{ color: '#E74C3C' }}>*</Text>
+              </Text>
               <View style={{ position: 'relative' }}>
                 <TextInput
                   style={[globalStyles.input, passwordFocused && globalStyles.inputFocused, {
@@ -314,7 +322,9 @@ const SignUp = () => {
             </View>
 
             <View style={[globalStyles.inputContainer, { marginBottom: 0 }]}>
-              <Text style={[globalStyles.inputLabel, { fontSize: wp('4.2%'), marginBottom: hp('0.6%') }]}>Confirm Password</Text>
+              <Text style={[globalStyles.inputLabel, { fontSize: wp('4.2%'), marginBottom: hp('0.6%') }]}>
+                Confirm Password <Text style={{ color: '#E74C3C' }}>*</Text>
+              </Text>
               <View style={{ position: 'relative' }}>
                 <TextInput
                   style={[globalStyles.input, confirmPasswordFocused && globalStyles.inputFocused, {

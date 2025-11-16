@@ -111,6 +111,13 @@ export function useCustomAuth() {
           throw rateLimitError
         }
         
+        // Handle duplicate email
+        if (authError.message?.includes('User already registered') || 
+            authError.message?.includes('already registered') ||
+            authError.message?.includes('already exists')) {
+          throw new Error('This email address is already registered. Please sign in instead or use a different email address.')
+        }
+        
         // Handle other auth errors
         throw authError
       }
@@ -298,8 +305,15 @@ export function useCustomAuth() {
         throw authError
       }
 
-      // If Supabase auth succeeds, check if user exists in custom table
+      // If Supabase auth succeeds, STRICTLY check email verification
       if (authData.user) {
+        // First, check if email is confirmed in Supabase auth
+        if (!authData.user.email_confirmed_at) {
+          // Sign out immediately to prevent unverified access
+          await supabase.auth.signOut()
+          throw new Error('Please verify your email address before signing in. Check your inbox for the verification code.')
+        }
+
         try {
           const { data: userData, error: userError } = await supabase
             .from('tbl_users')
@@ -310,48 +324,45 @@ export function useCustomAuth() {
           if (userData && !userError) {
             // User exists in custom table, check if verified
             if (!userData.isVerified) {
-              // Update verification status if Supabase auth shows user is confirmed
-              if (authData.user.email_confirmed_at) {
-                await supabase
-                  .from('tbl_users')
-                  .update({ isVerified: true })
-                  .eq('userEmail', email)
-                
-                console.log('User verification status updated in custom table')
-              } else {
-                throw new Error('Please verify your email address before signing in.')
-              }
+              // Since Supabase shows email is confirmed, sync the status
+              await supabase
+                .from('tbl_users')
+                .update({ isVerified: true })
+                .eq('userEmail', email)
+              
+              console.log('✅ User verification status synced with Supabase auth')
             }
           } else {
             // User doesn't exist in custom table but exists in Supabase auth
-            // This can happen if they signed up before tables were created
-            console.log('User exists in Supabase auth but not in custom table - this is okay')
+            // Only allow if email is verified, create custom record
+            console.log('📝 Creating custom user record for verified Supabase auth user')
             
-            // Optionally, create a record in custom table if you want
-            if (authData.user.email_confirmed_at) {
-              try {
-                // Hash the password for secure storage
-                const hashedPassword = await simpleHash(password)
-                
-                await supabase
-                  .from('tbl_users')
-                  .insert({
-                    userName: authData.user.user_metadata?.name || 'User',
-                    userEmail: email,
-                    userPassword: hashedPassword,
-                    userBday: authData.user.user_metadata?.birthdate || '2000-01-01',
-                    isVerified: true
-                  })
-                
-                console.log('Created custom user record for existing Supabase auth user')
-              } catch (insertError) {
-                console.log('Could not create custom user record, but sign-in can continue:', insertError.message)
-              }
+            try {
+              const hashedPassword = await simpleHash(password)
+              
+              await supabase
+                .from('tbl_users')
+                .insert({
+                  userName: authData.user.user_metadata?.name || 'User',
+                  userEmail: email,
+                  userPassword: hashedPassword,
+                  userBday: authData.user.user_metadata?.birthdate || '2000-01-01',
+                  isVerified: true
+                })
+              
+              console.log('✅ Custom user record created for verified user')
+            } catch (insertError) {
+              console.error('⚠️ Could not create custom user record:', insertError.message)
+              // Continue since Supabase auth succeeded and email is verified
             }
           }
         } catch (customTableError) {
-          // Custom table doesn't exist or there's an issue - that's okay, use Supabase auth only
-          console.log('Custom table not available, using Supabase auth only:', customTableError.message)
+          console.error('⚠️ Custom table error:', customTableError.message)
+          // Only allow sign-in if email is confirmed in Supabase
+          if (!authData.user.email_confirmed_at) {
+            await supabase.auth.signOut()
+            throw new Error('Please verify your email address before signing in.')
+          }
         }
       }
 
