@@ -1,60 +1,187 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
-// Use environment variable
-const API_BASE_URL = Constants.expoConfig?.extra?.foodApiUrl || 'http://54.153.205.43:8000';
+// ✅ Add detailed logging
+const API_BASE_URL = Constants.expoConfig?.extra?.foodApiUrl || process.env.EXPO_PUBLIC_FOOD_API_URL || 'http://54.153.205.43:8000';
 
+console.log('🔧 ===== API CONFIGURATION =====');
+console.log('📍 API_BASE_URL:', API_BASE_URL);
+console.log('📱 Platform:', Platform.OS);
+console.log('🌐 Constants.expoConfig?.extra?.foodApiUrl:', Constants.expoConfig?.extra?.foodApiUrl);
+console.log('🌐 process.env.EXPO_PUBLIC_FOOD_API_URL:', process.env.EXPO_PUBLIC_FOOD_API_URL);
+console.log('================================');
+
+/**
+ * Manual timeout implementation for fetch
+ */
+const fetchWithTimeout = (url, options = {}, timeout = 30000) => {
+  return Promise.race([
+    fetch(url, options),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Request timeout')), timeout)
+    )
+  ]);
+};
+
+/**
+ * Test network connectivity
+ */
+export const testConnection = async () => {
+  try {
+    console.log('🧪 Testing connection to:', `${API_BASE_URL}/health`);
+    
+    const response = await fetchWithTimeout(`${API_BASE_URL}/health`, {}, 10000);
+    
+    console.log('✅ Connection test response status:', response.status);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    
+    const data = await response.json();
+    console.log('✅ Connection test successful:', data);
+    return { success: true, data };
+  } catch (error) {
+    console.error('❌ Connection test failed:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Recognize food from image
+ */
 export const recognizeFood = async (imageUri) => {
   try {
-    console.log('🔍 Sending image to food recognition API...');
-    console.log('📍 API URL:', API_BASE_URL);
+    console.log('🔍 ===== FOOD RECOGNITION REQUEST =====');
+    console.log('📤 API URL:', `${API_BASE_URL}/recognize-food`);
+    console.log('📱 Platform:', Platform.OS);
+    console.log('🖼️ Image URI:', imageUri);
+    
+    // Test connection first
+    const connectionTest = await testConnection();
+    if (!connectionTest.success) {
+      throw new Error(`Server unreachable: ${connectionTest.error}`);
+    }
     
     const formData = new FormData();
-    
-    // Extract filename from URI
-    const filename = imageUri.split('/').pop() || 'photo.jpg';
-    const match = /\.(\w+)$/.exec(filename);
-    const type = match ? `image/${match[1]}` : 'image/jpeg';
-    
     formData.append('file', {
       uri: imageUri,
-      name: filename,
-      type: type,
+      type: 'image/jpeg',
+      name: 'food.jpg',
     });
 
-    console.log('📤 Uploading to:', `${API_BASE_URL}/recognize-food`);
-
-    const response = await fetch(`${API_BASE_URL}/recognize-food`, {
-      method: 'POST',
-      body: formData,
-      headers: {
-        'Accept': 'application/json',
+    console.log('📦 Sending FormData...');
+    
+    const response = await fetchWithTimeout(
+      `${API_BASE_URL}/recognize-food`,
+      {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'Accept': 'application/json',
+        },
       },
-      // Don't set Content-Type - let browser/RN set it with boundary
-    });
+      30000
+    );
+
+    console.log('📥 Response status:', response.status);
 
     if (!response.ok) {
       const errorText = await response.text();
       console.error('❌ API Error Response:', errorText);
-      throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+      throw new Error(`API Error: ${response.status} - ${errorText}`);
     }
 
-    const result = await response.json();
-    console.log('✅ Food recognition successful:', result);
-    return result;
+    const data = await response.json();
+    console.log('✅ API Response:', data);
+    return data;
   } catch (error) {
     console.error('❌ Food recognition error:', error);
+    console.error('📋 Error details:', {
+      message: error.message,
+      name: error.name,
+      stack: error.stack
+    });
+    
+    if (error.message === 'Request timeout') {
+      throw new Error('Server is taking too long to respond. Please try again.');
+    } else if (error.message.includes('Network request failed')) {
+      throw new Error(`Cannot connect to ${API_BASE_URL}. Please check:\n1. Server is running\n2. You are connected to the internet\n3. Firewall/VPN is not blocking the connection`);
+    }
+    
     throw error;
   }
 };
 
-// Health check function
-export const checkAPIHealth = async () => {
+/**
+ * Extract text from image using OCR (Tesseract)
+ */
+export const extractText = async (imageUri) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/health`);
-    return await response.json();
+    console.log('🔍 ===== OCR EXTRACTION REQUEST =====');
+    console.log('📤 API URL:', `${API_BASE_URL}/ocr/extract`);
+    console.log('📱 Platform:', Platform.OS);
+    console.log('🖼️ Image URI:', imageUri);
+    
+    // Test connection first
+    const connectionTest = await testConnection();
+    if (!connectionTest.success) {
+      throw new Error(`Server unreachable: ${connectionTest.error}`);
+    }
+    
+    const formData = new FormData();
+    formData.append('file', {
+      uri: imageUri,
+      type: 'image/jpeg',
+      name: 'ocr-image.jpg',
+    });
+
+    console.log('📦 Sending FormData for OCR...');
+
+    const response = await fetchWithTimeout(
+      `${API_BASE_URL}/ocr/extract`,
+      {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'Accept': 'application/json',
+        },
+      },
+      30000
+    );
+
+    console.log('📥 OCR Response status:', response.status);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ OCR API Error Response:', errorText);
+      throw new Error(`OCR API Error: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log('✅ OCR API Response:', data);
+    return data;
   } catch (error) {
-    console.error('❌ Health check failed:', error);
-    return { ok: false, error: error.message };
+    console.error('❌ OCR extraction error:', error);
+    console.error('📋 Error details:', {
+      message: error.message,
+      name: error.name,
+      stack: error.stack
+    });
+    
+    if (error.message === 'Request timeout') {
+      throw new Error('OCR is taking too long. Please try again.');
+    } else if (error.message.includes('Network request failed')) {
+      throw new Error(`Cannot connect to ${API_BASE_URL}. Please check:\n1. Server is running\n2. You are connected to the internet\n3. Firewall/VPN is not blocking the connection`);
+    }
+    
+    throw error;
   }
+};
+
+/**
+ * Health check function
+ */
+export const checkAPIHealth = async () => {
+  return testConnection();
 };
