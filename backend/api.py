@@ -14,11 +14,15 @@ from PIL import Image
 from ultralytics import YOLO
 import torch
 import pytesseract
+from dotenv import load_dotenv  # ✅ ADD THIS
+
+# ✅ CRITICAL: Load .env file FIRST
+load_dotenv()
 
 # FatSecret API credentials
 FATSECRET_API_URL = "https://platform.fatsecret.com/rest/server.api"
-FATSECRET_KEY = os.getenv("FATSECRET_KEY", "")
-FATSECRET_SECRET = os.getenv("FATSECRET_SECRET", "")
+FATSECRET_KEY = os.getenv("FATSECRET_CLIENT_ID", "")  # ✅ Changed from FATSECRET_KEY
+FATSECRET_SECRET = os.getenv("FATSECRET_CLIENT_SECRET", "")  # ✅ Changed from FATSECRET_SECRET
 
 def call_server_api(method: str, params: dict = None):
     """Call FatSecret server API with OAuth 1.0 signature."""
