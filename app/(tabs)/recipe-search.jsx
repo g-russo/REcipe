@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -96,6 +96,10 @@ const RecipeSearch = () => {
   const [popularRecipes, setPopularRecipes] = useState([]);
   const [loadingPopular, setLoadingPopular] = useState(false);
 
+  // Timeout refs for 7-second loading limits
+  const searchTimeoutRef = useRef(null);
+  const popularTimeoutRef = useRef(null);
+
   useEffect(() => {
     // Load popular recipes on component mount using cache service
     loadPopularRecipesFromCache();
@@ -107,6 +111,14 @@ const RecipeSearch = () => {
       setLoading(false);
       setGeneratingAI(false);
       setLoadingPopular(false);
+      
+      // Clear any active timeouts
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+      if (popularTimeoutRef.current) {
+        clearTimeout(popularTimeoutRef.current);
+      }
     };
   }, []);
 
@@ -129,11 +141,29 @@ const RecipeSearch = () => {
 
   const loadPopularRecipesFromCache = async () => {
     setLoadingPopular(true);
+    
+    // Clear any existing popular timeout
+    if (popularTimeoutRef.current) {
+      clearTimeout(popularTimeoutRef.current);
+    }
+
+    // Set 7-second timeout to force stop loading
+    popularTimeoutRef.current = setTimeout(() => {
+      console.log('⏱️ Popular recipes timeout reached (7 seconds) - stopping loading state');
+      setLoadingPopular(false);
+    }, 7000);
+
     try {
       console.log('📱 Loading popular recipes from Supabase cache...');
 
       // Get cached recipes from Supabase (auto-fetches from API if cache is empty/expired)
       const cached = await cacheService.getPopularRecipes();
+
+      // Clear timeout since we got results
+      if (popularTimeoutRef.current) {
+        clearTimeout(popularTimeoutRef.current);
+        popularTimeoutRef.current = null;
+      }
 
       if (cached && cached.length > 0) {
         console.log(`✅ Loaded ${cached.length} popular recipes from cache`);
@@ -159,6 +189,12 @@ const RecipeSearch = () => {
         await handleRefreshPopularRecipes();
       }
     } catch (error) {
+      // Clear timeout on error
+      if (popularTimeoutRef.current) {
+        clearTimeout(popularTimeoutRef.current);
+        popularTimeoutRef.current = null;
+      }
+      
       console.error('❌ Error loading popular recipes from cache:', error);
       // Fallback: fetch fresh popular recipes
       await handleRefreshPopularRecipes();
@@ -169,11 +205,29 @@ const RecipeSearch = () => {
 
   const handleRefreshPopularRecipes = async () => {
     setLoadingPopular(true);
+    
+    // Clear any existing popular timeout
+    if (popularTimeoutRef.current) {
+      clearTimeout(popularTimeoutRef.current);
+    }
+
+    // Set 7-second timeout to force stop loading
+    popularTimeoutRef.current = setTimeout(() => {
+      console.log('⏱️ Popular recipes refresh timeout reached (7 seconds) - stopping loading state');
+      setLoadingPopular(false);
+    }, 7000);
+
     try {
       console.log('🔄 Refreshing popular recipes from API...');
 
       // Force refresh the cache (bypasses cache, fetches fresh from API)
       const freshRecipes = await cacheService.getPopularRecipes(true); // true = forceRefresh
+
+      // Clear timeout since we got results
+      if (popularTimeoutRef.current) {
+        clearTimeout(popularTimeoutRef.current);
+        popularTimeoutRef.current = null;
+      }
 
       if (freshRecipes && freshRecipes.length > 0) {
         console.log(`✅ Refreshed with ${freshRecipes.length} recipes from API`);
@@ -198,6 +252,12 @@ const RecipeSearch = () => {
         throw new Error('No recipes received from API');
       }
     } catch (error) {
+      // Clear timeout on error
+      if (popularTimeoutRef.current) {
+        clearTimeout(popularTimeoutRef.current);
+        popularTimeoutRef.current = null;
+      }
+      
       console.error('❌ Error refreshing popular recipes:', error);
 
       Alert.alert(
@@ -384,6 +444,21 @@ const RecipeSearch = () => {
     // ✅ DON'T set hasSearched yet - wait until we have results or confirmed no results
     setCanGenerateMore(false);
     setAiRecipeCount(0);
+
+    // Clear any existing search timeout
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    // Set 7-second timeout to force stop loading
+    searchTimeoutRef.current = setTimeout(() => {
+      console.log('⏱️ Search timeout reached (7 seconds) - stopping loading state');
+      setLoading(false);
+      setGeneratingAI(false);
+      if (recipes.length === 0) {
+        setHasSearched(true);
+      }
+    }, 7000);
 
     try {
       console.log('='.repeat(60));
@@ -632,6 +707,12 @@ const RecipeSearch = () => {
           }
         }
       } else {
+        // Clear timeout on error
+        if (searchTimeoutRef.current) {
+          clearTimeout(searchTimeoutRef.current);
+          searchTimeoutRef.current = null;
+        }
+        
         // API error
         Alert.alert('Search Error', result.error || 'Failed to search recipes. Please try again.');
         setRecipes([]);
@@ -641,6 +722,11 @@ const RecipeSearch = () => {
         setHasSearched(true); // ✅ Set hasSearched even on API error
       }
     } catch (error) {
+      // Clear timeout on exception
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+        searchTimeoutRef.current = null;
+      }
       console.error('='.repeat(60));
       console.error('❌ SEARCH ERROR - Full details:');
       console.error('❌ Error message:', error.message);
