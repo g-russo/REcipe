@@ -40,6 +40,11 @@ const SignUp = () => {
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  const [nameError, setNameError] = useState('');
+  const [birthdateError, setBirthdateError] = useState('');
+  const [emailError, setEmailError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [confirmPasswordError, setConfirmPasswordError] = useState('');
   const translateY = useRef(new Animated.Value(0)).current;
 
   const { signUp } = useCustomAuth();
@@ -123,34 +128,135 @@ const SignUp = () => {
     return minLength && hasUppercase && hasLowercase && hasNumber && hasSpecialChar;
   };
 
+  const validateBirthdate = (birthdate) => {
+    // Check if birthdate format is complete (mm-dd-yyyy)
+    if (birthdate.length !== 10) {
+      return { valid: false, message: 'Please enter a complete birthdate (mm-dd-yyyy)' };
+    }
+
+    const parts = birthdate.split('-');
+    if (parts.length !== 3) {
+      return { valid: false, message: 'Invalid birthdate format' };
+    }
+
+    const month = parseInt(parts[0], 10);
+    const day = parseInt(parts[1], 10);
+    const year = parseInt(parts[2], 10);
+
+    // Validate year range (1900 onwards)
+    if (year < 1900) {
+      return { valid: false, message: 'Year must be 1900 or later' };
+    }
+
+    // Check if year is in the future
+    const currentYear = new Date().getFullYear();
+    if (year > currentYear) {
+      return { valid: false, message: 'Birthdate cannot be in the future' };
+    }
+
+    // Validate month
+    if (month < 1 || month > 12) {
+      return { valid: false, message: 'Invalid month. Please enter a value between 01 and 12' };
+    }
+
+    // Days in each month (accounting for leap years)
+    const daysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    
+    // Check for leap year
+    const isLeapYear = (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
+    if (isLeapYear) {
+      daysInMonth[1] = 29; // February has 29 days in leap years
+    }
+
+    // Validate day
+    if (day < 1 || day > daysInMonth[month - 1]) {
+      return { 
+        valid: false, 
+        message: `Invalid day for the selected month. ${month === 2 ? (isLeapYear ? 'February has 29 days in ' + year : 'February has 28 days in ' + year) : 'Please enter a valid day'}` 
+      };
+    }
+
+    // Calculate age
+    const birthDate = new Date(year, month - 1, day);
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+
+    // Check minimum age requirement (18 years old)
+    if (age < 18) {
+      return { valid: false, message: 'You must be at least 18 years old to register' };
+    }
+
+    return { valid: true, message: '' };
+  };
+
   const handleSignUp = async () => {
-    // R2: Basic validation - all fields required
-    if (!name.trim() || !birthdate || !email || !password || !confirmPassword) {
-      showStyledError('Please fill out all fields.');
+    // Clear all errors first
+    setNameError('');
+    setBirthdateError('');
+    setEmailError('');
+    setPasswordError('');
+    setConfirmPasswordError('');
+
+    let hasError = false;
+
+    // Check individual fields for specific error messages
+    if (!name.trim()) {
+      setNameError('Name is required');
+      hasError = true;
+    }
+
+    if (!birthdate) {
+      setBirthdateError('Birthday is required');
+      hasError = true;
+    }
+
+    if (!email.trim()) {
+      setEmailError('Email is required');
+      hasError = true;
+    }
+
+    if (!password) {
+      setPasswordError('Password is required');
+      hasError = true;
+    }
+
+    if (!confirmPassword) {
+      setConfirmPasswordError('Confirm Password is required');
+      hasError = true;
+    }
+
+    // If any field is empty, stop here
+    if (hasError) {
       return;
     }
 
-    // R8: Email specifically required (already covered by R2 but specific message)
-    if (!email.trim()) {
-      showStyledError('Email is required');
+    // Birthdate validation (date range, validity, and age check)
+    const birthdateValidation = validateBirthdate(birthdate);
+    if (!birthdateValidation.valid) {
+      setBirthdateError(birthdateValidation.message);
       return;
     }
 
     // R3: Email format validation
     if (!validateEmail(email)) {
-      showStyledError('Please enter a valid email address.');
+      setEmailError('Please enter a valid email address.');
       return;
     }
 
     // R4: Password validation
     if (!validatePassword(password)) {
-      showStyledError('Password must be at least 8 characters, and include at least 1 uppercase letter, 1 lowercase letter, 1 number, and 1 special character');
+      setPasswordError('Password must be at least 8 characters, and include at least 1 uppercase letter, 1 lowercase letter, 1 number, and 1 special character');
       return;
     }
 
     // R5: Password match validation
     if (password !== confirmPassword) {
-      showStyledError('Passwords do not match');
+      setConfirmPasswordError('Passwords do not match');
       return;
     }
 
@@ -222,7 +328,7 @@ const SignUp = () => {
                 Name <Text style={{ color: '#E74C3C' }}>*</Text>
               </Text>
               <TextInput
-                style={[globalStyles.input, nameFocused && globalStyles.inputFocused, {
+                style={[globalStyles.input, nameFocused && globalStyles.inputFocused, nameError && { borderColor: '#E74C3C', borderWidth: 1.5 }, {
                   paddingVertical: hp('1.3%'),
                   paddingHorizontal: wp('4%'),
                   fontSize: wp('4.2%'),
@@ -231,12 +337,16 @@ const SignUp = () => {
                 }]}
                 placeholder="e.g. Juan Dela Cruz"
                 value={name}
-                onChangeText={setName}
+                onChangeText={(text) => {
+                  setName(text);
+                  if (nameError) setNameError('');
+                }}
                 onFocus={() => setNameFocused(true)}
                 onBlur={() => setNameFocused(false)}
                 autoCapitalize="words"
                 placeholderTextColor="#BDC3C7"
               />
+              {nameError ? <Text style={{ color: '#E74C3C', fontSize: wp('3.5%'), marginTop: hp('0.5%') }}>{nameError}</Text> : null}
             </View>
 
             <View style={[globalStyles.inputContainer, { marginBottom: hp('1%') }]}>
@@ -244,7 +354,7 @@ const SignUp = () => {
                 Birthday <Text style={{ color: '#E74C3C' }}>*</Text>
               </Text>
               <TextInput
-                style={[globalStyles.input, birthdateFocused && globalStyles.inputFocused, {
+                style={[globalStyles.input, birthdateFocused && globalStyles.inputFocused, birthdateError && { borderColor: '#E74C3C', borderWidth: 1.5 }, {
                   paddingVertical: hp('1.3%'),
                   paddingHorizontal: wp('4%'),
                   fontSize: wp('4.2%'),
@@ -253,13 +363,17 @@ const SignUp = () => {
                 }]}
                 placeholder="mm-dd-yyyy"
                 value={birthdate}
-                onChangeText={handleBirthdateChange}
+                onChangeText={(text) => {
+                  handleBirthdateChange(text);
+                  if (birthdateError) setBirthdateError('');
+                }}
                 onFocus={() => setBirthdateFocused(true)}
                 onBlur={() => setBirthdateFocused(false)}
                 keyboardType="number-pad"
                 maxLength={10}
                 placeholderTextColor="#BDC3C7"
               />
+              {birthdateError ? <Text style={{ color: '#E74C3C', fontSize: wp('3.5%'), marginTop: hp('0.5%') }}>{birthdateError}</Text> : null}
             </View>
 
             <View style={[globalStyles.inputContainer, { marginBottom: hp('1%') }]}>
@@ -267,7 +381,7 @@ const SignUp = () => {
                 Email <Text style={{ color: '#E74C3C' }}>*</Text>
               </Text>
               <TextInput
-                style={[globalStyles.input, emailFocused && globalStyles.inputFocused, {
+                style={[globalStyles.input, emailFocused && globalStyles.inputFocused, emailError && { borderColor: '#E74C3C', borderWidth: 1.5 }, {
                   paddingVertical: hp('1.3%'),
                   paddingHorizontal: wp('4%'),
                   fontSize: wp('4.2%'),
@@ -276,7 +390,10 @@ const SignUp = () => {
                 }]}
                 placeholder="demo@email.com"
                 value={email}
-                onChangeText={setEmail}
+                onChangeText={(text) => {
+                  setEmail(text);
+                  if (emailError) setEmailError('');
+                }}
                 onFocus={() => setEmailFocused(true)}
                 onBlur={() => setEmailFocused(false)}
                 keyboardType="email-address"
@@ -284,6 +401,7 @@ const SignUp = () => {
                 autoCorrect={false}
                 placeholderTextColor="#BDC3C7"
               />
+              {emailError ? <Text style={{ color: '#E74C3C', fontSize: wp('3.5%'), marginTop: hp('0.5%') }}>{emailError}</Text> : null}
             </View>
 
             <View style={[globalStyles.inputContainer, { marginBottom: hp('0.8%') }]}>
@@ -292,7 +410,7 @@ const SignUp = () => {
               </Text>
               <View style={{ position: 'relative' }}>
                 <TextInput
-                  style={[globalStyles.input, passwordFocused && globalStyles.inputFocused, {
+                  style={[globalStyles.input, passwordFocused && globalStyles.inputFocused, passwordError && { borderColor: '#E74C3C', borderWidth: 1.5 }, {
                     paddingRight: wp('12%'),
                     paddingVertical: hp('1.3%'),
                     paddingLeft: wp('4%'),
@@ -302,7 +420,10 @@ const SignUp = () => {
                   }]}
                   placeholder="Enter your password"
                   value={password}
-                  onChangeText={setPassword}
+                  onChangeText={(text) => {
+                    setPassword(text);
+                    if (passwordError) setPasswordError('');
+                  }}
                   onFocus={() => setPasswordFocused(true)}
                   onBlur={() => setPasswordFocused(false)}
                   secureTextEntry={!showPassword}
@@ -332,6 +453,7 @@ const SignUp = () => {
                   )}
                 </TouchableOpacity>
               </View>
+              {passwordError ? <Text style={{ color: '#E74C3C', fontSize: wp('3.5%'), marginTop: hp('0.5%') }}>{passwordError}</Text> : null}
             </View>
 
             <View style={[globalStyles.inputContainer, { marginBottom: 0 }]}>
@@ -340,7 +462,7 @@ const SignUp = () => {
               </Text>
               <View style={{ position: 'relative' }}>
                 <TextInput
-                  style={[globalStyles.input, confirmPasswordFocused && globalStyles.inputFocused, {
+                  style={[globalStyles.input, confirmPasswordFocused && globalStyles.inputFocused, confirmPasswordError && { borderColor: '#E74C3C', borderWidth: 1.5 }, {
                     paddingRight: wp('12%'),
                     paddingVertical: hp('1.3%'),
                     paddingLeft: wp('4%'),
@@ -350,7 +472,10 @@ const SignUp = () => {
                   }]}
                   placeholder="Confirm your password"
                   value={confirmPassword}
-                  onChangeText={setConfirmPassword}
+                  onChangeText={(text) => {
+                    setConfirmPassword(text);
+                    if (confirmPasswordError) setConfirmPasswordError('');
+                  }}
                   onFocus={() => setConfirmPasswordFocused(true)}
                   onBlur={() => setConfirmPasswordFocused(false)}
                   secureTextEntry={!showConfirmPassword}
@@ -380,6 +505,7 @@ const SignUp = () => {
                   )}
                 </TouchableOpacity>
               </View>
+              {confirmPasswordError ? <Text style={{ color: '#E74C3C', fontSize: wp('3.5%'), marginTop: hp('0.5%') }}>{confirmPasswordError}</Text> : null}
             </View>
 
             <View style={[globalStyles.formActions, { marginTop: hp('3.5%'), marginBottom: 0, paddingTop: 0 }]}>
