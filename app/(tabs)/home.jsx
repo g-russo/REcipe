@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,20 +8,58 @@ import {
   SafeAreaView,
   Image,
   StatusBar,
-  Platform
+  Platform,
+  RefreshControl,
+  ActivityIndicator,
+  Alert
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Path, Circle } from 'react-native-svg';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { useCustomAuth } from '../../hooks/use-custom-auth';
 import { router } from 'expo-router';
 import AuthGuard from '../../components/auth-guard';
 import NotificationDatabaseService from '../../services/notification-database-service';
+import RecipeHistoryService from '../../services/recipe-history-service';
+import PantryService from '../../services/pantry-service';
+import EdamamService from '../../services/edamam-service';
+import SupabaseCacheService from '../../services/supabase-cache-service';
+import RecipeMatcherService from '../../services/recipe-matcher-service';
+import { supabase } from '../../lib/supabase';
+
+const PANTRY_RECIPES_CACHE_PREFIX = 'pantry_recipes_cache_';
+const PANTRY_CACHE_TTL_MS = 30 * 60 * 1000; // reuse cached pantry recipes for 30 minutes
+const PANTRY_FORCE_REFRESH_COOLDOWN_MS = 45 * 1000; // throttle manual refreshes to avoid API rate limits
+const DEFAULT_RECIPE_IMAGE = 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=600&auto=format&fit=crop&q=60';
+
+const buildPantrySignature = (items = []) =>
+  items
+    .map(item => {
+      const name = (item.itemName || '').trim().toLowerCase();
+      const expiration = item.itemExpiration ? String(item.itemExpiration) : '';
+      const quantity = Number(item.quantity) || 0;
+      return `${name}|${expiration}|${quantity}`;
+    })
+    .sort()
+    .join('||');
 
 const Home = () => {
   const { user, customUserData } = useCustomAuth();
   const [userName, setUserName] = useState('');
   const [greeting, setGreeting] = useState('Good Morning');
   const [unreadCount, setUnreadCount] = useState(0);
+  const [makeItAgainRecipes, setMakeItAgainRecipes] = useState([]);
+  const [pantryRecipes, setPantryRecipes] = useState([]);
+  const [loadingPantryRecipes, setLoadingPantryRecipes] = useState(false);
+  const [pantryRecipesError, setPantryRecipesError] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+  const [popularRecipes, setPopularRecipes] = useState([]);
+  const [loadingPopularRecipes, setLoadingPopularRecipes] = useState(false);
+  const [popularRecipesError, setPopularRecipesError] = useState('');
+  const [favoritePopularUris, setFavoritePopularUris] = useState({});
+  const [favoriteBusyMap, setFavoriteBusyMap] = useState({});
+  const [hasPantryItems, setHasPantryItems] = useState(true);
+  const userId = customUserData?.userID;
 
   useEffect(() => {
     if (customUserData?.userName) {
@@ -47,31 +85,347 @@ const Home = () => {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    const loadFavoriteMap = async () => {
+      if (!userId) {
+        setFavoritePopularUris({});
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('tbl_favorites')
+          .select('edamamRecipeURI, recipeURI, isFavorited')
+          .eq('userID', userId);
+
+        if (error) {
+          console.warn('Unable to preload favorites:', error.message);
+          return;
+        }
+
+        const map = {};
+        (data || []).forEach(item => {
+          const uri = item.edamamRecipeURI || item.recipeURI;
+          if (uri && (item.isFavorited ?? true)) {
+            map[uri] = true;
+          }
+        });
+
+        setFavoritePopularUris(map);
+      } catch (error) {
+        console.error('Error loading favorites map:', error);
+      }
+    };
+
+    loadFavoriteMap();
+  }, [userId]);
+
   // Load unread notification count
   useEffect(() => {
     const loadUnreadCount = async () => {
-      if (user?.userID) {
-        const count = await NotificationDatabaseService.getUnreadCount(user.userID);
-        setUnreadCount(count);
+      if (!userId) {
+        setUnreadCount(0);
+        return;
       }
+
+      const count = await NotificationDatabaseService.getUnreadCount(userId);
+      setUnreadCount(count);
     };
 
     loadUnreadCount();
 
+    if (!userId) {
+      return;
+    }
+
     // Subscribe to realtime updates
-    if (user?.userID) {
-      const subscription = NotificationDatabaseService.subscribeToNotifications(
-        user.userID,
-        () => {
-          loadUnreadCount(); // Reload count when new notification arrives
+    const subscription = NotificationDatabaseService.subscribeToNotifications(
+      userId,
+      () => {
+        loadUnreadCount(); // Reload count when new notification arrives
+      }
+    );
+
+    return () => {
+      subscription?.unsubscribe?.();
+    };
+  }, [userId]);
+
+  // Load recipe history for "Make It Again" section
+  const loadRecentHistory = useCallback(async () => {
+    if (!userId) {
+      setMakeItAgainRecipes([]);
+      return;
+    }
+
+    const history = await RecipeHistoryService.getRecipeHistory(userId, 10);
+
+    // Transform history data to match the expected format
+    const transformedHistory = history.slice(0, 5).map((item) => {
+      const recipe = item.recipeData;
+      const isAI = !recipe?.uri && (recipe?.recipeID || recipe?.isCustom);
+
+      // Calculate time ago
+      const completedDate = new Date(item.completedAt);
+      const now = new Date();
+      const diffTime = Math.abs(now - completedDate);
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      let timeAgo;
+      if (diffDays === 1) timeAgo = 'Today';
+      else if (diffDays === 2) timeAgo = 'Yesterday';
+      else if (diffDays <= 7) timeAgo = `${diffDays - 1} days ago`;
+      else timeAgo = completedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+      return {
+        id: item.historyID,
+        title: item.recipeName || recipe?.label || 'Untitled Recipe',
+        time: timeAgo,
+        image: isAI ? (recipe?.recipeImage || recipe?.image) : (recipe?.image || recipe?.recipeImage),
+        historyData: item // Store full history data for navigation
+      };
+    });
+
+    setMakeItAgainRecipes(transformedHistory);
+  }, [userId]);
+
+  useEffect(() => {
+    loadRecentHistory();
+  }, [loadRecentHistory]);
+
+  // Load pantry-based recipe suggestions with caching to avoid repeated API hits
+  const loadPantryRecipeSuggestions = useCallback(async (forceRefresh = false) => {
+    if (!userId) {
+      setPantryRecipes([]);
+      setPantryRecipesError('');
+      return;
+    }
+
+    setLoadingPantryRecipes(true);
+    setPantryRecipesError('');
+
+    const cacheKey = `${PANTRY_RECIPES_CACHE_PREFIX}${userId}`;
+
+    try {
+      const pantryItems = await PantryService.getUserItems(userId);
+      const signature = buildPantrySignature(pantryItems || []);
+      const hasItems = (pantryItems || []).some(item => !!item?.itemName?.trim());
+      setHasPantryItems(hasItems);
+
+      const cachedString = await AsyncStorage.getItem(cacheKey);
+      const cached = cachedString ? JSON.parse(cachedString) : null;
+      const now = Date.now();
+      const hasMatchingSignature = cached?.signature === signature;
+      const cacheTimestamp = cached?.timestamp || 0;
+      const cacheAge = hasMatchingSignature ? now - cacheTimestamp : Number.POSITIVE_INFINITY;
+      const cacheFresh = hasMatchingSignature && cacheAge < PANTRY_CACHE_TTL_MS;
+      const refreshWithinCooldown = forceRefresh && hasMatchingSignature && cacheAge < PANTRY_FORCE_REFRESH_COOLDOWN_MS;
+
+      if (forceRefresh && cached && hasMatchingSignature) {
+        setPantryRecipes(cached.recipes || []);
+        if (cached.errorMessage) {
+          setPantryRecipesError(cached.errorMessage);
         }
+        setLoadingPantryRecipes(false);
+        return;
+      }
+
+      if (cacheFresh && (!forceRefresh || refreshWithinCooldown)) {
+        setPantryRecipes(cached.recipes || []);
+        if (cached.errorMessage) {
+          setPantryRecipesError(cached.errorMessage);
+        }
+        setLoadingPantryRecipes(false);
+        return;
+      }
+
+      const prioritizedItems = (pantryItems || [])
+        .filter(item => item.itemName)
+        .map(item => ({
+          name: item.itemName.trim(),
+          normalized: item.itemName.trim().toLowerCase(),
+          expiration: item.itemExpiration ? new Date(item.itemExpiration) : null,
+          quantity: Number(item.quantity) || 0
+        }))
+        .filter(item => item.name.length > 0)
+        .sort((a, b) => {
+          const timeA = a.expiration ? a.expiration.getTime() : Number.MAX_SAFE_INTEGER;
+          const timeB = b.expiration ? b.expiration.getTime() : Number.MAX_SAFE_INTEGER;
+          if (timeA !== timeB) return timeA - timeB;
+          return b.quantity - a.quantity;
+        });
+
+      const seen = new Set();
+      const focusItems = [];
+      for (const item of prioritizedItems) {
+        if (!seen.has(item.normalized)) {
+          seen.add(item.normalized);
+          focusItems.push(item);
+        }
+        if (focusItems.length === 3) break;
+      }
+
+      if (focusItems.length === 0) {
+        const emptyMessage = 'Add pantry items to unlock tailored recipes.';
+        setPantryRecipes([]);
+        setPantryRecipesError(emptyMessage);
+        await AsyncStorage.setItem(cacheKey, JSON.stringify({
+          recipes: [],
+          signature,
+          errorMessage: emptyMessage,
+          timestamp: Date.now()
+        }));
+        setLoadingPantryRecipes(false);
+        return;
+      }
+
+      const recipeResponses = await Promise.allSettled(
+        focusItems.map(item =>
+          EdamamService.searchRecipes(item.name, { to: 6, curatedOnly: false })
+        )
       );
 
-      return () => {
-        subscription.unsubscribe();
-      };
+      const compiledRecipes = [];
+
+      recipeResponses.forEach((result, index) => {
+        if (result.status !== 'fulfilled' || !result.value?.success) {
+          console.warn('Pantry recipe search failed for', focusItems[index]?.name);
+          return;
+        }
+
+        const recipes = result.value.data?.recipes || [];
+        const firstNewRecipe = recipes.find(r => !compiledRecipes.some(existing => existing.recipeData?.uri === r.uri));
+
+        if (firstNewRecipe) {
+          const caloriesPerServing = firstNewRecipe.calories && firstNewRecipe.yield
+            ? Math.round(firstNewRecipe.calories / firstNewRecipe.yield)
+            : null;
+
+          compiledRecipes.push({
+            id: firstNewRecipe.id || firstNewRecipe.uri,
+            title: firstNewRecipe.label,
+            calories: caloriesPerServing,
+            time: firstNewRecipe.totalTime || 30,
+            image: firstNewRecipe.image,
+            recipeData: firstNewRecipe,
+            focusIngredient: focusItems[index].name
+          });
+        }
+      });
+
+      if (compiledRecipes.length === 0) {
+        const noMatchMessage = 'No matching recipes found for your current pantry items.';
+        setPantryRecipes([]);
+        setPantryRecipesError(noMatchMessage);
+        await AsyncStorage.setItem(cacheKey, JSON.stringify({
+          recipes: [],
+          signature,
+          errorMessage: noMatchMessage,
+          timestamp: Date.now()
+        }));
+        setLoadingPantryRecipes(false);
+        return;
+      }
+
+      setPantryRecipes(compiledRecipes);
+      await AsyncStorage.setItem(cacheKey, JSON.stringify({
+        recipes: compiledRecipes,
+        signature,
+        timestamp: Date.now()
+      }));
+    } catch (error) {
+      console.error('Error loading pantry recipes:', error);
+      try {
+        const cachedString = await AsyncStorage.getItem(cacheKey);
+        if (cachedString) {
+          const cached = JSON.parse(cachedString);
+          setPantryRecipes(cached.recipes || []);
+          if (cached.errorMessage) {
+            setPantryRecipesError(cached.errorMessage);
+          } else if (!cached.recipes?.length) {
+            setPantryRecipesError('Unable to load pantry recipes right now.');
+          }
+        } else {
+          setPantryRecipes([]);
+          setPantryRecipesError('Unable to load pantry recipes right now.');
+        }
+      } catch (cacheError) {
+        console.error('Error reading pantry recipe cache:', cacheError);
+        setPantryRecipes([]);
+        setPantryRecipesError('Unable to load pantry recipes right now.');
+      }
+    } finally {
+      setLoadingPantryRecipes(false);
     }
-  }, [user]);
+  }, [userId]);
+
+  const loadPopularRecipes = useCallback(async (forceRefresh = false) => {
+    setLoadingPopularRecipes(true);
+    setPopularRecipesError('');
+
+    try {
+      const result = await SupabaseCacheService.getPopularRecipes(forceRefresh);
+      const recipeList = Array.isArray(result)
+        ? result
+        : result?.data?.recipes || [];
+
+      if (!recipeList.length) {
+        setPopularRecipes([]);
+        setPopularRecipesError('No trending recipes available right now.');
+        return;
+      }
+
+      const normalized = recipeList
+        .filter(recipe => recipe?.label)
+        .slice(0, 8)
+        .map(recipe => {
+          const caloriesPerServing = recipe.calories && recipe.yield
+            ? Math.round(recipe.calories / Math.max(1, recipe.yield))
+            : null;
+
+          const image = recipe.image
+            || recipe.images?.REGULAR?.url
+            || recipe.images?.LARGE?.url
+            || DEFAULT_RECIPE_IMAGE;
+
+          return {
+            id: recipe.id || recipe.uri || recipe.shareAs,
+            title: recipe.label,
+            calories: caloriesPerServing,
+            time: recipe.totalTime || 30,
+            source: recipe.source,
+            image,
+            recipeData: recipe
+          };
+        });
+
+      setPopularRecipes(normalized);
+    } catch (error) {
+      console.error('Error loading popular recipes:', error);
+      setPopularRecipes([]);
+      setPopularRecipesError('Unable to load popular recipes right now.');
+    } finally {
+      setLoadingPopularRecipes(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadPantryRecipeSuggestions();
+  }, [loadPantryRecipeSuggestions]);
+
+  useEffect(() => {
+    loadPopularRecipes();
+  }, [loadPopularRecipes]);
+
+  // Pull to refresh handler
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([
+      loadRecentHistory(),
+      loadPantryRecipeSuggestions(true)
+    ]);
+    setRefreshing(false);
+  }, [loadRecentHistory, loadPantryRecipeSuggestions]);
 
   const getGreetingIcon = () => {
     const hour = new Date().getHours();
@@ -112,61 +466,115 @@ const Home = () => {
     }
   };
 
-  // Sample data for recipes
-  const pantryRecipes = [
-    {
-      id: 1,
-      title: 'Asian white noodle with extra seafood',
-      calories: 100,
-      time: 20,
-      image: 'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=400',
-    },
-    {
-      id: 2,
-      title: 'Healthy Taco with fresh',
-      calories: 85,
-      time: 15,
-      image: 'https://images.unsplash.com/photo-1551504734-5ee1c4a1479b?w=400',
-    },
-  ];
+  const handleMakeItAgainPress = (recipe) => {
+    // Navigate to recipe detail with the history data
+    const historyData = recipe.historyData;
+    const recipeData = historyData.recipeData;
+    const isAI = !recipeData?.uri && (recipeData?.recipeID || recipeData?.isCustom);
 
-  const makeItAgain = [
-    {
-      id: 1,
-      title: 'Blueberry with egg for breakfast',
-      time: '2 days ago',
-      image: 'https://images.unsplash.com/photo-1484723091739-30a097e8f929?w=200',
-    },
-    {
-      id: 2,
-      title: 'Healthy burger special',
-      time: '3 days ago',
-      image: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=200',
-    },
-  ];
+    router.push({
+      pathname: '/recipe-detail',
+      params: {
+        recipeData: JSON.stringify(recipeData),
+        recipeSource: isAI ? 'ai' : 'edamam',
+        fromHistory: 'true'
+      }
+    });
+  };
 
-  const tryNewRecipes = [
-    {
-      id: 1,
-      title: 'Healthy Taco Salad with fresh vegetable',
-      calories: 120,
-      time: 20,
-      image: 'https://images.unsplash.com/photo-1551504734-5ee1c4a1479b?w=300',
-    },
-    {
-      id: 2,
-      title: 'Japanese-style Pancakes Recipe',
-      calories: 65,
-      time: 12,
-      image: 'https://images.unsplash.com/photo-1547592166-23ac45744acd?w=300',
-    },
-  ];
+  const handlePantryRecipePress = (recipeCard) => {
+    if (!recipeCard?.recipeData) {
+      return;
+    }
 
+    router.push({
+      pathname: '/recipe-detail',
+      params: {
+        recipeData: JSON.stringify(recipeCard.recipeData),
+        recipeSource: 'edamam',
+        fromPantry: 'true'
+      }
+    });
+  };
+
+  const handlePopularRecipePress = (recipeCard) => {
+    if (!recipeCard?.recipeData) {
+      return;
+    }
+
+    router.push({
+      pathname: '/recipe-detail',
+      params: {
+        recipeData: JSON.stringify(recipeCard.recipeData),
+        recipeSource: 'edamam',
+        fromPopular: 'true'
+      }
+    });
+  };
+
+  const handlePopularFavoriteToggle = async (event, recipeCard) => {
+    event?.stopPropagation?.();
+
+    if (!recipeCard?.recipeData?.uri) {
+      return;
+    }
+
+    if (!user?.email) {
+      Alert.alert('Sign in required', 'Please sign in to save recipes to your favorites.');
+      return;
+    }
+
+    const recipeURI = recipeCard.recipeData.uri;
+
+    if (favoriteBusyMap[recipeURI]) {
+      return;
+    }
+
+    setFavoriteBusyMap(prev => ({ ...prev, [recipeURI]: true }));
+
+    try {
+      if (favoritePopularUris[recipeURI]) {
+        const result = await RecipeMatcherService.unsaveRecipe(user.email, recipeCard.recipeData);
+        if (result.success) {
+          setFavoritePopularUris(prev => {
+            const map = { ...prev };
+            delete map[recipeURI];
+            return map;
+          });
+        } else {
+          Alert.alert('Error', result.error || 'Unable to remove favorite right now.');
+        }
+      } else {
+        const result = await RecipeMatcherService.saveRecipe(user.email, recipeCard.recipeData);
+        if (result.success) {
+          setFavoritePopularUris(prev => ({ ...prev, [recipeURI]: true }));
+        } else {
+          Alert.alert('Error', result.error || 'Unable to save recipe to favorites.');
+        }
+      }
+    } catch (error) {
+      console.error('Favorite toggle error:', error);
+      Alert.alert('Error', error.message || 'Something went wrong.');
+    } finally {
+      setFavoriteBusyMap(prev => ({ ...prev, [recipeURI]: false }));
+    }
+  };
 
   return (
     <AuthGuard>
       <SafeAreaView style={styles.container}>
-        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          style={styles.scrollView}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={['#4CAF50']}
+              tintColor="#4CAF50"
+            />
+          }
+        >
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.headerLeft}>
@@ -210,168 +618,231 @@ const Home = () => {
             <Text style={[styles.sectionTitle, { fontSize: wp('7%'), paddingHorizontal: wp('5%'), marginBottom: 0 }]}>
               Recipes from Your Pantry
             </Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={[styles.horizontalScroll, { paddingLeft: wp('5%') }]}
-              contentContainerStyle={[styles.pantryScrollContent, { paddingVertical: hp('1.8%'), paddingRight: wp('5%') }]}
-            >
-              {pantryRecipes.map((recipe) => (
-                <TouchableOpacity key={recipe.id} style={[styles.pantryCard, {
-                  width: wp('70%'),
-                  height: hp('22%'),
-                  marginRight: wp('3.8%'),
-                  borderRadius: wp('5%'),
-                  elevation: 8
-                }]}>
-                  <Image source={{ uri: recipe.image }} style={styles.pantryCardImage} />
-                  <View style={[styles.pantryCardOverlay, {
-                    height: hp('10%'),
-                    paddingHorizontal: wp('3.8%'),
-                    paddingVertical: hp('1.5%')
-                  }]}>
-                    <Text style={[styles.pantryCardTitle, { fontSize: wp('4%') }]}>
-                      {recipe.title}
-                    </Text>
-                    <View style={[styles.pantryCardInfo, { gap: wp('3.8%') }]}>
-                      <Text style={[styles.pantryCardCalories, { fontSize: wp('3.2%') }]}>
-                        {recipe.calories} Kcal
+            {loadingPantryRecipes ? (
+              <View style={styles.pantryStatusContainer}>
+                <ActivityIndicator size="small" color="#4CAF50" />
+                <Text style={styles.pantryHelperText}>Scanning your pantry ingredients...</Text>
+              </View>
+            ) : pantryRecipes.length > 0 ? (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={[styles.horizontalScroll, { paddingLeft: wp('5%') }]}
+                contentContainerStyle={[styles.pantryScrollContent, { paddingVertical: hp('1.8%'), paddingRight: wp('5%') }]}
+              >
+                {pantryRecipes.map((recipe) => (
+                  <TouchableOpacity
+                    key={recipe.id}
+                    style={[styles.pantryCard, {
+                      width: wp('70%'),
+                      height: hp('22%'),
+                      marginRight: wp('3.8%'),
+                      borderRadius: wp('5%'),
+                      elevation: 8
+                    }]}
+                    onPress={() => handlePantryRecipePress(recipe)}
+                  >
+                    <Image source={{ uri: recipe.image }} style={styles.pantryCardImage} />
+                    <View style={[styles.pantryCardOverlay, {
+                      height: hp('10%'),
+                      paddingHorizontal: wp('3.8%'),
+                      paddingVertical: hp('1.5%')
+                    }]}>
+                      <Text style={[styles.pantryCardTitle, { fontSize: wp('4%') }]}>
+                        {recipe.title}
                       </Text>
-                      <View style={[styles.pantryCardTime, { gap: wp('1%') }]}>
-                        <Svg width={wp('4%')} height={wp('4%')} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <Circle cx="12" cy="12" r="10" />
-                          <Path d="M12 6v6l4 2" />
-                        </Svg>
-                        <Text style={[styles.pantryCardTimeText, { fontSize: wp('3.2%') }]}>
-                          {recipe.time} Min
+                      {recipe.focusIngredient && (
+                        <Text style={[styles.pantryIngredientText, { fontSize: wp('3%') }]}>
+                          Uses {recipe.focusIngredient}
                         </Text>
+                      )}
+                      <View style={[styles.pantryCardInfo, { gap: wp('3.8%') }]}>
+                        <Text style={[styles.pantryCardCalories, { fontSize: wp('3.2%') }]}>
+                          {recipe.calories ? `${recipe.calories} Kcal` : 'Kcal TBD'}
+                        </Text>
+                        <View style={[styles.pantryCardTime, { gap: wp('1%') }]}>
+                          <Svg width={wp('4%')} height={wp('4%')} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <Circle cx="12" cy="12" r="10" />
+                            <Path d="M12 6v6l4 2" />
+                          </Svg>
+                          <Text style={[styles.pantryCardTimeText, { fontSize: wp('3.2%') }]}>
+                            {recipe.time ? `${recipe.time} Min` : 'Time TBD'}
+                          </Text>
+                        </View>
                       </View>
                     </View>
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            ) : (
+              <View style={styles.pantryStatusContainer}>
+                <Text style={styles.pantryHelperText}>
+                  {pantryRecipesError || 'Add pantry items to unlock tailored recipes.'}
+                </Text>
+                {!hasPantryItems && (
+                  <TouchableOpacity
+                    style={[styles.startScanningButton, { marginTop: hp('1.2%'), paddingVertical: hp('1%'), paddingHorizontal: wp('5%'), borderRadius: wp('5%') }]}
+                    onPress={() => router.push('/upload')}
+                  >
+                    <Text style={[styles.startScanningButtonText, { fontSize: wp('4%') }]}>Start Scanning</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
           </View>
 
-          {/* Make It Again */}
-          <View style={[styles.section, { marginTop: hp('1.2%') }]}>
-            <Text style={[styles.sectionTitle, { fontSize: wp('7%'), paddingHorizontal: wp('5%'), marginBottom: 0 }]}>
-              Make It Again
-            </Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={[styles.horizontalScroll, { paddingLeft: wp('5%') }]}
-              contentContainerStyle={[styles.makeAgainScrollContent, { paddingVertical: hp('1.8%'), paddingRight: wp('5%') }]}
-            >
-              {makeItAgain.map((recipe) => (
-                <TouchableOpacity key={recipe.id} style={[styles.makeAgainCard, {
-                  width: wp('70%'),
-                  borderRadius: wp('3.8%'),
-                  padding: wp('3%'),
-                  marginRight: wp('3.8%'),
-                  elevation: 8
-                }]}>
-                  <Image source={{ uri: recipe.image }} style={[styles.makeAgainImage, {
-                    width: wp('17.5%'),
-                    height: wp('17.5%'),
-                    borderRadius: wp('3%')
-                  }]} />
-                  <View style={[styles.makeAgainInfo, {
-                    marginLeft: wp('3%'),
-                    marginRight: wp('2%')
-                  }]}>
-                    <Text style={[styles.makeAgainTitle, { fontSize: wp('3.5%'), marginBottom: hp('0.5%') }]} numberOfLines={2}>
-                      {recipe.title}
-                    </Text>
-                    <Text style={[styles.makeAgainTime, { fontSize: wp('3%') }]}>
-                      {recipe.time}
-                    </Text>
-                  </View>
-                  <View style={[styles.makeAgainButton, {
-                    width: wp('9%'),
-                    height: wp('9%'),
-                    borderRadius: wp('2%')
-                  }]}>
-                    <Svg width={wp('5%')} height={wp('5%')} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <Path d="M5 12h14" />
-                      <Path d="m12 5 7 7-7 7" />
-                    </Svg>
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
+          {/* Make It Again - Only show if there's history */}
+          {makeItAgainRecipes.length > 0 && (
+            <View style={[styles.section, { marginTop: hp('1.2%') }]}>
+              <Text style={[styles.sectionTitle, { fontSize: wp('7%'), paddingHorizontal: wp('5%'), marginBottom: 0 }]}>
+                Make It Again
+              </Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={[styles.horizontalScroll, { paddingLeft: wp('5%') }]}
+                contentContainerStyle={[styles.makeAgainScrollContent, { paddingVertical: hp('1.8%'), paddingRight: wp('5%') }]}
+              >
+                {makeItAgainRecipes.map((recipe) => (
+                  <TouchableOpacity
+                    key={recipe.id}
+                    style={[styles.makeAgainCard, {
+                      width: wp('70%'),
+                      borderRadius: wp('3.8%'),
+                      padding: wp('3%'),
+                      marginRight: wp('3.8%'),
+                      elevation: 8
+                    }]}
+                    onPress={() => handleMakeItAgainPress(recipe)}
+                  >
+                    <Image source={{ uri: recipe.image }} style={[styles.makeAgainImage, {
+                      width: wp('17.5%'),
+                      height: wp('17.5%'),
+                      borderRadius: wp('3%')
+                    }]} />
+                    <View style={[styles.makeAgainInfo, {
+                      marginLeft: wp('3%'),
+                      marginRight: wp('2%')
+                    }]}>
+                      <Text style={[styles.makeAgainTitle, { fontSize: wp('3.5%'), marginBottom: hp('0.5%') }]} numberOfLines={2}>
+                        {recipe.title}
+                      </Text>
+                      <Text style={[styles.makeAgainTime, { fontSize: wp('3%') }]}>
+                        {recipe.time}
+                      </Text>
+                    </View>
+                    <View style={[styles.makeAgainButton, {
+                      width: wp('9%'),
+                      height: wp('9%'),
+                      borderRadius: wp('2%')
+                    }]}>
+                      <Svg width={wp('5%')} height={wp('5%')} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <Path d="M5 12h14" />
+                        <Path d="m12 5 7 7-7 7" />
+                      </Svg>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          )}
 
           {/* Try Something New */}
           <View style={[styles.section, { marginBottom: hp('15%'), marginTop: hp('1.2%') }]}>
             <Text style={[styles.sectionTitle, { fontSize: wp('7%'), paddingHorizontal: wp('5%'), marginBottom: 0 }]}>
               Try Something New
             </Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={[styles.horizontalScroll, { paddingLeft: wp('5%') }]}
-              contentContainerStyle={[styles.tryNewScrollContent, { paddingVertical: hp('1.8%'), paddingRight: wp('5%') }]}
-            >
-              {tryNewRecipes.map((recipe) => (
-                <TouchableOpacity key={recipe.id} style={[styles.tryNewCard, {
-                  width: wp('57.5%'),
-                  borderRadius: wp('5%'),
-                  marginRight: wp('3.8%'),
-                  elevation: 6
-                }]}>
-                  <View style={[styles.tryNewImageContainer, {
-                    margin: wp('3.5%'),
-                    borderRadius: wp('4%')
-                  }]}>
-                    <Image source={{ uri: recipe.image }} style={[styles.tryNewImage, { height: hp('20%') }]} />
-                    <TouchableOpacity style={[styles.favoriteButton, {
-                      top: wp('3%'),
-                      right: wp('3%'),
-                      width: wp('10%'),
-                      height: wp('10%'),
-                      borderRadius: wp('5%')
-                    }]}>
-                      <Svg width={wp('5%')} height={wp('5%')} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <Path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
-                      </Svg>
+            {loadingPopularRecipes ? (
+              <View style={styles.pantryStatusContainer}>
+                <ActivityIndicator size="small" color="#4CAF50" />
+                <Text style={styles.pantryHelperText}>Pulling trending recipes...</Text>
+              </View>
+            ) : popularRecipes.length > 0 ? (
+              <View style={[styles.tryNewList, { paddingHorizontal: wp('5%'), paddingVertical: hp('1.8%'), gap: hp('1.5%') }]}>
+                {popularRecipes.map((recipe) => {
+                  const recipeURI = recipe.recipeData?.uri;
+                  const isFavorited = recipeURI ? !!favoritePopularUris[recipeURI] : false;
+                  const isBusy = recipeURI ? !!favoriteBusyMap[recipeURI] : false;
+
+                  return (
+                    <TouchableOpacity
+                      key={recipe.id || recipeURI}
+                      style={[styles.tryNewCard, {
+                        borderRadius: wp('4.5%'),
+                        height: hp('32%'),
+                        padding: wp('3%'),
+                        elevation: 6
+                      }]}
+                      activeOpacity={0.92}
+                      onPress={() => handlePopularRecipePress(recipe)}
+                    >
+                      <View style={[styles.tryNewImageContainer, {
+                        borderRadius: wp('4%'),
+                        marginBottom: hp('1.2%')
+                      }]}
+                      >
+                        <Image source={{ uri: recipe.image }} style={[styles.tryNewImage, { height: hp('20%') }]} />
+                        <TouchableOpacity
+                          style={[styles.favoriteButton, {
+                            top: wp('3%'),
+                            right: wp('3%'),
+                            width: wp('10%'),
+                            height: wp('10%'),
+                            borderRadius: wp('5%')
+                          }, isFavorited && styles.favoriteButtonActive]}
+                          activeOpacity={0.8}
+                          onPress={(event) => handlePopularFavoriteToggle(event, recipe)}
+                          disabled={isBusy}
+                        >
+                          {isBusy ? (
+                            <ActivityIndicator size="small" color="#fff" />
+                          ) : (
+                            <Svg width={wp('5%')} height={wp('5%')} viewBox="0 0 24 24" fill={isFavorited ? '#fff' : 'none'} stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <Path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
+                            </Svg>
+                          )}
+                        </TouchableOpacity>
+                      </View>
+                      <View style={[styles.tryNewContent, { paddingHorizontal: wp('1%') }]}>
+                        <View style={styles.tryNewTextBlock}>
+                          <Text style={[styles.tryNewTitle, { fontSize: wp('4.2%') }]} numberOfLines={2}>
+                            {recipe.title}
+                          </Text>
+                        </View>
+                        <View style={styles.tryNewMetaRow}>
+                          <View style={[styles.tryNewInfoItem, { gap: wp('1.5%') }]}>
+                            <Svg width={wp('4%')} height={wp('4%')} viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <Path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
+                            </Svg>
+                            <Text style={[styles.tryNewInfoText, { fontSize: wp('3.5%') }]}>
+                              {recipe.calories ? `${recipe.calories} Kcal` : 'Calories TBD'}
+                            </Text>
+                          </View>
+                          <Text style={[styles.tryNewDivider, { fontSize: wp('3.5%'), marginHorizontal: wp('2.5%') }]}>
+                            •
+                          </Text>
+                          <View style={[styles.tryNewInfoItem, { gap: wp('1.5%') }]}>
+                            <Svg width={wp('4%')} height={wp('4%')} viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <Circle cx="12" cy="12" r="10" />
+                              <Path d="M12 6v6l4 2" />
+                            </Svg>
+                            <Text style={[styles.tryNewInfoText, { fontSize: wp('3.5%') }]}>
+                              {recipe.time ? `${recipe.time} Min` : 'Time TBD'}
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
                     </TouchableOpacity>
-                  </View>
-                  <View style={[styles.tryNewContent, {
-                    paddingHorizontal: wp('4%'),
-                    paddingBottom: wp('4%'),
-                    paddingTop: 0
-                  }]}>
-                    <Text style={[styles.tryNewTitle, { fontSize: wp('4.5%'), marginBottom: hp('1.5%') }]} numberOfLines={2}>
-                      {recipe.title}
-                    </Text>
-                    <View style={styles.tryNewInfo}>
-                      <View style={[styles.tryNewInfoItem, { gap: wp('1.5%') }]}>
-                        <Svg width={wp('4%')} height={wp('4%')} viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <Path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
-                        </Svg>
-                        <Text style={[styles.tryNewInfoText, { fontSize: wp('3.5%') }]}>
-                          {recipe.calories} Kcal
-                        </Text>
-                      </View>
-                      <Text style={[styles.tryNewDivider, { fontSize: wp('3.5%'), marginHorizontal: wp('2.5%') }]}>
-                        •
-                      </Text>
-                      <View style={[styles.tryNewInfoItem, { gap: wp('1.5%') }]}>
-                        <Svg width={wp('4%')} height={wp('4%')} viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <Circle cx="12" cy="12" r="10" />
-                          <Path d="M12 6v6l4 2" />
-                        </Svg>
-                        <Text style={[styles.tryNewInfoText, { fontSize: wp('3.5%') }]}>
-                          {recipe.time} Min
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+                  );
+                })}
+              </View>
+            ) : (
+              <View style={styles.pantryStatusContainer}>
+                <Text style={styles.pantryHelperText}>
+                  {popularRecipesError || 'Trending recipes will appear here soon.'}
+                </Text>
+              </View>
+            )}
           </View>
         </ScrollView>
       </SafeAreaView>
@@ -438,10 +909,34 @@ const styles = StyleSheet.create({
   },
   tryNewScrollContent: {
   },
+  tryNewList: {
+    width: '100%'
+  },
   // Pantry Cards
   pantryCard: {
     overflow: 'hidden',
     position: 'relative',
+  },
+  pantryStatusContainer: {
+    paddingHorizontal: wp('5%'),
+    paddingVertical: hp('2%'),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pantryHelperText: {
+    marginTop: hp('1%'),
+    fontSize: wp('3.5%'),
+    color: '#666',
+    textAlign: 'center',
+  },
+  startScanningButton: {
+    backgroundColor: '#81A969',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  startScanningButtonText: {
+    color: '#fff',
+    fontWeight: '600'
   },
   pantryCardImage: {
     width: '100%',
@@ -455,6 +950,11 @@ const styles = StyleSheet.create({
     right: 0,
     backgroundColor: 'rgba(129, 169, 105, 0.85)',
     justifyContent: 'space-between',
+  },
+  pantryIngredientText: {
+    color: '#f0fff0',
+    fontWeight: '500',
+    marginTop: hp('0.3%'),
   },
   pantryCardTitle: {
     fontWeight: '600',
@@ -503,6 +1003,9 @@ const styles = StyleSheet.create({
   // Try New Cards
   tryNewCard: {
     backgroundColor: '#fff',
+    width: '100%',
+    alignSelf: 'center',
+    overflow: 'hidden'
   },
   tryNewImageContainer: {
     overflow: 'hidden',
@@ -518,15 +1021,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  favoriteButtonActive: {
+    backgroundColor: '#FF6B6B',
+  },
   tryNewContent: {
+    flex: 1,
+    justifyContent: 'space-between',
+    paddingBottom: hp('0.5%')
+  },
+  tryNewTextBlock: {
+    minHeight: hp('5.5%'),
+    justifyContent: 'flex-start'
   },
   tryNewTitle: {
     fontWeight: 'bold',
     color: '#000',
+    lineHeight: hp('2.6%')
   },
-  tryNewInfo: {
+  tryNewMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginTop: hp('1%')
   },
   tryNewInfoItem: {
     flexDirection: 'row',

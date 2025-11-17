@@ -925,7 +925,7 @@ const RecipeSearch = () => {
             <Ionicons name="search-outline" size={wp('5%')} color="#666" style={styles.searchIcon} />
             <TextInput
               style={styles.searchInput}
-              placeholder="Search for recipes and ingredients"
+              placeholder="Search"
               value={searchQuery}
               onChangeText={setSearchQuery}
               onSubmitEditing={() => handleSearch()}
