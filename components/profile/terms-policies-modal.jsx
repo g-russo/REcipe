@@ -133,7 +133,7 @@ const TermsPoliciesModal = ({ visible, onClose }) => {
             <View style={styles.lastUpdated}>
               <Ionicons name="time-outline" size={16} color="#999" />
               <Text style={styles.lastUpdatedText}>
-                Last updated: January 2025
+                Last updated: October 2025
               </Text>
             </View>
 
@@ -152,7 +152,7 @@ const TermsPoliciesModal = ({ visible, onClose }) => {
                 <Ionicons name="mail" size={24} color="#8BC34A" />
                 <Text style={styles.footerTitle}>Questions?</Text>
                 <Text style={styles.footerText}>
-                  Contact us at legal@recipe-app.com for any questions about our terms or policies.
+                  Contact us at recipe-app@gmail.com for any questions about our terms or policies.
                 </Text>
               </View>
             </View>
