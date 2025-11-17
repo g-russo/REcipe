@@ -11,6 +11,7 @@ import {
   Platform,
   StatusBar
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Path } from 'react-native-svg';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { useCustomAuth } from '../hooks/use-custom-auth';
@@ -28,12 +29,19 @@ const SignIn = () => {
   const [emailFocused, setEmailFocused] = useState(false);
   const [passwordFocused, setPasswordFocused] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [isLocked, setIsLocked] = useState(false);
+  const [lockEndTime, setLockEndTime] = useState(null);
+  const [remainingTime, setRemainingTime] = useState(0);
   const translateY = useRef(new Animated.Value(0)).current;
 
   const { signIn } = useCustomAuth();
   const router = useRouter();
 
   useEffect(() => {
+    // Check for existing lock on mount
+    checkAccountLock();
+
     const keyboardWillShow = Keyboard.addListener(
       Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
       (e) => {
@@ -62,7 +70,108 @@ const SignIn = () => {
     };
   }, []);
 
+  // Check account lock status
+  const checkAccountLock = async () => {
+    try {
+      const lockData = await AsyncStorage.getItem('accountLock');
+      if (lockData) {
+        const { endTime, attempts } = JSON.parse(lockData);
+        const now = Date.now();
+        
+        if (now < endTime) {
+          // Account is still locked
+          setIsLocked(true);
+          setLockEndTime(endTime);
+          setFailedAttempts(attempts);
+          startCountdown(endTime);
+        } else {
+          // Lock has expired, clear it
+          await AsyncStorage.removeItem('accountLock');
+          setIsLocked(false);
+          setFailedAttempts(0);
+        }
+      }
+    } catch (error) {
+      console.error('Error checking account lock:', error);
+    }
+  };
+
+  // Countdown timer for locked account
+  const startCountdown = (endTime) => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const remaining = Math.max(0, Math.ceil((endTime - now) / 1000));
+      
+      setRemainingTime(remaining);
+      
+      if (remaining === 0) {
+        clearInterval(interval);
+        unlockAccount();
+      }
+    }, 1000);
+    
+    return () => clearInterval(interval);
+  };
+
+  // Unlock account
+  const unlockAccount = async () => {
+    try {
+      await AsyncStorage.removeItem('accountLock');
+      setIsLocked(false);
+      setFailedAttempts(0);
+      setLockEndTime(null);
+      setRemainingTime(0);
+      Alert.alert('Account Unlocked', 'You can now try signing in again.');
+    } catch (error) {
+      console.error('Error unlocking account:', error);
+    }
+  };
+
+  // Lock account for 15 minutes
+  const lockAccount = async (attempts) => {
+    try {
+      const lockDuration = 15 * 60 * 1000; // 15 minutes in milliseconds
+      const endTime = Date.now() + lockDuration;
+      
+      await AsyncStorage.setItem('accountLock', JSON.stringify({
+        endTime,
+        attempts
+      }));
+      
+      setIsLocked(true);
+      setLockEndTime(endTime);
+      setRemainingTime(900); // 15 minutes in seconds
+      
+      startCountdown(endTime);
+      
+      Alert.alert(
+        '🔒 Account Locked',
+        `Too many failed login attempts. Your account has been locked for 15 minutes for security purposes.\n\nPlease try again later.`,
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      console.error('Error locking account:', error);
+    }
+  };
+
+  // Format remaining time as MM:SS
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
   const handleSignIn = async () => {
+    // Check if account is locked
+    if (isLocked) {
+      Alert.alert(
+        '🔒 Account Locked',
+        `Your account is locked due to multiple failed login attempts.\n\nPlease wait ${formatTime(remainingTime)} before trying again.`,
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     if (!email || !password) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
@@ -73,11 +182,21 @@ const SignIn = () => {
       const { data, error } = await signIn(email, password);
 
       if (error) {
+        // Increment failed attempts
+        const newAttempts = failedAttempts + 1;
+        setFailedAttempts(newAttempts);
+
+        // Lock account after 3 failed attempts
+        if (newAttempts >= 3) {
+          await lockAccount(newAttempts);
+          return;
+        }
+
         // Provide more helpful error messages
         let errorMessage = error.message;
 
         if (errorMessage.includes('Invalid login credentials')) {
-          errorMessage = 'Invalid email or password. Please check your credentials and try again.';
+          errorMessage = `Invalid email or password. Please check your credentials and try again.\n\nAttempts remaining: ${3 - newAttempts}`;
         } else if (errorMessage.includes('Email not confirmed')) {
           errorMessage = 'Please verify your email address first. Check your inbox for the verification email.';
         } else if (errorMessage.includes('not verified')) {
@@ -108,6 +227,10 @@ const SignIn = () => {
           }
         ]);
       } else {
+        // Reset failed attempts on successful login
+        setFailedAttempts(0);
+        await AsyncStorage.removeItem('accountLock');
+        
         Alert.alert('Success', 'Signed in successfully!');
 
         // Check for surveys after successful sign-in
@@ -259,19 +382,68 @@ const SignIn = () => {
           </View>
         </View>
 
+        {/* Account Locked Warning */}
+        {isLocked && (
+          <View style={{
+            backgroundColor: '#FFF3CD',
+            borderRadius: wp('2%'),
+            padding: wp('4%'),
+            marginTop: hp('2%'),
+            borderLeftWidth: 4,
+            borderLeftColor: '#FFC107'
+          }}>
+            <Text style={{
+              fontSize: wp('3.8%'),
+              color: '#856404',
+              fontWeight: '600',
+              marginBottom: hp('0.5%')
+            }}>
+              🔒 Account Locked
+            </Text>
+            <Text style={{
+              fontSize: wp('3.5%'),
+              color: '#856404',
+              lineHeight: wp('5%')
+            }}>
+              Too many failed attempts. Please wait {formatTime(remainingTime)} before trying again.
+            </Text>
+          </View>
+        )}
+
+        {/* Failed Attempts Warning */}
+        {!isLocked && failedAttempts > 0 && (
+          <View style={{
+            backgroundColor: '#FFE5E5',
+            borderRadius: wp('2%'),
+            padding: wp('3%'),
+            marginTop: hp('2%'),
+            borderLeftWidth: 4,
+            borderLeftColor: '#E74C3C'
+          }}>
+            <Text style={{
+              fontSize: wp('3.5%'),
+              color: '#C0392B',
+              textAlign: 'center'
+            }}>
+              ⚠️ {failedAttempts} failed attempt{failedAttempts > 1 ? 's' : ''}. {3 - failedAttempts} remaining before account lock.
+            </Text>
+          </View>
+        )}
+
         <View style={[globalStyles.formActions, { marginTop: hp('4.5%'), marginBottom: 0, paddingTop: 0 }]}>
           <TouchableOpacity
             style={[globalStyles.primaryButton, {
               paddingVertical: hp('1.6%'),
               paddingHorizontal: wp('8%'),
               borderRadius: wp('2.5%'),
-              minHeight: hp('5.5%')
+              minHeight: hp('5.5%'),
+              opacity: isLocked ? 0.5 : 1
             }]}
             onPress={handleSignIn}
-            disabled={loading}
+            disabled={loading || isLocked}
           >
             <Text style={[globalStyles.primaryButtonText, { fontSize: wp('4.5%') }]}>
-              {loading ? 'Signing In...' : 'Login'}
+              {loading ? 'Signing In...' : isLocked ? '🔒 Locked' : 'Login'}
             </Text>
           </TouchableOpacity>
 
