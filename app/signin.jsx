@@ -16,10 +16,14 @@ import Svg, { Path } from 'react-native-svg';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { useCustomAuth } from '../hooks/use-custom-auth';
 import { Link, useRouter } from 'expo-router';
+import { supabase } from '../lib/supabase';
 import { globalStyles } from '../assets/css/globalStyles';
 import { signinStyles } from '../assets/css/signinStyles';
 import TopographicBackground from '../components/TopographicBackground';
 import SurveyService from '../services/survey-service';
+import AppAlert from '../components/common/app-alert';
+import { setSuppressRedirect } from '../lib/auth-redirect-controller';
+import rateLimiterService from '../services/rate-limiter-service';
 
 const SignIn = () => {
   const [email, setEmail] = useState('');
@@ -35,8 +39,11 @@ const SignIn = () => {
   const [remainingTime, setRemainingTime] = useState(0);
   const translateY = useRef(new Animated.Value(0)).current;
 
-  const { signIn } = useCustomAuth();
+  const { signIn, resendOTP } = useCustomAuth();
   const router = useRouter();
+  const [alert, setAlert] = useState({ visible: false, type: 'info', message: '' });
+  const [showVerificationModal, setShowVerificationModal] = useState(false);
+  const [unverifiedEmail, setUnverifiedEmail] = useState('');
 
   useEffect(() => {
     // Check for existing lock on mount
@@ -77,7 +84,7 @@ const SignIn = () => {
       if (lockData) {
         const { endTime, attempts } = JSON.parse(lockData);
         const now = Date.now();
-        
+
         if (now < endTime) {
           // Account is still locked
           setIsLocked(true);
@@ -101,15 +108,15 @@ const SignIn = () => {
     const interval = setInterval(() => {
       const now = Date.now();
       const remaining = Math.max(0, Math.ceil((endTime - now) / 1000));
-      
+
       setRemainingTime(remaining);
-      
+
       if (remaining === 0) {
         clearInterval(interval);
         unlockAccount();
       }
     }, 1000);
-    
+
     return () => clearInterval(interval);
   };
 
@@ -132,23 +139,24 @@ const SignIn = () => {
     try {
       const lockDuration = 15 * 60 * 1000; // 15 minutes in milliseconds
       const endTime = Date.now() + lockDuration;
-      
+
       await AsyncStorage.setItem('accountLock', JSON.stringify({
         endTime,
         attempts
       }));
-      
+
       setIsLocked(true);
       setLockEndTime(endTime);
       setRemainingTime(900); // 15 minutes in seconds
-      
+
       startCountdown(endTime);
-      
-      Alert.alert(
-        '🔒 Account Locked',
-        `Too many failed login attempts. Your account has been locked for 15 minutes for security purposes.\n\nPlease try again later.`,
-        [{ text: 'OK' }]
-      );
+
+      setAlert({
+        visible: true,
+        type: 'error',
+        message: 'Too many failed login attempts. Your account has been temporarily locked for security purposes. Please try again later.',
+        actionable: true
+      });
     } catch (error) {
       console.error('Error locking account:', error);
     }
@@ -162,27 +170,83 @@ const SignIn = () => {
   };
 
   const handleSignIn = async () => {
-    // Check if account is locked
+    // Check IP-based rate limiting first (prevents spam/DoS)
+    const clientIP = await rateLimiterService.getClientIP();
+    const rateLimitCheck = rateLimiterService.checkRateLimit(clientIP);
+
+    if (!rateLimitCheck.allowed) {
+      if (rateLimitCheck.reason === 'IP_BLOCKED') {
+        setAlert({
+          visible: true,
+          type: 'error',
+          message: 'Too many requests from this network. Please try again later.',
+          actionable: true
+        });
+      } else if (rateLimitCheck.reason === 'RATE_LIMIT_EXCEEDED') {
+        setAlert({
+          visible: true,
+          type: 'error',
+          message: 'Too many login attempts. Please try again in a few minutes.',
+          actionable: true
+        });
+      }
+      return;
+    }
+
+    // Check if account is locked (user-specific)
     if (isLocked) {
-      Alert.alert(
-        '🔒 Account Locked',
-        `Your account is locked due to multiple failed login attempts.\n\nPlease wait ${formatTime(remainingTime)} before trying again.`,
-        [{ text: 'OK' }]
-      );
+      setAlert({
+        visible: true,
+        type: 'error',
+        message: 'Your account is temporarily locked due to multiple failed login attempts. Please try again later.',
+        actionable: true
+      });
       return;
     }
 
     if (!email || !password) {
-      Alert.alert('Error', 'Please fill in all fields');
+      setAlert({ visible: true, type: 'error', message: 'Please fill in all fields', actionable: true });
       return;
     }
 
     try {
       setLoading(true);
+
+      // Attempt sign-in first (validates both email AND password)
       const { data, error } = await signIn(email, password);
 
       if (error) {
-        // Increment failed attempts
+        // On auth error, we need to check if this is an unverified account
+        // BUT we must verify the password is correct first to prevent email enumeration
+
+        // Get user from database along with hashed password
+        const { data: dbUser, error: dbError } = await supabase
+          .from('tbl_users')
+          .select('isVerified, userName, userPassword')
+          .eq('userEmail', email)
+          .single();
+
+        // If user exists and is not verified, we need to verify the password
+        if (dbUser && !dbError && dbUser.isVerified === false) {
+          // Import crypto for password verification
+          const Crypto = await import('expo-crypto');
+          const hashedPassword = await Crypto.digestStringAsync(
+            Crypto.CryptoDigestAlgorithm.SHA256,
+            password,
+            { encoding: Crypto.CryptoEncoding.HEX }
+          );
+
+          // Only show verification modal if password is correct
+          if (hashedPassword === dbUser.userPassword) {
+            setLoading(false);
+            setUnverifiedEmail(email);
+            setShowVerificationModal(true);
+            return;
+          }
+        }
+
+        // If we reach here, it's a legitimate failed login attempt
+        // (either wrong email, wrong password, or already verified account with wrong password)
         const newAttempts = failedAttempts + 1;
         setFailedAttempts(newAttempts);
 
@@ -192,48 +256,25 @@ const SignIn = () => {
           return;
         }
 
-        // Provide more helpful error messages
-        let errorMessage = error.message;
+        // Provide generic error messages (WITHOUT revealing attempts remaining)
+        let errorMessage = 'Invalid email or password. Please check your credentials and try again.';
 
-        if (errorMessage.includes('Invalid login credentials')) {
-          errorMessage = `Invalid email or password. Please check your credentials and try again.\n\nAttempts remaining: ${3 - newAttempts}`;
-        } else if (errorMessage.includes('Email not confirmed')) {
-          errorMessage = 'Please verify your email address first. Check your inbox for the verification email.';
-        } else if (errorMessage.includes('not verified')) {
-          errorMessage = 'Please verify your email address before signing in. Check your inbox for the verification email.';
-        }
-
-        Alert.alert('Sign In Error', errorMessage, [
-          {
-            text: 'Resend Verification',
-            onPress: () => {
-              Alert.alert(
-                'Resend Verification',
-                'Would you like to go to sign up to resend verification email?',
-                [
-                  { text: 'Cancel', style: 'cancel' },
-                  {
-                    text: 'Yes',
-                    onPress: () => router.push('/signup')
-                  }
-                ]
-              );
-            },
-            style: 'default'
-          },
-          {
-            text: 'OK',
-            style: 'cancel'
-          }
-        ]);
+        setAlert({ visible: true, type: 'error', message: errorMessage, actionable: true });
       } else {
         // Reset failed attempts on successful login
         setFailedAttempts(0);
         await AsyncStorage.removeItem('accountLock');
-        
-        Alert.alert('Success', 'Signed in successfully!');
 
-        // Check for surveys after successful sign-in
+        // Reset rate limit for this IP after successful login
+        rateLimiterService.resetRateLimit(clientIP);
+
+        // Prevent AuthGuard from auto-redirecting immediately after auth state change
+        setSuppressRedirect(true);
+
+        // Show actionable success toast on sign-in screen; navigate when user presses OK
+        setAlert({ visible: true, type: 'success', message: 'Signed in successfully!', actionable: true });
+
+        // Check for surveys after successful sign-in (fire-and-forget)
         setTimeout(async () => {
           try {
             if (email) {
@@ -243,9 +284,7 @@ const SignIn = () => {
           } catch (error) {
             console.error('Error checking surveys:', error);
           }
-        }, 2000); // Wait 2 seconds after sign-in
-
-        router.push('/'); // Navigate to home screen
+        }, 2000);
       }
     } catch (err) {
       Alert.alert('Error', 'Something went wrong. Please try again.');
@@ -382,15 +421,13 @@ const SignIn = () => {
           </View>
         </View>
 
-        {/* Account Locked Warning */}
+        {/* Account Locked Warning - Generic message without time */}
         {isLocked && (
           <View style={{
             backgroundColor: '#FFF3CD',
             borderRadius: wp('2%'),
             padding: wp('4%'),
             marginTop: hp('2%'),
-            borderLeftWidth: 4,
-            borderLeftColor: '#FFC107'
           }}>
             <Text style={{
               fontSize: wp('3.8%'),
@@ -405,27 +442,7 @@ const SignIn = () => {
               color: '#856404',
               lineHeight: wp('5%')
             }}>
-              Too many failed attempts. Please wait {formatTime(remainingTime)} before trying again.
-            </Text>
-          </View>
-        )}
-
-        {/* Failed Attempts Warning */}
-        {!isLocked && failedAttempts > 0 && (
-          <View style={{
-            backgroundColor: '#FFE5E5',
-            borderRadius: wp('2%'),
-            padding: wp('3%'),
-            marginTop: hp('2%'),
-            borderLeftWidth: 4,
-            borderLeftColor: '#E74C3C'
-          }}>
-            <Text style={{
-              fontSize: wp('3.5%'),
-              color: '#C0392B',
-              textAlign: 'center'
-            }}>
-              ⚠️ {failedAttempts} failed attempt{failedAttempts > 1 ? 's' : ''}. {3 - failedAttempts} remaining before account lock.
+              Your account is temporarily locked due to multiple failed login attempts. Please try again later.
             </Text>
           </View>
         )}
@@ -457,6 +474,77 @@ const SignIn = () => {
           </View>
         </View>
       </Animated.View>
+
+      {/* AppAlert rendered last so it overlays other content */}
+      <AppAlert
+        visible={alert.visible}
+        type={alert.type}
+        message={alert.message}
+        actionable={alert.actionable}
+        actionLabel={alert.actionLabel || 'OK'}
+        onAction={() => {
+          if (alert.type === 'success') {
+            // allow AuthGuard to redirect again and navigate
+            setSuppressRedirect(false);
+            setAlert({ visible: false, type: 'info', message: '' });
+            router.push('/');
+          } else {
+            // For errors, just close the modal and stay on signin page
+            setAlert({ visible: false, type: 'info', message: '' });
+          }
+        }}
+        onClose={() => {
+          if (alert.type === 'success') {
+            // ensure flag cleared if alert is closed
+            setSuppressRedirect(false);
+          }
+          setAlert({ visible: false, type: 'info', message: '' });
+        }}
+      />
+
+      {/* Email Verification Modal */}
+      <AppAlert
+        visible={showVerificationModal}
+        type="error"
+        title="Email Not Verified"
+        message="Your email address is not verified yet. Please verify your email to continue."
+        actionable
+        actionLabel="Send Verification Code"
+        onAction={async () => {
+          try {
+            const { error } = await resendOTP(unverifiedEmail, 'signup');
+            setShowVerificationModal(false);
+            if (!error) {
+              router.push({
+                pathname: '/otp-verification',
+                params: { email: unverifiedEmail }
+              });
+            } else {
+              setAlert({ visible: true, type: 'error', message: 'Failed to send verification code. Please try again.', actionable: true });
+            }
+          } catch (err) {
+            setShowVerificationModal(false);
+            setAlert({ visible: true, type: 'error', message: 'Something went wrong. Please try again.', actionable: true });
+          }
+        }}
+        onClose={() => setShowVerificationModal(false)}
+      >
+        <TouchableOpacity
+          style={{
+            width: '100%',
+            paddingVertical: hp('1.6%'),
+            borderRadius: wp('2.5%'),
+            backgroundColor: 'transparent',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginTop: hp('1%'),
+          }}
+          onPress={() => setShowVerificationModal(false)}
+          activeOpacity={0.7}
+        >
+          <Text style={{ color: '#333', fontWeight: '600', fontSize: wp('4%'), letterSpacing: 0.3 }}>Cancel</Text>
+        </TouchableOpacity>
+      </AppAlert>
     </TopographicBackground>
   );
 };

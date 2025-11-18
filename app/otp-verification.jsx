@@ -7,17 +7,19 @@ import {
   Alert,
   StyleSheet,
   StatusBar,
-  Platform
+  Platform,
+  Animated,
+  Keyboard
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import Modal from 'react-native-modal';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useCustomAuth } from '../hooks/use-custom-auth';
 import { globalStyles } from '../assets/css/globalStyles';
 import { otpVerificationStyles } from '../assets/css/otpVerificationStyles';
 import TopographicBackground from '../components/TopographicBackground';
-import { AlertCircle, CheckCircle } from 'lucide-react-native';
+import AppAlert from '../components/common/app-alert';
+import rateLimiterService from '../services/rate-limiter-service';
 
 const OTPVerification = () => {
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
@@ -28,6 +30,8 @@ const OTPVerification = () => {
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [successAlert, setSuccessAlert] = useState({ visible: false, message: '' });
+  const translateY = useRef(new Animated.Value(0)).current;
 
   const inputRefs = useRef([]);
   const { verifyOTP, resendOTP } = useCustomAuth();
@@ -51,6 +55,35 @@ const OTPVerification = () => {
     }
   }, [countdown]);
 
+  useEffect(() => {
+    const keyboardWillShow = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => {
+        Animated.timing(translateY, {
+          toValue: -e.endCoordinates.height / 2,
+          duration: Platform.OS === 'ios' ? 250 : 200,
+          useNativeDriver: true,
+        }).start();
+      }
+    );
+
+    const keyboardWillHide = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => {
+        Animated.timing(translateY, {
+          toValue: 0,
+          duration: Platform.OS === 'ios' ? 250 : 200,
+          useNativeDriver: true,
+        }).start();
+      }
+    );
+
+    return () => {
+      keyboardWillShow.remove();
+      keyboardWillHide.remove();
+    };
+  }, []);
+
   const handleOtpChange = (index, value) => {
     // Only allow numbers
     if (!/^\d*$/.test(value)) return;
@@ -72,6 +105,19 @@ const OTPVerification = () => {
   };
 
   const handleVerifyOTP = async () => {
+    // Check IP-based rate limiting first
+    const clientIP = await rateLimiterService.getClientIP();
+    const rateLimitCheck = rateLimiterService.checkRateLimit(clientIP);
+
+    if (!rateLimitCheck.allowed) {
+      if (rateLimitCheck.reason === 'IP_BLOCKED') {
+        showStyledError('Too many requests from this network. Please try again later.');
+      } else if (rateLimitCheck.reason === 'RATE_LIMIT_EXCEEDED') {
+        showStyledError('Too many verification attempts. Please try again in a few minutes.');
+      }
+      return;
+    }
+
     const otpString = otp.join('');
 
     if (otpString.length !== 6) {
@@ -103,6 +149,19 @@ const OTPVerification = () => {
   };
 
   const handleResendOTP = async () => {
+    // Check IP-based rate limiting
+    const clientIP = await rateLimiterService.getClientIP();
+    const rateLimitCheck = rateLimiterService.checkRateLimit(clientIP);
+
+    if (!rateLimitCheck.allowed) {
+      if (rateLimitCheck.reason === 'IP_BLOCKED') {
+        showStyledError('Too many requests from this network. Please try again later.');
+      } else if (rateLimitCheck.reason === 'RATE_LIMIT_EXCEEDED') {
+        showStyledError('Too many resend attempts. Please try again in a few minutes.');
+      }
+      return;
+    }
+
     try {
       setResendLoading(true);
       const { error } = await resendOTP(email, 'signup');
@@ -110,7 +169,8 @@ const OTPVerification = () => {
       if (error) {
         showStyledError(error.message);
       } else {
-        showStyledError('A new verification code has been sent to your email');
+        // Show success modal
+        setSuccessAlert({ visible: true, message: 'A new verification code has been sent to your email' });
         setCountdown(60);
         setCanResend(false);
         setOtp(['', '', '', '', '', '']); // Clear current OTP input
@@ -140,7 +200,7 @@ const OTPVerification = () => {
         </Svg>
       </TouchableOpacity>
 
-      <View style={[globalStyles.card, {
+      <Animated.View style={[globalStyles.card, {
         paddingTop: hp('1.8%'),
         paddingBottom: hp('9%'),
         paddingHorizontal: wp('8%'),
@@ -149,7 +209,8 @@ const OTPVerification = () => {
         left: 0,
         right: 0,
         borderBottomLeftRadius: 0,
-        borderBottomRightRadius: 0
+        borderBottomRightRadius: 0,
+        transform: [{ translateY }]
       }]}>
         <View style={globalStyles.formContent}>
           <View style={{ position: 'relative', alignSelf: 'flex-start', marginBottom: hp('1.5%') }}>
@@ -172,7 +233,7 @@ const OTPVerification = () => {
           </Text>
 
           {/* OTP Input Boxes */}
-          <View style={[globalStyles.otpContainer, { marginTop: hp('2.5%') }]}>
+          <View style={[globalStyles.otpContainer, { marginTop: hp('2.5%'), justifyContent: 'center', alignItems: 'center' }]}>
             {otp.map((digit, index) => (
               <TextInput
                 key={index}
@@ -234,166 +295,47 @@ const OTPVerification = () => {
             )}
           </View>
         </View>
-      </View>
+      </Animated.View>
 
       {/* Error Modal */}
-      <Modal
-        isVisible={showErrorModal}
-        onBackdropPress={() => setShowErrorModal(false)}
-        onBackButtonPress={() => setShowErrorModal(false)}
-        animationIn="fadeIn"
-        animationOut="fadeOut"
-        animationInTiming={300}
-        animationOutTiming={300}
-        backdropTransitionInTiming={300}
-        backdropTransitionOutTiming={300}
-        backdropOpacity={0.5}
-        useNativeDriver={true}
-        hideModalContentWhileAnimating={true}
-        style={{ margin: 0, justifyContent: 'center', alignItems: 'center' }}
-      >
-        <View style={{
-          backgroundColor: 'white',
-          borderRadius: wp('4%'),
-          padding: wp('6%'),
-          width: wp('85%'),
-          maxWidth: 400,
-        }}>
-          <View style={{ alignItems: 'center', marginBottom: hp('2%') }}>
-            <View style={{
-              width: wp('15%'),
-              height: wp('15%'),
-              borderRadius: wp('7.5%'),
-              backgroundColor: '#FFEBEE',
-              justifyContent: 'center',
-              alignItems: 'center',
-              marginBottom: hp('1.5%')
-            }}>
-              <AlertCircle size={wp('8%')} color="#E74C3C" />
-            </View>
-            <Text style={{
-              fontSize: wp('5%'),
-              fontWeight: '600',
-              color: '#2C3E50',
-              marginBottom: hp('1%')
-            }}>
-              Error
-            </Text>
-          </View>
+      <AppAlert
+        visible={showErrorModal}
+        type="error"
+        message={errorMessage}
+        actionable={true}
+        actionLabel="OK"
+        onAction={() => setShowErrorModal(false)}
+        onClose={() => setShowErrorModal(false)}
+      />
 
-          <Text style={{
-            fontSize: wp('4%'),
-            color: '#5D6D7E',
-            textAlign: 'center',
-            lineHeight: wp('5.5%'),
-            marginBottom: hp('3%')
-          }}>
-            {errorMessage}
-          </Text>
-
-          <TouchableOpacity
-            style={{
-              backgroundColor: '#E74C3C',
-              paddingVertical: hp('1.5%'),
-              borderRadius: wp('2%'),
-              alignItems: 'center'
-            }}
-            onPress={() => setShowErrorModal(false)}
-          >
-            <Text style={{
-              color: 'white',
-              fontSize: wp('4.2%'),
-              fontWeight: '600'
-            }}>
-              OK
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </Modal>
-
-      {/* Success Modal */}
-      <Modal
-        isVisible={showSuccessModal}
-        onBackdropPress={() => {
+      {/* Success Modal - Email Verified */}
+      <AppAlert
+        visible={showSuccessModal}
+        type="success"
+        title="Email Verified!"
+        message="Your email has been verified successfully! You can now sign in to your account."
+        actionable={true}
+        actionLabel="Sign In Now"
+        onAction={() => {
           setShowSuccessModal(false);
           router.replace('/signin');
         }}
-        onBackButtonPress={() => {
+        onClose={() => {
           setShowSuccessModal(false);
           router.replace('/signin');
         }}
-        animationIn="fadeIn"
-        animationOut="fadeOut"
-        animationInTiming={300}
-        animationOutTiming={300}
-        backdropTransitionInTiming={300}
-        backdropTransitionOutTiming={300}
-        backdropOpacity={0.5}
-        useNativeDriver={true}
-        hideModalContentWhileAnimating={true}
-        style={{ margin: 0, justifyContent: 'center', alignItems: 'center' }}
-      >
-        <View style={{
-          backgroundColor: 'white',
-          borderRadius: wp('4%'),
-          padding: wp('6%'),
-          width: wp('85%'),
-          maxWidth: 400,
-        }}>
-          <View style={{ alignItems: 'center', marginBottom: hp('2%') }}>
-            <View style={{
-              width: wp('15%'),
-              height: wp('15%'),
-              borderRadius: wp('7.5%'),
-              backgroundColor: '#E8F5E9',
-              justifyContent: 'center',
-              alignItems: 'center',
-              marginBottom: hp('1.5%')
-            }}>
-              <CheckCircle size={wp('8%')} color="#4CAF50" />
-            </View>
-            <Text style={{
-              fontSize: wp('5%'),
-              fontWeight: '600',
-              color: '#2C3E50',
-              marginBottom: hp('1%')
-            }}>
-              Email Verified!
-            </Text>
-          </View>
+      />
 
-          <Text style={{
-            fontSize: wp('4%'),
-            color: '#5D6D7E',
-            textAlign: 'center',
-            lineHeight: wp('5.5%'),
-            marginBottom: hp('3%')
-          }}>
-            Your email has been verified successfully! You can now sign in to your account.
-          </Text>
-
-          <TouchableOpacity
-            style={{
-              backgroundColor: '#4CAF50',
-              paddingVertical: hp('1.5%'),
-              borderRadius: wp('2%'),
-              alignItems: 'center'
-            }}
-            onPress={() => {
-              setShowSuccessModal(false);
-              router.replace('/signin');
-            }}
-          >
-            <Text style={{
-              color: 'white',
-              fontSize: wp('4.2%'),
-              fontWeight: '600'
-            }}>
-              Sign In Now
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </Modal>
+      {/* AppAlert for success messages */}
+      <AppAlert
+        visible={successAlert.visible}
+        type="success"
+        message={successAlert.message}
+        actionable={true}
+        actionLabel="OK"
+        onAction={() => setSuccessAlert({ visible: false, message: '' })}
+        onClose={() => setSuccessAlert({ visible: false, message: '' })}
+      />
     </TopographicBackground>
   );
 };

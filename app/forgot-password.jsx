@@ -19,6 +19,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { globalStyles } from '../assets/css/globalStyles';
 import { forgotPasswordStyles } from '../assets/css/forgotPasswordStyles';
 import TopographicBackground from '../components/TopographicBackground';
+import rateLimiterService from '../services/rate-limiter-service';
 
 const ForgotPassword = () => {
   const [email, setEmail] = useState('');
@@ -63,6 +64,19 @@ const ForgotPassword = () => {
   };
 
   const handleForgotPassword = async () => {
+    // Check IP-based rate limiting first
+    const clientIP = await rateLimiterService.getClientIP();
+    const rateLimitCheck = rateLimiterService.checkRateLimit(clientIP);
+
+    if (!rateLimitCheck.allowed) {
+      if (rateLimitCheck.reason === 'IP_BLOCKED') {
+        Alert.alert('Error', 'Too many requests from this network. Please try again later.');
+      } else if (rateLimitCheck.reason === 'RATE_LIMIT_EXCEEDED') {
+        Alert.alert('Error', 'Too many password reset attempts. Please try again in a few minutes.');
+      }
+      return;
+    }
+
     if (!email) {
       Alert.alert('Error', 'Please enter your email address');
       return;
