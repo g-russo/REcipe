@@ -14,12 +14,12 @@ const RestartModal = ({ visible, onClose }) => {
     return (
         <View style={styles.backdrop}>
             <View style={styles.modalContent}>
-                <Text style={styles.title}>Please restart the app</Text>
+                <Text style={styles.title}>Restart App</Text>
                 <Text style={styles.message}>
-                    For your changes to take full effect and avoid any database connection issues, please restart the app now.
+                    To apply your changes and keep everything running smoothly, please restart the app.
                 </Text>
                 <TouchableOpacity style={styles.button} onPress={handleRestart}>
-                    <Text style={styles.buttonText}>Restart Now</Text>
+                    <Text style={styles.buttonText}>Confirm</Text>
                 </TouchableOpacity>
             </View>
         </View>
