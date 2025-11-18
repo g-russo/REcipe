@@ -12,6 +12,7 @@ import {
   Platform,
   StatusBar
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Path } from 'react-native-svg';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { useCustomAuth } from '../hooks/use-custom-auth';
@@ -20,15 +21,43 @@ import { globalStyles } from '../assets/css/globalStyles';
 import { forgotPasswordStyles } from '../assets/css/forgotPasswordStyles';
 import TopographicBackground from '../components/TopographicBackground';
 import rateLimiterService from '../services/rate-limiter-service';
+import AppAlert from '../components/common/app-alert';
 
 const ForgotPassword = () => {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [emailFocused, setEmailFocused] = useState(false);
+  const [alert, setAlert] = useState({ visible: false, type: 'info', message: '', title: null });
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
   const translateY = useRef(new Animated.Value(0)).current;
 
   const { returnTo } = useLocalSearchParams();
   const { requestPasswordReset } = useCustomAuth();
+
+  // Load cooldown on mount
+  useEffect(() => {
+    const loadCooldown = async () => {
+      try {
+        const cooldownData = await AsyncStorage.getItem('password_reset_cooldown');
+        if (cooldownData) {
+          const { timestamp, duration } = JSON.parse(cooldownData);
+          const elapsed = Math.floor((Date.now() - timestamp) / 1000);
+          const remaining = duration - elapsed;
+
+          if (remaining > 0) {
+            setCooldownSeconds(remaining);
+          } else {
+            // Cooldown expired, clear it
+            await AsyncStorage.removeItem('password_reset_cooldown');
+          }
+        }
+      } catch (error) {
+        console.error('Error loading cooldown:', error);
+      }
+    };
+
+    loadCooldown();
+  }, []);
 
   useEffect(() => {
     const keyboardWillShow = Keyboard.addListener(
@@ -58,32 +87,66 @@ const ForgotPassword = () => {
       keyboardWillHide.remove();
     };
   }, []);
+
+  // Cooldown timer effect
+  useEffect(() => {
+    let interval;
+    if (cooldownSeconds > 0) {
+      interval = setInterval(() => {
+        setCooldownSeconds((prev) => {
+          const newValue = prev - 1;
+
+          // Clear AsyncStorage when cooldown reaches 0
+          if (newValue <= 0) {
+            AsyncStorage.removeItem('password_reset_cooldown').catch(console.error);
+          }
+
+          return newValue;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [cooldownSeconds]);
+
   const validateEmail = (email) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
   };
 
   const handleForgotPassword = async () => {
+    // Check if still in cooldown
+    if (cooldownSeconds > 0) {
+      setAlert({
+        visible: true,
+        type: 'info',
+        message: `Please wait before requesting again.`,
+        title: null
+      });
+      return;
+    }
+
     // Check IP-based rate limiting first
     const clientIP = await rateLimiterService.getClientIP();
     const rateLimitCheck = rateLimiterService.checkRateLimit(clientIP);
 
     if (!rateLimitCheck.allowed) {
       if (rateLimitCheck.reason === 'IP_BLOCKED') {
-        Alert.alert('Error', 'Too many requests from this network. Please try again later.');
+        setAlert({ visible: true, type: 'error', message: 'Too many requests from this network. Please try again later.', title: null });
       } else if (rateLimitCheck.reason === 'RATE_LIMIT_EXCEEDED') {
-        Alert.alert('Error', 'Too many password reset attempts. Please try again in a few minutes.');
+        setAlert({ visible: true, type: 'error', message: 'Too many password reset attempts. Please try again in a few minutes.', title: null });
       }
       return;
     }
 
     if (!email) {
-      Alert.alert('Error', 'Please enter your email address');
+      setAlert({ visible: true, type: 'error', message: 'Please enter your email address', title: null });
       return;
     }
 
     if (!validateEmail(email)) {
-      Alert.alert('Error', 'Please enter a valid email address');
+      setAlert({ visible: true, type: 'error', message: 'Please enter a valid email address', title: null });
       return;
     }
 
@@ -91,37 +154,25 @@ const ForgotPassword = () => {
       setLoading(true);
       const { data, error } = await requestPasswordReset(email);
 
-      if (error) {
-        if (error.message.includes('not found') || error.message.includes('User not found')) {
-          Alert.alert(
-            'Email Not Found',
-            'No account found with this email address. Please check your email or create a new account.'
-          );
-        } else {
-          Alert.alert('Error', error.message);
-        }
-      } else {
-        Alert.alert(
-          'Reset Code Sent!',
-          'We\'ve sent a link to your email. Please check your inbox and click the link on the next screen.',
-          [
-            {
-              text: 'Continue',
-              onPress: () => {
-                router.push({
-                  pathname: '/signin',
-                  params: {
-                    email: email,
-                    returnTo: returnTo || '/signin'
-                  }
-                });
-              }
-            }
-          ]
-        );
-      }
+      // Start 60-second cooldown and persist to AsyncStorage
+      const cooldownDuration = 60;
+      setCooldownSeconds(cooldownDuration);
+
+      await AsyncStorage.setItem('password_reset_cooldown', JSON.stringify({
+        timestamp: Date.now(),
+        duration: cooldownDuration
+      }));
+
+      // Always show success message regardless of whether email exists
+      // This prevents email enumeration attacks
+      setAlert({
+        visible: true,
+        type: 'success',
+        message: "We've sent a link to your email. Please check your inbox and follow the instructions to reset your password.",
+        title: 'Reset Code Sent!'
+      });
     } catch (err) {
-      Alert.alert('Error', 'Something went wrong. Please try again.');
+      setAlert({ visible: true, type: 'error', message: 'Something went wrong. Please try again.', title: null });
       console.error('Forgot password error:', err);
     } finally {
       setLoading(false);
@@ -176,7 +227,7 @@ const ForgotPassword = () => {
           </View>
 
           <Text style={[globalStyles.subtitle, { marginLeft: 0, marginTop: hp('0.8%'), marginBottom: hp('2%'), fontSize: wp('3.8%'), lineHeight: wp('5%') }]}>
-            Enter the email address so we can send you your 6-digit OTP
+            Enter your email address so we can send you instructions to reset your password.
           </Text>
 
           <View style={[globalStyles.inputContainer, { marginBottom: hp('1.2%') }]}>
@@ -209,24 +260,42 @@ const ForgotPassword = () => {
               paddingVertical: hp('1.6%'),
               paddingHorizontal: wp('8%'),
               borderRadius: wp('2.5%'),
-              minHeight: hp('5.5%')
+              minHeight: hp('5.5%'),
+              opacity: (loading || cooldownSeconds > 0) ? 0.5 : 1
             }]}
             onPress={handleForgotPassword}
-            disabled={loading}
+            disabled={loading || cooldownSeconds > 0}
           >
             <Text style={[globalStyles.primaryButtonText, { fontSize: wp('4.5%') }]}>
-              {loading ? 'Sending...' : 'Send OTP'}
+              {loading ? 'Sending...' : cooldownSeconds > 0 ? `Wait ${cooldownSeconds}s` : 'Confirm'}
             </Text>
           </TouchableOpacity>
 
-          <View style={[forgotPasswordStyles.resendContainer, { marginTop: hp('1.5%') }]}>
-            <Text style={[globalStyles.grayText, { fontSize: wp('3.8%') }]}>Didn't receive email? </Text>
-            <TouchableOpacity>
-              <Text style={[globalStyles.linkText, { fontSize: wp('3.8%') }]}>Resend</Text>
-            </TouchableOpacity>
-          </View>
+          {cooldownSeconds > 0 && (
+            <View style={[forgotPasswordStyles.resendContainer, { marginTop: hp('1.5%') }]}>
+              <Text style={[globalStyles.grayText, { fontSize: wp('3.8%'), textAlign: 'center' }]}>
+                Please wait before requesting again.
+              </Text>
+            </View>
+          )}
         </View>
       </Animated.View>
+
+      {/* AppAlert for all messages */}
+      <AppAlert
+        visible={alert.visible}
+        type={alert.type}
+        message={alert.message}
+        title={alert.title}
+        actionable={true}
+        actionLabel="OK"
+        onAction={() => {
+          setAlert({ visible: false, type: 'info', message: '', title: null });
+        }}
+        onClose={() => {
+          setAlert({ visible: false, type: 'info', message: '', title: null });
+        }}
+      />
     </TopographicBackground>
   );
 };

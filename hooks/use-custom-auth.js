@@ -414,8 +414,7 @@ export function useCustomAuth() {
     try {
       setLoading(true)
 
-      console.log('📧 Requesting password reset for:', email)
-
+      // Security: Don't log email addresses or reveal if user exists
       // Check if user exists in custom table first
       const { data: userData, error: userError } = await supabase
         .from('tbl_users')
@@ -423,13 +422,16 @@ export function useCustomAuth() {
         .eq('userEmail', email)
         .single()
 
+      // Security: Always return success to prevent email enumeration
+      // Don't reveal if user exists or not
       if (userError || !userData) {
-        console.error('❌ User not found:', userError)
-        throw new Error('User not found')
+        // User doesn't exist - return success anyway
+        return { data: { success: true }, error: null }
       }
 
       if (!userData.isVerified) {
-        throw new Error('Account not verified. Please verify your email address first.')
+        // User exists but not verified - return success anyway
+        return { data: { success: true }, error: null }
       }
 
       // Get website URL from environment or use default
@@ -441,15 +443,14 @@ export function useCustomAuth() {
       })
 
       if (error) {
-        console.error('❌ Password reset request failed:', error)
-        throw error
+        // Security: Don't log specific error details
+        return { data: { success: true }, error: null }
       }
 
-      console.log('✅ Password reset email sent with token link to website')
-      return { data, error }
+      return { data: { success: true }, error: null }
     } catch (err) {
-      console.error('Password reset request error:', err)
-      return { data: null, error: err }
+      // Security: Don't log error details that might reveal user existence
+      return { data: { success: true }, error: null }
     } finally {
       setLoading(false)
     }
