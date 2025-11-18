@@ -22,6 +22,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import cacheService from '../../services/supabase-cache-service';
 import SousChefAIService from '../../services/souschef-ai-service';
 import SpellCorrector from '../../utils/spell-corrector';
+import recipeImageCacheService from '../../services/recipe-image-cache-service';
+import CachedImage from '../../components/common/cached-image';
 import AuthGuard from '../../components/auth-guard';
 import { useCustomAuth } from '../../hooks/use-custom-auth';
 
@@ -606,6 +608,12 @@ const RecipeSearch = () => {
           setAiRecipeCount(dbResult.count || 0);
           console.log(`✅ Displaying ${totalRecipes} total recipes (${dbResult.count} AI, ${result.data.recipes.length} Edamam)`);
           
+          // Prefetch images to Supabase Storage for faster loading
+          const imageUrls = allRecipes.map(r => r.image).filter(Boolean);
+          if (imageUrls.length > 0) {
+            recipeImageCacheService.batchCacheImages(imageUrls.slice(0, 10)); // Batch cache first 10
+          }
+          
           // Keep loading animation visible until recipes are fully rendered (5 seconds)
           setTimeout(() => {
             setLoading(false);
@@ -884,11 +892,11 @@ const RecipeSearch = () => {
     return (
       <TouchableOpacity style={styles.recipeCard} onPress={() => handleRecipePress(item)}>
         {item.image ? (
-          <Image
-            source={{ uri: item.image }}
+          <CachedImage
+            uri={item.image}
             style={styles.recipeImage}
             resizeMode="cover"
-            onError={(error) => console.log('Recipe image load error:', item.label, error.nativeEvent?.error)}
+            fallbackIcon={<Ionicons name="image-outline" size={50} color="#ccc" />}
           />
         ) : (
           <View style={[styles.recipeImage, { backgroundColor: '#f0f0f0', alignItems: 'center', justifyContent: 'center' }]}>

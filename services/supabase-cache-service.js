@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import EdamamService from './edamam-service';
+import recipeImageCacheService from './recipe-image-cache-service';
 
 /**
  * Supabase-based cache service for recipe data
@@ -20,6 +21,7 @@ class SupabaseCacheService {
       TRENDING: 6 * 60 * 60 * 1000,      // 6 hours
       SEARCH: 12 * 60 * 60 * 1000,       // 12 hours (search results stable longer)
       SIMILAR: 24 * 60 * 60 * 1000,      // 24 hours (similar recipes rarely change)
+      INSTRUCTIONS: 30 * 24 * 60 * 60 * 1000,  // 30 days (instructions don't change)
       AI_RECIPES: 30 * 24 * 60 * 60 * 1000  // 30 days (AI recipes never expire naturally)
     };
 
@@ -30,7 +32,7 @@ class SupabaseCacheService {
       errors: 0
     };
 
-    console.log('🚀 Supabase Cache Service initialized (TTL: Popular=6h, Search=12h, Similar=24h)');
+    console.log('🚀 Supabase Cache Service initialized (TTL: Popular=6h, Search=12h, Similar=24h, Instructions=30d)');
   }
 
   /**
@@ -113,11 +115,14 @@ class SupabaseCacheService {
   }
 
   /**
-   * Save popular recipes to cache
+   * Save popular recipes to cache with image caching
    */
   async savePopularRecipes(recipes) {
     try {
       const expiresAt = new Date(Date.now() + this.CACHE_TTL.POPULAR);
+      
+      // Cache images in Supabase Storage (background, non-blocking)
+      this.cacheRecipeImages(recipes);
       
       await supabase
         .from('cache_popular_recipes')
@@ -130,6 +135,24 @@ class SupabaseCacheService {
     } catch (error) {
       console.warn('Failed to save popular recipes cache:', error.message);
     }
+  }
+
+  /**
+   * Cache recipe images in Supabase Storage (background)
+   */
+  async cacheRecipeImages(recipes) {
+    if (!recipes || recipes.length === 0) return;
+
+    // Extract image URLs
+    const imageUrls = recipes
+      .map(r => r.image)
+      .filter(Boolean)
+      .slice(0, 20); // Cache first 20 images
+
+    // Batch cache in background (don't await)
+    setTimeout(() => {
+      recipeImageCacheService.batchCacheImages(imageUrls);
+    }, 100);
   }
 
   /**
@@ -344,6 +367,139 @@ class SupabaseCacheService {
   }
 
   /**
+   * Get recipe instructions with caching
+   * @param {string} recipeUrl - Recipe URL to get instructions for
+   * @param {Function} scrapeFunction - Function to scrape instructions if not cached
+   * @param {boolean} forceRefresh - Force refresh cache
+   * @returns {Promise<Object>} Instructions result
+   */
+  async getRecipeInstructions(recipeUrl, scrapeFunction, forceRefresh = false) {
+    try {
+      if (!recipeUrl) {
+        return this.generateInstructionFallback(recipeUrl);
+      }
+
+      if (!forceRefresh) {
+        // Check cache first
+        const { data: cached, error } = await supabase
+          .from('cache_recipe_instructions')
+          .select('instructions, source, created_at')
+          .eq('recipe_url', recipeUrl)
+          .gt('expires_at', new Date().toISOString())
+          .maybeSingle();
+
+        if (!error && cached) {
+          this.stats.hits++;
+          const age = Math.round((Date.now() - new Date(cached.created_at).getTime()) / (60 * 60 * 1000));
+          console.log(`✅ Instruction Cache HIT (${age}h old)`);
+
+          // Update access stats (fire and forget)
+          this.updateInstructionAccessStats(recipeUrl);
+
+          return {
+            success: true,
+            instructions: cached.instructions,
+            source: cached.source,
+            cached: true
+          };
+        }
+      }
+
+      // Cache MISS - scrape instructions
+      this.stats.misses++;
+      console.log('⏳ Instruction Cache MISS - Scraping...');
+
+      const result = await scrapeFunction(recipeUrl);
+
+      if (result.success && result.instructions?.length > 0) {
+        // Save to cache
+        await this.saveRecipeInstructions(recipeUrl, result.instructions, result.source || 'scraped');
+        return result;
+      }
+
+      // Scraping failed, return fallback
+      console.log('⚠️ Scraping failed, using fallback');
+      return this.generateInstructionFallback(recipeUrl);
+
+    } catch (error) {
+      this.stats.errors++;
+      console.error('Instruction cache error:', error);
+      return this.generateInstructionFallback(recipeUrl);
+    }
+  }
+
+  /**
+   * Save recipe instructions to cache
+   */
+  async saveRecipeInstructions(recipeUrl, instructions, source = 'scraped') {
+    try {
+      const expiresAt = new Date(Date.now() + this.CACHE_TTL.INSTRUCTIONS);
+
+      await supabase
+        .from('cache_recipe_instructions')
+        .upsert({
+          recipe_url: recipeUrl,
+          instructions: instructions,
+          source: source,
+          expires_at: expiresAt.toISOString(),
+          access_count: 1,
+          last_accessed: new Date().toISOString()
+        }, {
+          onConflict: 'recipe_url'
+        });
+
+      console.log('💾 Saved instructions to cache (expires in 30 days)');
+    } catch (error) {
+      console.warn('Failed to save instruction cache:', error.message);
+    }
+  }
+
+  /**
+   * Update instruction access statistics
+   */
+  async updateInstructionAccessStats(recipeUrl) {
+    try {
+      const { data: existing } = await supabase
+        .from('cache_recipe_instructions')
+        .select('access_count')
+        .eq('recipe_url', recipeUrl)
+        .single();
+
+      const currentCount = existing?.access_count || 0;
+
+      await supabase
+        .from('cache_recipe_instructions')
+        .update({
+          access_count: currentCount + 1,
+          last_accessed: new Date().toISOString()
+        })
+        .eq('recipe_url', recipeUrl);
+    } catch (error) {
+      // Silent fail, not critical
+      console.log('Could not update instruction stats:', error.message);
+    }
+  }
+
+  /**
+   * Generate fallback instructions when scraping fails
+   */
+  generateInstructionFallback(recipeUrl) {
+    const domain = recipeUrl ? new URL(recipeUrl).hostname.replace('www.', '') : '';
+
+    return {
+      success: true,
+      instructions: [
+        `This recipe requires visiting the original source for detailed instructions.`,
+        domain ? `Visit ${domain} for the complete step-by-step cooking guide.` : 'Visit the recipe website for complete cooking instructions.',
+        `The ingredients list above shows everything you'll need to prepare this dish.`,
+        `Cooking times and temperatures are provided in the recipe information section.`
+      ],
+      fallback: true,
+      source: 'fallback'
+    };
+  }
+
+  /**
    * Clear expired cache entries (run manually or scheduled)
    */
   async clearExpiredCache() {
@@ -352,14 +508,15 @@ class SupabaseCacheService {
 
       const now = new Date().toISOString();
 
-      const [popular, search, similar] = await Promise.all([
+      const [popular, search, similar, instructions] = await Promise.all([
         supabase.from('cache_popular_recipes').delete().lt('expires_at', now),
         supabase.from('cache_search_results').delete().lt('expires_at', now),
-        supabase.from('cache_similar_recipes').delete().lt('expires_at', now)
+        supabase.from('cache_similar_recipes').delete().lt('expires_at', now),
+        supabase.from('cache_recipe_instructions').delete().lt('expires_at', now)
       ]);
 
-      const total = (popular.count || 0) + (search.count || 0) + (similar.count || 0);
-      console.log(`✅ Cleared ${total} expired cache entries`);
+      const total = (popular.count || 0) + (search.count || 0) + (similar.count || 0) + (instructions.count || 0);
+      console.log(`✅ Cleared ${total} expired cache entries (Instructions: ${instructions.count || 0})`);
 
       return total;
     } catch (error) {
@@ -411,7 +568,8 @@ class SupabaseCacheService {
       await Promise.all([
         supabase.from('cache_popular_recipes').delete().neq('id', 0),
         supabase.from('cache_search_results').delete().neq('id', 0),
-        supabase.from('cache_similar_recipes').delete().neq('id', 0)
+        supabase.from('cache_similar_recipes').delete().neq('id', 0),
+        supabase.from('cache_recipe_instructions').delete().neq('id', 0)
       ]);
 
       console.log('✅ All cache cleared');
