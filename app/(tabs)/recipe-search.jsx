@@ -1266,7 +1266,7 @@ const RecipeSearch = () => {
 
               {loadingPopular ? (
                 <View style={styles.loadingContainer}>
-                  <ActivityIndicator size="large" color="#4CAF50" />
+                  <ActivityIndicator size="large" color="#81A969" />
                   <Text style={styles.loadingText}>
                     {popularRecipes.length > 0 ? 'Refreshing recipes...' : 'Loading popular recipes...'}
                   </Text>
@@ -1358,7 +1358,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: wp('-1.2%'),
     right: wp('-1.2%'),
-    backgroundColor: '#4CAF50',
+    backgroundColor: '#81A969',
     borderRadius: wp('2.5%'),
     minWidth: wp('4.5%'),
     height: wp('4.5%'),
@@ -1399,7 +1399,7 @@ const styles = StyleSheet.create({
   },
   clearFiltersText: {
     fontSize: wp('3.5%'),
-    color: '#4CAF50',
+    color: '#81A969',
     fontWeight: '500',
   },
   filterScrollView: {
@@ -1431,8 +1431,8 @@ const styles = StyleSheet.create({
     marginBottom: hp('1%'),
   },
   filterChipActive: {
-    backgroundColor: '#4CAF50',
-    borderColor: '#4CAF50',
+    backgroundColor: '#81A969',
+    borderColor: '#81A969',
   },
   filterChipText: {
     fontSize: wp('3.5%'),
@@ -1463,12 +1463,12 @@ const styles = StyleSheet.create({
   },
   clearText: {
     fontSize: wp('4%'),
-    color: '#4CAF50',
+    color: '#81A969',
     fontWeight: '500',
   },
   viewAllText: {
     fontSize: wp('4%'),
-    color: '#4CAF50',
+    color: '#81A969',
     fontWeight: '500',
   },
   resultsCount: {
@@ -1681,7 +1681,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   activeNavLabel: {
-    color: '#4CAF50',
+    color: '#81A969',
   },
   centerNavButton: {
     alignItems: 'center',
@@ -1692,7 +1692,7 @@ const styles = StyleSheet.create({
     width: wp('12.5%'),
     height: wp('12.5%'),
     borderRadius: wp('6.25%'),
-    backgroundColor: '#4CAF50',
+    backgroundColor: '#81A969',
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 8,
