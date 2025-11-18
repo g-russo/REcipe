@@ -29,7 +29,7 @@ export function useCustomAuth() {
     const getInitialSession = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession()
-        
+
         if (session?.user) {
           setUser(session.user)
           // Only fetch custom data if we don't already have it
@@ -51,7 +51,7 @@ export function useCustomAuth() {
       async (event, session) => {
         console.log('🔐 Auth state changed:', event)
         setUser(session?.user ?? null)
-        
+
         if (session?.user) {
           // Only fetch on sign in, not on every token refresh
           if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
@@ -60,7 +60,7 @@ export function useCustomAuth() {
         } else {
           setCustomUserData(null)
         }
-        
+
         setLoading(false)
       }
     )
@@ -110,14 +110,14 @@ export function useCustomAuth() {
           rateLimitError.originalError = authError
           throw rateLimitError
         }
-        
+
         // Handle duplicate email
-        if (authError.message?.includes('User already registered') || 
-            authError.message?.includes('already registered') ||
-            authError.message?.includes('already exists')) {
+        if (authError.message?.includes('User already registered') ||
+          authError.message?.includes('already registered') ||
+          authError.message?.includes('already exists')) {
           throw new Error('This email address is already registered. Please sign in instead or use a different email address.')
         }
-        
+
         // Handle other auth errors
         throw authError
       }
@@ -126,10 +126,10 @@ export function useCustomAuth() {
       if (authData.user) {
         console.log('🔄 Supabase auth user created successfully:', authData.user.id)
         console.log('📝 Now attempting to create custom user record...')
-        
+
         // Hash the password for secure storage
         const hashedPassword = await simpleHash(password)
-        
+
         const { data: customUserData, error: customUserError } = await supabase
           .from('tbl_users')
           .insert({
@@ -149,7 +149,7 @@ export function useCustomAuth() {
             details: customUserError.details,
             hint: customUserError.hint
           })
-          
+
           // Handle duplicate email in custom table (database constraint violation)
           if (customUserError.code === '23505' && customUserError.message.includes('tbl_users_useremail_key')) {
             console.error('❌ Duplicate email detected in custom table')
@@ -163,7 +163,7 @@ export function useCustomAuth() {
             // Re-throw with user-friendly message
             throw new Error('This email address is already registered. Please sign in instead or use a different email address.')
           }
-          
+
           // Provide specific guidance based on error type
           if (customUserError.code === 'PGRST116' || customUserError.message.includes('does not exist')) {
             console.log('🚨 DATABASE TABLES DO NOT EXIST!')
@@ -174,7 +174,7 @@ export function useCustomAuth() {
             console.log('🚨 TABLE STRUCTURE IS WRONG!')
             console.log('📝 Run the fix-schema.sql to recreate tables with correct structure')
           }
-          
+
           // Don't throw error here - let the auth flow continue with Supabase's built-in system
           console.log('⚠️ Continuing with Supabase-only authentication for now...')
         } else {
@@ -338,17 +338,17 @@ export function useCustomAuth() {
                 .from('tbl_users')
                 .update({ isVerified: true })
                 .eq('userEmail', email)
-              
+
               console.log('✅ User verification status synced with Supabase auth')
             }
           } else {
             // User doesn't exist in custom table but exists in Supabase auth
             // Only allow if email is verified, create custom record
             console.log('📝 Creating custom user record for verified Supabase auth user')
-            
+
             try {
               const hashedPassword = await simpleHash(password)
-              
+
               await supabase
                 .from('tbl_users')
                 .insert({
@@ -358,7 +358,7 @@ export function useCustomAuth() {
                   userBday: authData.user.user_metadata?.birthdate || '2000-01-01',
                   isVerified: true
                 })
-              
+
               console.log('✅ Custom user record created for verified user')
             } catch (insertError) {
               console.error('⚠️ Could not create custom user record:', insertError.message)
@@ -397,7 +397,7 @@ export function useCustomAuth() {
   const requestPasswordReset = async (email) => {
     try {
       setLoading(true)
-      
+
       console.log('📧 Requesting password reset for:', email)
 
       // Check if user exists in custom table first
@@ -418,7 +418,7 @@ export function useCustomAuth() {
 
       // Get website URL from environment or use default
       const websiteUrl = process.env.EXPO_PUBLIC_WEBSITE_URL || 'http://localhost:5173'
-      
+
       // Send password reset email with token link that redirects to website
       const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: `${websiteUrl}/reset-password`
@@ -473,31 +473,31 @@ export function useCustomAuth() {
       }
 
       console.log('✅ Password reset OTP verified successfully with Supabase!')
-      
+
       // Step 2: Auto sign-in the user with the verified session
       if (data.user && data.session) {
         console.log('🔄 Auto signing in user after OTP verification...')
         setUser(data.user)
         await fetchCustomUserData(email)
         console.log('✅ User automatically signed in!')
-        
+
         // Step 3: Now we have a valid session, so we can proceed with password reset
         console.log('🔍 Session created successfully - ready for password change')
       }
-      
+
       // Return success with flag indicating password must be changed
-      return { 
-        data: { 
+      return {
+        data: {
           ...data,
-          email, 
+          email,
           otpCode,
           verified: true,
           autoSignedIn: true,
           mustChangePassword: true, // Flag to force password change
           hasValidSession: !!(data.session), // Confirm session exists
-          message: 'OTP verified successfully. You are now signed in. Please set a new password for security.' 
-        }, 
-        error: null 
+          message: 'OTP verified successfully. You are now signed in. Please set a new password for security.'
+        },
+        error: null
       }
     } catch (err) {
       console.error('Password reset OTP verification error:', err)
@@ -528,7 +528,7 @@ export function useCustomAuth() {
       if (type === 'signup' && data?.user?.email_confirmed_at) {
         try {
           console.log('✅ OTP verified, updating user and creating inventory...')
-          
+
           // Update user verification status
           const { data: userData, error: updateError } = await supabase
             .from('tbl_users')
@@ -545,7 +545,7 @@ export function useCustomAuth() {
           // Automatically create default inventory for verified user
           if (userData?.userID) {
             console.log('📦 Creating default inventory for verified user:', userData.userID)
-            
+
             // Check if user already has an inventory
             const { data: existingInventories } = await supabase
               .from('tbl_inventories')
@@ -555,7 +555,7 @@ export function useCustomAuth() {
 
             if (!existingInventories || existingInventories.length === 0) {
               console.log('📦 No inventory found, creating new one...')
-              
+
               // Create default inventory with quoted column names
               const { data: newInventory, error: invError } = await supabase
                 .from('tbl_inventories')
@@ -655,12 +655,12 @@ export function useCustomAuth() {
 
       console.log('✅ Password reset email sent successfully!')
 
-      return { 
-        data: { 
-          ...data, 
-          message: 'Password reset email sent successfully' 
-        }, 
-        error: null 
+      return {
+        data: {
+          ...data,
+          message: 'Password reset email sent successfully'
+        },
+        error: null
       }
     } catch (err) {
       console.error('❌ Resend password reset OTP error:', err)
@@ -704,7 +704,7 @@ export function useCustomAuth() {
               .from('tbl_users')
               .update({ userPassword: hashedPassword })
               .eq('userID', userData.userID)
-            
+
             console.log('✅ Password updated in custom table as well')
           }
         } catch (customTableError) {
@@ -731,13 +731,13 @@ export function useCustomAuth() {
 
       // Check if user has an active session (should exist from verifyOtp)
       const { data: { session } } = await supabase.auth.getSession()
-      
+
       console.log('🔍 Session check for password change:', {
         hasSession: !!session,
         sessionUser: session?.user?.email,
         sessionType: session?.token_type
       })
-      
+
       if (!session) {
         console.error('❌ No active session found for password change')
         throw new Error('No active session. Please verify your OTP again.')
@@ -747,13 +747,13 @@ export function useCustomAuth() {
 
       // Step 1: Update Supabase Auth password first (now we have a valid session)
       console.log('🔄 Updating Supabase Auth password...')
-      
+
       try {
         // Add timeout to prevent hanging
         const updatePromise = supabase.auth.updateUser({
           password: newPassword
         })
-        
+
         const timeoutPromise = new Promise((_, reject) =>
           setTimeout(() => reject(new Error('Password update timed out after 15 seconds')), 15000)
         )
@@ -771,7 +771,7 @@ export function useCustomAuth() {
             status: authUpdateError.status,
             statusText: authUpdateError.statusText
           })
-          
+
           // Check for specific errors
           if (authUpdateError.message?.includes('New password should be different from the old password')) {
             throw new Error('The new password must be different from your current password. Please choose a different password.')
@@ -780,7 +780,7 @@ export function useCustomAuth() {
           } else if (authUpdateError.message?.includes('timeout')) {
             console.log('⚠️ Password update timed out after 15 seconds')
             console.log('🏠 Assuming password update succeeded - continuing to complete process...')
-            
+
             // Don't throw error, assume success and continue
             // The timeout often means the operation completed but response was delayed
             console.log('✅ Treating timeout as successful password update')
@@ -793,7 +793,7 @@ export function useCustomAuth() {
         }
       } catch (authUpdateError) {
         console.error('❌ Supabase Auth update failed:', authUpdateError)
-        
+
         // If it's a timeout, assume success and continue
         if (authUpdateError.message?.includes('timeout')) {
           console.log('⏰ Timeout detected - assuming password update succeeded')
@@ -806,9 +806,9 @@ export function useCustomAuth() {
 
       // Step 2: Update password in custom table
       console.log('🔄 Updating password in custom table...')
-      
+
       let customTableUpdateSucceeded = false
-      
+
       try {
         // Get user data from our custom table
         const { data: userData, error: userError } = await supabase
@@ -848,18 +848,18 @@ export function useCustomAuth() {
       try {
         // Test if we can still access our session
         const { data: { session: currentSession } } = await supabase.auth.getSession()
-        
+
         if (currentSession) {
           console.log('✅ Session still active after password change')
         } else {
           console.log('⚠️ Session lost after password change - signing back in...')
-          
+
           // Try to sign in with new password
           const { data: newSignIn, error: newSignInError } = await supabase.auth.signInWithPassword({
             email,
             password: newPassword
           })
-          
+
           if (!newSignInError && newSignIn.user) {
             console.log('✅ Successfully signed in with new password!')
             setUser(newSignIn.user)
@@ -880,7 +880,7 @@ export function useCustomAuth() {
       try {
         // Get fresh session data
         const { data: { session: freshSession } } = await supabase.auth.getSession()
-        
+
         if (freshSession?.user) {
           console.log('✅ Fresh session obtained, updating user state')
           setUser(freshSession.user)
@@ -888,13 +888,13 @@ export function useCustomAuth() {
           console.log('✅ Application state reloaded successfully')
         } else {
           console.log('⚠️ No fresh session found, attempting sign-in to restore session')
-          
+
           // Sign in with new password to restore session
           const { data: newSignIn, error: newSignInError } = await supabase.auth.signInWithPassword({
             email,
             password: newPassword
           })
-          
+
           if (!newSignInError && newSignIn.user) {
             console.log('✅ Session restored via sign-in')
             setUser(newSignIn.user)
@@ -907,16 +907,16 @@ export function useCustomAuth() {
         console.log('⚠️ Session restore failed, but password change was successful:', sessionRestoreError)
       }
 
-      return { 
-        data: { 
+      return {
+        data: {
           message: 'Password has been changed successfully. Application state reloaded. You can now use your new password.',
           authUpdated: true,
           customTableUpdated: customTableUpdateSucceeded,
           passwordChanged: true,
           sessionRestored: true,
           redirectToHome: true // Flag to indicate should redirect to home
-        }, 
-        error: null 
+        },
+        error: null
       }
     } catch (err) {
       console.error('❌ Force password change error:', err)
@@ -946,7 +946,7 @@ export function useCustomAuth() {
   const migrateExistingUser = async (email, password, userData = {}) => {
     try {
       const { data: { user } } = await supabase.auth.getUser()
-      
+
       if (!user) {
         throw new Error('No authenticated user found')
       }
@@ -966,7 +966,7 @@ export function useCustomAuth() {
       // Create user record in custom table
       // Hash the password for secure storage
       const hashedPassword = await simpleHash(password)
-      
+
       const { data: newUser, error: insertError } = await supabase
         .from('tbl_users')
         .insert({
@@ -990,6 +990,53 @@ export function useCustomAuth() {
     }
   }
 
+  const updateProfile = async ({ userName, profileAvatar }) => {
+    if (!user?.email) {
+      throw new Error('User is not authenticated')
+    }
+
+    const updates = {}
+
+    if (typeof userName === 'string' && userName.trim()) {
+      updates.userName = userName.trim()
+    }
+
+    if (profileAvatar !== undefined) {
+      updates.profileAvatar = profileAvatar ?? null
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return customUserData
+    }
+
+    const { data, error } = await supabase
+      .from('tbl_users')
+      .update(updates)
+      .eq('userEmail', user.email)
+      .select()
+      .single()
+
+    if (error) {
+      throw error
+    }
+
+    setCustomUserData((prev) => ({
+      ...(prev || {}),
+      ...data,
+    }))
+
+    if (updates.userName) {
+      // Kick off auth metadata sync without blocking profile updates
+      supabase.auth
+        .updateUser({ data: { name: updates.userName } })
+        .catch((metadataError) => {
+          console.log('⚠️ Unable to update auth metadata name:', metadataError.message)
+        })
+    }
+
+    return data
+  }
+
   return {
     user,
     customUserData,
@@ -1008,6 +1055,7 @@ export function useCustomAuth() {
     fetchCustomUserData,
     migrateExistingUser,
     verifyOTP,
-    resendOTP
+    resendOTP,
+    updateProfile,
   }
 }

@@ -29,14 +29,16 @@ import ProfileActions from '../../components/profile/profile-actions';
 import FAQsModal from '../../components/profile/faqs-modal';
 import HowToUseModal from '../../components/profile/how-to-use-modal';
 import TermsPoliciesModal from '../../components/profile/terms-policies-modal';
+import ProfileEditModal from '../../components/profile/profile-edit-modal';
 
 const Profile = () => {
-  const { user, customUserData, signOut, fetchCustomUserData } = useCustomAuth();
+  const { user, customUserData, signOut, fetchCustomUserData, updateProfile } = useCustomAuth();
   const [activeTab, setActiveTab] = useState('scheduled');
   const [profileData, setProfileData] = useState({
     name: 'User',
     email: 'user@example.com',
-    verified: true
+    verified: true,
+    avatar: null,
   });
   const [savedRecipes, setSavedRecipes] = useState([]);
   const [loadingRecipes, setLoadingRecipes] = useState(false);
@@ -48,6 +50,7 @@ const Profile = () => {
   const [faqsModalVisible, setFaqsModalVisible] = useState(false);
   const [howToUseModalVisible, setHowToUseModalVisible] = useState(false);
   const [termsModalVisible, setTermsModalVisible] = useState(false);
+  const [editModalVisible, setEditModalVisible] = useState(false);
 
   useEffect(() => {
     // Update profile data if user information is available
@@ -55,7 +58,8 @@ const Profile = () => {
       setProfileData({
         name: customUserData?.userName || user.email?.split('@')[0] || 'User',
         email: user.email || 'No email available',
-        verified: user.email_confirmed_at !== null
+        verified: user.email_confirmed_at !== null,
+        avatar: customUserData?.profileAvatar || null,
       });
 
       // Load saved recipes when user is available (lazy load - only on mount)
@@ -68,7 +72,7 @@ const Profile = () => {
         loadScheduledRecipes();
       }
     }
-  }, [user, customUserData]);
+  }, [user, customUserData, activeTab]);
 
   const loadSavedRecipes = async () => {
     if (!user?.email) {
@@ -245,6 +249,30 @@ const Profile = () => {
       console.error('Error refreshing profile:', error);
     } finally {
       setRefreshing(false);
+    }
+  };
+
+  const handleEditProfileSave = async ({ name, avatar }) => {
+    if (!user?.email) {
+      return;
+    }
+
+    try {
+      const updated = await updateProfile({ userName: name, profileAvatar: avatar });
+
+      setProfileData((prev) => ({
+        ...prev,
+        name: updated?.userName ?? name,
+        avatar: updated?.profileAvatar ?? avatar ?? null,
+      }));
+
+      setEditModalVisible(false);
+      Alert.alert('Success', 'Profile updated successfully');
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      const errorMessage = error?.message || 'Failed to update profile. Please try again.';
+      Alert.alert('Error', errorMessage);
+    } finally {
     }
   };
 
@@ -485,7 +513,7 @@ const Profile = () => {
           </View>
 
           {/* Profile Section */}
-          <ProfileHeader profileData={profileData} />
+          <ProfileHeader profileData={profileData} onEditPress={() => setEditModalVisible(true)} />
 
           {/* Tabs Navigation */}
           <ProfileTabs activeTab={activeTab} onTabChange={handleTabChange} />
@@ -494,11 +522,11 @@ const Profile = () => {
           {renderTabContent()}
 
           {/* Account Actions */}
-          <ProfileActions 
-          onFAQPress={() => setFaqsModalVisible(true)}
-          onHowToUsePress={() => setHowToUseModalVisible(true)}
-          onTermsPress={() => setTermsModalVisible(true)}
-        />
+          <ProfileActions
+            onFAQPress={() => setFaqsModalVisible(true)}
+            onHowToUsePress={() => setHowToUseModalVisible(true)}
+            onTermsPress={() => setTermsModalVisible(true)}
+          />
 
           {/* Logout Button */}
           <TouchableOpacity
@@ -511,21 +539,31 @@ const Profile = () => {
           <Text style={styles.versionText}>Version 1.0 | Made by Group 1 4ITH</Text>
         </ScrollView>
 
-      {/* Modals */}
-      <FAQsModal
-        visible={faqsModalVisible}
-        onClose={() => setFaqsModalVisible(false)}
-      />
-      
-      <HowToUseModal
-        visible={howToUseModalVisible}
-        onClose={() => setHowToUseModalVisible(false)}
-      />
-      
-      <TermsPoliciesModal
-        visible={termsModalVisible}
-        onClose={() => setTermsModalVisible(false)}
-      />
+        {/* Modals */}
+        <FAQsModal
+          visible={faqsModalVisible}
+          onClose={() => setFaqsModalVisible(false)}
+        />
+
+        <HowToUseModal
+          visible={howToUseModalVisible}
+          onClose={() => setHowToUseModalVisible(false)}
+        />
+
+        <TermsPoliciesModal
+          visible={termsModalVisible}
+          onClose={() => setTermsModalVisible(false)}
+        />
+
+        {editModalVisible && (
+          <ProfileEditModal
+            visible
+            initialName={profileData.name}
+            initialAvatar={profileData.avatar}
+            onClose={() => setEditModalVisible(false)}
+            onSave={handleEditProfileSave}
+          />
+        )}
       </SafeAreaView>
     </AuthGuard>
   );

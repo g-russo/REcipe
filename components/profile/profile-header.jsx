@@ -1,24 +1,30 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
+import { getAvatarSource } from './avatar-options';
 
-export default function ProfileHeader({ profileData }) {
+export default function ProfileHeader({ profileData, onEditPress }) {
+  const avatarSource = profileData?.avatar ? getAvatarSource(profileData.avatar) : null;
+  const displayInitial = profileData?.name?.charAt(0)?.toUpperCase() || 'U';
+
   return (
     <View style={styles.profileContainer}>
       <View style={styles.profileSection}>
         <View style={styles.profileImage}>
-          <Text style={styles.profileInitial}>
-            {profileData.name.charAt(0).toUpperCase()}
-          </Text>
+          {avatarSource ? (
+            <Image source={avatarSource} style={styles.profileAvatarImage} resizeMode="contain" />
+          ) : (
+            <Text style={styles.profileInitial}>{displayInitial}</Text>
+          )}
         </View>
 
         <View style={styles.profileInfo}>
-          <Text style={styles.profileName}>{profileData.name}</Text>
-          <Text style={styles.profileEmail}>{profileData.email}</Text>
+          <Text style={styles.profileName}>{profileData?.name}</Text>
+          <Text style={styles.profileEmail}>{profileData?.email}</Text>
         </View>
 
-        <TouchableOpacity style={styles.editButton}>
+        <TouchableOpacity style={styles.editButton} onPress={onEditPress}>
           <Ionicons name="pencil" size={wp('4%')} color="#fff" />
         </TouchableOpacity>
       </View>
@@ -53,11 +59,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#D3D3D3',
     justifyContent: 'center',
     alignItems: 'center',
+    overflow: 'hidden',
   },
   profileInitial: {
     fontSize: wp('6%'),
     fontWeight: '500',
     color: '#888',
+  },
+  profileAvatarImage: {
+    width: '100%',
+    height: '100%',
   },
   profileInfo: {
     flex: 1,
