@@ -1,29 +1,18 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const IS_SMALL_SCREEN = SCREEN_WIDTH < 375;
+import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 
 /**
  * Pantry Header Component
- * Displays the pantry header with back button and search
+ * Displays the pantry header with search
  */
-const PantryHeader = ({ onSearchPress, onBackPress }) => {
+const PantryHeader = ({ onSearchPress }) => {
   return (
     <View style={styles.header}>
-      <TouchableOpacity 
-        style={styles.backButton}
-        onPress={onBackPress}
-      >
-        <Ionicons name="chevron-back" size={24} color="#333" />
-      </TouchableOpacity>
-      <Text style={styles.headerTitle}>Your Pantry</Text>
-      <TouchableOpacity 
-        style={styles.iconButton}
-        onPress={onSearchPress}
-      >
-        <Ionicons name="search-outline" size={22} color="#555" />
+      <Text style={styles.headerTitle}>Pantry</Text>
+      <TouchableOpacity onPress={onSearchPress} style={styles.searchButton}>
+        <Ionicons name="search-outline" size={wp('6%')} color="#333" />
       </TouchableOpacity>
     </View>
   );
@@ -34,22 +23,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: wp('5%'),
+    paddingTop: hp('7%'),
+    paddingBottom: hp('2%'),
     backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  backButton: {
-    padding: 8,
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
+    fontSize: wp('7.5%'),
+    fontWeight: 'bold',
+    color: '#000',
   },
-  iconButton: {
-    padding: 8,
+  searchButton: {
+    padding: wp('2%'),
   },
 });
 
