@@ -18,6 +18,10 @@ import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+const ITEM_NAME_REGEX = /^[a-zA-Z0-9\s'-]+$/;
+const ITEM_NAME_MIN_LENGTH = 2;
+const ITEM_NAME_MAX_LENGTH = 60;
+
 /**
  * Item Form Modal Component
  * Reusable modal for adding/editing pantry items
@@ -46,6 +50,7 @@ const ItemFormModal = ({
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
   const [unitModalVisible, setUnitModalVisible] = useState(false);
+  const [formErrors, setFormErrors] = useState({});
 
   // Simplified food categories (matching group categories)
   const foodCategories = [
@@ -101,11 +106,103 @@ const ItemFormModal = ({
     }
   };
 
-  // Update form field (persist draft)
+  const sanitizeQuantityInput = (value) => {
+    const stringValue = value?.toString() ?? '';
+    const sanitized = stringValue.replace(/[^0-9.]/g, '');
+    if (!sanitized) return '';
+    const [whole, ...decimalParts] = sanitized.split('.');
+    const decimal = decimalParts.join('');
+    return decimal ? `${whole}.${decimal}` : whole;
+  };
+
+  const validateItemName = (value) => {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return 'Item name is required';
+    }
+    if (trimmed.length < ITEM_NAME_MIN_LENGTH) {
+      return `Item name must be at least ${ITEM_NAME_MIN_LENGTH} characters`;
+    }
+    if (trimmed.length > ITEM_NAME_MAX_LENGTH) {
+      return `Item name must be ${ITEM_NAME_MAX_LENGTH} characters or fewer`;
+    }
+    if (!ITEM_NAME_REGEX.test(trimmed)) {
+      return 'Only letters, numbers, spaces, hyphen, and apostrophe are allowed';
+    }
+    return '';
+  };
+
+  const validateQuantity = (value) => {
+    if (value === null || value === undefined) {
+      return 'Quantity is required';
+    }
+    const trimmed = sanitizeQuantityInput(value).trim();
+    if (!trimmed) {
+      return 'Quantity is required';
+    }
+    const numericValue = Number(trimmed);
+    if (Number.isNaN(numericValue)) {
+      return 'Quantity must be a number';
+    }
+    if (numericValue <= 0) {
+      return 'Quantity must be greater than 0';
+    }
+    return '';
+  };
+
+  const validateCategory = (value) => (value ? '' : 'Category is required');
+  const validateUnit = (value) => (value ? '' : 'Unit is required');
+  const validateExpiration = (value) => (value ? '' : 'Expiration date is required');
+
+  const fieldValidators = {
+    itemName: validateItemName,
+    itemCategory: validateCategory,
+    quantity: validateQuantity,
+    unit: validateUnit,
+    itemExpiration: validateExpiration,
+  };
+
+  const setFieldError = (field, message) => {
+    setFormErrors((prev) => {
+      if (!message && !prev[field]) {
+        return prev;
+      }
+      const next = { ...prev };
+      if (message) {
+        next[field] = message;
+      } else {
+        delete next[field];
+      }
+      return next;
+    });
+  };
+
+  const validateForm = () => {
+    const nextErrors = {};
+    Object.entries(fieldValidators).forEach(([field, validator]) => {
+      const error = validator(formData[field] ?? '');
+      if (error) {
+        nextErrors[field] = error;
+      }
+    });
+    setFormErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+
   const updateField = (field, value) => {
     const next = { ...formData, [field]: value };
     setFormData(next);
+
+    if (fieldValidators[field]) {
+      setFieldError(field, fieldValidators[field](value));
+    }
+
     saveDraft(next);
+  };
+
+  const handleQuantityChange = (text) => {
+    const sanitized = sanitizeQuantityInput(text);
+    updateField('quantity', sanitized);
   };
 
   // Get current date
@@ -194,22 +291,22 @@ const ItemFormModal = ({
   // Validate and save (preserve draft on invalid, clear on success)
   const handleSave = async () => {
     console.log('📋 Item Form - Validating and saving...', formData);
-    if (!formData.itemName.trim()) {
-      console.log('❌ Validation failed: Missing item name');
+    const isValid = validateForm();
+    if (!isValid) {
+      console.log('❌ Validation failed: Missing required fields');
       await saveDraft();
-      Alert.alert('Error', 'Please enter an item name');
-      return;
-    }
-    if (!formData.itemCategory) {
-      console.log('❌ Validation failed: Missing category');
-      await saveDraft();
-      Alert.alert('Error', 'Please select a category');
+      Alert.alert('Missing Information', 'Please complete all required fields. Item description is optional.');
       return;
     }
 
     console.log('✅ Validation passed, calling onSave...');
     try {
-      await onSave(formData);
+      const saveResult = await onSave(formData);
+      if (saveResult?.status === 'duplicate-cancelled') {
+        console.log('ℹ️ Duplicate detected; keeping form open for user adjustments.');
+        await saveDraft();
+        return;
+      }
       await clearDraft();
       // Reset after successful save
       setFormData({
@@ -222,6 +319,7 @@ const ItemFormModal = ({
         itemExpiration: '',
         imageURL: null,
       });
+      setFormErrors({});
       // Also ensure any pickers/modals are closed
       setCategoryModalVisible(false);
       setUnitModalVisible(false);
@@ -252,6 +350,7 @@ const ItemFormModal = ({
       itemExpiration: '',
       imageURL: null,
     });
+    setFormErrors({});
     await clearDraft();
     onClose();
   };
@@ -337,8 +436,12 @@ const ItemFormModal = ({
                   placeholder="Item Name *"
                   placeholderTextColor="#999"
                   value={formData.itemName}
+                  maxLength={ITEM_NAME_MAX_LENGTH}
                   onChangeText={(text) => updateField('itemName', text)}
                 />
+                {!!formErrors.itemName && (
+                  <Text style={styles.errorText}>{formErrors.itemName}</Text>
+                )}
                 
                 {/* Category */}
                 <TouchableOpacity 
@@ -350,6 +453,9 @@ const ItemFormModal = ({
                   </Text>
                   <Ionicons name="chevron-down" size={20} color="#999" />
                 </TouchableOpacity>
+                {!!formErrors.itemCategory && (
+                  <Text style={styles.errorText}>{formErrors.itemCategory}</Text>
+                )}
                 
                 {/* Quantity and Unit Row */}
                 <View style={styles.formRow}>
@@ -359,10 +465,13 @@ const ItemFormModal = ({
                       style={styles.smallInput}
                       placeholder="0"
                       placeholderTextColor="#999"
-                      keyboardType="numeric"
-                      value={formData.quantity.toString()}
-                      onChangeText={(text) => updateField('quantity', text)}
+                      keyboardType="decimal-pad"
+                      value={formData.quantity?.toString() ?? ''}
+                      onChangeText={handleQuantityChange}
                     />
+                    {!!formErrors.quantity && (
+                      <Text style={styles.errorText}>{formErrors.quantity}</Text>
+                    )}
                   </View>
                   
                   <View style={styles.formColumn}>
@@ -376,6 +485,9 @@ const ItemFormModal = ({
                       </Text>
                       <Ionicons name="chevron-down" size={20} color="#999" />
                     </TouchableOpacity>
+                    {!!formErrors.unit && (
+                      <Text style={styles.errorText}>{formErrors.unit}</Text>
+                    )}
                   </View>
                 </View>
                 
@@ -402,6 +514,9 @@ const ItemFormModal = ({
                       <Ionicons name="calendar-outline" size={20} color="#999" />
                     </TouchableOpacity>
                   </View>
+                  {!!formErrors.itemExpiration && (
+                    <Text style={styles.errorText}>{formErrors.itemExpiration}</Text>
+                  )}
                 </View>
                 
                 {showDatePicker && (
@@ -741,6 +856,12 @@ const styles = StyleSheet.create({
   categoryOptionText: {
     fontSize: 16,
     color: '#333',
+  },
+  errorText: {
+    color: '#d9534f',
+    marginTop: 4,
+    marginBottom: 10,
+    fontSize: 13,
   },
 });
 
