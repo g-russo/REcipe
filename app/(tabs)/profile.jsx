@@ -30,6 +30,7 @@ import FAQsModal from '../../components/profile/faqs-modal';
 import HowToUseModal from '../../components/profile/how-to-use-modal';
 import TermsPoliciesModal from '../../components/profile/terms-policies-modal';
 import ProfileEditModal from '../../components/profile/profile-edit-modal';
+import RestartModal from '../../components/profile/restart-modal';
 
 const Profile = () => {
   const { user, customUserData, signOut, fetchCustomUserData, updateProfile } = useCustomAuth();
@@ -51,6 +52,7 @@ const Profile = () => {
   const [howToUseModalVisible, setHowToUseModalVisible] = useState(false);
   const [termsModalVisible, setTermsModalVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
+  const [restartModalVisible, setRestartModalVisible] = useState(false);
 
   useEffect(() => {
     // Update profile data if user information is available
@@ -267,7 +269,7 @@ const Profile = () => {
       }));
 
       setEditModalVisible(false);
-      Alert.alert('Success', 'Profile updated successfully');
+      setRestartModalVisible(true);
     } catch (error) {
       console.error('Error updating profile:', error);
       const errorMessage = error?.message || 'Failed to update profile. Please try again.';
@@ -564,6 +566,8 @@ const Profile = () => {
             onSave={handleEditProfileSave}
           />
         )}
+        {/* Restart Modal */}
+        <RestartModal visible={restartModalVisible} onClose={() => setRestartModalVisible(false)} />
       </SafeAreaView>
     </AuthGuard>
   );
