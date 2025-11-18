@@ -16,6 +16,7 @@ import cacheService from '../services/supabase-cache-service';
 import EdamamService from '../services/edamam-service';
 import RecipeMatcherService from '../services/recipe-matcher-service';
 import PantryService from '../services/pantry-service';
+import recipeImageCacheService from '../services/recipe-image-cache-service';
 import { useCustomAuth } from '../hooks/use-custom-auth';
 import AuthGuard from '../components/auth-guard';
 
@@ -91,6 +92,11 @@ const RecipeDetail = () => {
         const parsedRecipe = JSON.parse(recipeData);
         setRecipe(parsedRecipe);
         setLoading(false);
+        
+        // Prefetch image to Supabase Storage if available
+        if (parsedRecipe.image) {
+          recipeImageCacheService.getCachedImageUrl(parsedRecipe.image);
+        }
         
         // Fetch similar recipes
         fetchSimilarRecipes(parsedRecipe);
@@ -242,7 +248,12 @@ const RecipeDetail = () => {
   const fetchInstructions = async (recipeUrl) => {
     setLoadingInstructions(true);
     try {
-      const result = await EdamamService.getRecipeInstructions(recipeUrl);
+      // Use Supabase cache service with full web scraping fallback
+      const result = await cacheService.getRecipeInstructions(
+        recipeUrl,
+        EdamamService.getRecipeInstructions.bind(EdamamService)
+      );
+      
       if (result.success) {
         setInstructions(result.instructions);
         
@@ -270,8 +281,12 @@ const RecipeDetail = () => {
   const preloadInstructions = async (recipeUrl) => {
     setPreloadingInstructions(true);
     try {
-      // Quietly preload instructions in background
-      const result = await EdamamService.getRecipeInstructions(recipeUrl);
+      // Quietly preload instructions in background using Supabase cache
+      const result = await cacheService.getRecipeInstructions(
+        recipeUrl,
+        EdamamService.getRecipeInstructions.bind(EdamamService)
+      );
+      
       if (result.success) {
         // Store preloaded instructions
         setInstructions(result.instructions);

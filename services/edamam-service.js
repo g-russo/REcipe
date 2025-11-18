@@ -314,13 +314,50 @@ class EdamamService {
   }
 
   /**
-   * Extract recipe instructions from the recipe URL using aggressive web scraping
+   * FAST scraping method for APK builds - prioritizes speed over completeness
+   * @param {string} recipeUrl - Recipe URL
+   * @returns {Promise<Object>} Instructions result
+   */
+  static async getRecipeInstructionsFast(recipeUrl) {
+    try {
+      console.log('⚡ Fast instruction extraction for:', recipeUrl);
+      
+      // Try only the fastest method - direct fetch with JSON-LD parsing
+      const htmlContent = await this.optimizedDirectFetch(recipeUrl);
+      if (htmlContent) {
+        // Try JSON-LD extraction (fastest method)
+        const instructions = this.extractJsonLdInstructions(htmlContent);
+        if (instructions.length > 0) {
+          console.log(`✅ Fast extraction successful: ${instructions.length} steps`);
+          return {
+            success: true,
+            instructions,
+            source: 'json-ld'
+          };
+        }
+      }
+      
+      // If fast method fails, return immediately with fallback
+      return {
+        success: false,
+        needsFullScrape: true
+      };
+    } catch (error) {
+      return {
+        success: false,
+        needsFullScrape: true
+      };
+    }
+  }
+
+  /**
+   * Extract recipe instructions from the recipe URL using OPTIMIZED web scraping
    * @param {string} recipeUrl - The URL of the original recipe
    * @returns {Promise<Object>} Instructions result object
    */
   static async getRecipeInstructions(recipeUrl) {
     try {
-      console.log('🔍 Starting aggressive instruction extraction for:', recipeUrl);
+      console.log('🔍 Starting optimized instruction extraction for:', recipeUrl);
       
       // Check cache first
       const cachedInstructions = await this.getCachedInstructions(recipeUrl);
@@ -333,35 +370,33 @@ class EdamamService {
         };
       }
 
-      // AGGRESSIVE WEB SCRAPING - Try multiple strategies
-      console.log('🚀 Starting aggressive web scraping...');
+      // OPTIMIZED WEB SCRAPING with 10-second timeout
+      console.log('🚀 Starting optimized web scraping with timeout...');
       
-      // Strategy 1: Site-specific optimized scraping
-      const siteSpecificResult = await this.tryMultipleScrapeStrategies(recipeUrl);
-      if (siteSpecificResult.success) {
-        console.log('� Site-specific scraping successful!');
-        await this.cacheInstructions(recipeUrl, siteSpecificResult.instructions);
-        return siteSpecificResult;
+      // Try scraping with timeout wrapper
+      const scrapingResult = await Promise.race([
+        this.tryMultipleScrapeStrategies(recipeUrl),
+        new Promise((resolve) => 
+          setTimeout(() => {
+            console.log('⏱️ Scraping timeout (10s) - will use fallback');
+            resolve({ success: false, timeout: true });
+          }, 10000)
+        )
+      ]);
+      
+      if (scrapingResult.success && scrapingResult.instructions && scrapingResult.instructions.length > 0) {
+        console.log(`✅ Scraping successful: ${scrapingResult.instructions.length} steps`);
+        await this.cacheInstructions(recipeUrl, scrapingResult.instructions);
+        return scrapingResult;
       }
       
-      // Strategy 2: Multiple proxy approaches with retries
-      const proxyResult = await this.aggressiveProxyScraping(recipeUrl);
-      if (proxyResult.success) {
-        console.log('🌐 Proxy scraping successful!');
-        await this.cacheInstructions(recipeUrl, proxyResult.instructions);
-        return proxyResult;
+      // Only use fallback if scraping fails or times out
+      if (scrapingResult.timeout) {
+        console.log('⏱️ Scraping timed out - using smart fallback');
+      } else {
+        console.log('⚠️ Scraping failed - using smart fallback');
       }
       
-      // Strategy 3: Alternative parsing approaches
-      const alternativeResult = await this.alternativeParsingApproach(recipeUrl);
-      if (alternativeResult.success) {
-        console.log('� Alternative parsing successful!');
-        await this.cacheInstructions(recipeUrl, alternativeResult.instructions);
-        return alternativeResult;
-      }
-      
-      // Only use fallback if ALL aggressive attempts fail
-      console.log('⚠️ All aggressive scraping attempts failed, using smart fallback');
       const fallbackInstructions = this.generateSmartFallback(recipeUrl);
       await this.cacheInstructions(recipeUrl, fallbackInstructions);
       
@@ -379,25 +414,35 @@ class EdamamService {
   }
 
   /**
-   * Try multiple scraping strategies with site-specific optimizations
+   * Try multiple scraping strategies with site-specific optimizations (OPTIMIZED)
    * @param {string} recipeUrl - Recipe URL
    * @returns {Promise<Object>} Scraping result
    */
   static async tryMultipleScrapeStrategies(recipeUrl) {
+    // Only use the fastest strategy with timeout
     const strategies = [
-      () => this.scrapeSiteSpecific(recipeUrl),
-      () => this.scrapeWithMultipleProxies(recipeUrl),
-      () => this.scrapeWithAlternativeHeaders(recipeUrl),
-      () => this.scrapeWithMobileUserAgent(recipeUrl)
+      () => this.scrapeSiteSpecific(recipeUrl)
     ];
 
     for (let i = 0; i < strategies.length; i++) {
       try {
         console.log(`🎯 Trying scraping strategy ${i + 1}...`);
-        const result = await strategies[i]();
-        if (result.success && result.instructions.length > 0) {
-          console.log(`✅ Strategy ${i + 1} successful!`);
+        
+        // Add 8-second timeout per strategy
+        const result = await Promise.race([
+          strategies[i](),
+          new Promise((resolve) => 
+            setTimeout(() => resolve({ success: false, strategyTimeout: true }), 8000)
+          )
+        ]);
+        
+        if (result.success && result.instructions && result.instructions.length > 0) {
+          console.log(`✅ Strategy ${i + 1} successful with ${result.instructions.length} steps!`);
           return result;
+        }
+        
+        if (result.strategyTimeout) {
+          console.log(`⏱️ Strategy ${i + 1} timed out`);
         }
       } catch (error) {
         console.log(`❌ Strategy ${i + 1} failed:`, error.message);
@@ -454,7 +499,7 @@ class EdamamService {
   }
 
   /**
-   * Fetch content using the most reliable method available
+   * Fetch content using the most reliable method available (OPTIMIZED)
    * @param {string} url - URL to fetch
    * @returns {Promise<string|null>} HTML content
    */
@@ -463,14 +508,19 @@ class EdamamService {
       // Method 1: Multiple reliable proxies in parallel
       () => this.parallelProxyFetch(url),
       // Method 2: Direct fetch with optimal headers
-      () => this.optimizedDirectFetch(url),
-      // Method 3: Backup proxies
-      () => this.backupProxyFetch(url)
+      () => this.optimizedDirectFetch(url)
     ];
 
     for (const method of methods) {
       try {
-        const content = await method();
+        // Add 5-second timeout per method
+        const content = await Promise.race([
+          method(),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Method timeout')), 5000)
+          )
+        ]);
+        
         if (content && content.length > 200) {
           return content;
         }
