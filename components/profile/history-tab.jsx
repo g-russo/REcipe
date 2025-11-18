@@ -124,7 +124,7 @@ export default function HistoryTab({
             </Text>
 
             <View style={styles.recipeMeta}>
-              <Ionicons name="checkmark-circle" size={12} color="#4CAF50" />
+              <Ionicons name="checkmark-circle" size={12} color="#81A969" />
               <Text style={styles.recipeMetaText}>
                 {formatDate(item.completedAt)}
               </Text>
@@ -146,7 +146,7 @@ export default function HistoryTab({
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#4CAF50" />
+        <ActivityIndicator size="large" color="#81A969" />
         <Text style={styles.loadingText}>Loading history...</Text>
       </View>
     );
@@ -225,7 +225,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   searchButton: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: '#81A969',
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 20,
@@ -316,7 +316,7 @@ const styles = StyleSheet.create({
   },
   recipeMetaText: {
     fontSize: 11,
-    color: '#4CAF50',
+    color: '#81A969',
     fontWeight: '500',
   },
   removeButton: {
