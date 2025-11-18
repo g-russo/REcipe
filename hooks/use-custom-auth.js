@@ -90,6 +90,9 @@ export function useCustomAuth() {
     try {
       setLoading(true)
 
+      console.log('📝 Starting sign up process...')
+      console.log('📧 Email:', email)
+
       // First, create the auth user (this will trigger OTP email via Supabase)
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
@@ -103,6 +106,7 @@ export function useCustomAuth() {
       })
 
       if (authError) {
+        console.error('❌ Auth signup error:', authError)
         // Handle rate limiting specifically
         if (authError.message?.includes('email rate limit exceeded')) {
           const rateLimitError = new Error('Too many sign-up attempts. Please wait 15 minutes before trying again, or use a different email address.')
@@ -180,8 +184,20 @@ export function useCustomAuth() {
         } else {
           console.log('✅ Custom user created successfully:', customUserData)
           console.log('🎉 User now exists in BOTH Supabase auth AND custom tbl_users table!')
-          console.log('📧 Supabase will send OTP email for verification')
         }
+      }
+
+      // Log email confirmation details
+      if (authData?.user) {
+        console.log('✅ Auth user created:', authData.user.id)
+        console.log('📧 Verification email should be sent to:', email)
+        console.log('📬 Email confirmed at:', authData.user.email_confirmed_at || 'NOT YET CONFIRMED')
+        console.log('📬 Confirmation sent at:', authData.user.confirmation_sent_at || 'NOT SENT')
+        console.log('⚠️ If you don\'t receive email:')
+        console.log('   1. Check spam/junk folder')
+        console.log('   2. Check Supabase Dashboard > Authentication > Email Templates')
+        console.log('   3. Verify "Enable email confirmations" is ON in Auth Settings')
+        console.log('   4. Check Auth Logs in Supabase Dashboard')
       }
 
       return { data: authData, error: authError }
@@ -600,14 +616,30 @@ export function useCustomAuth() {
     try {
       setLoading(true)
 
+      console.log('🔄 Attempting to resend OTP...')
+      console.log('📧 Email:', email)
+      console.log('📝 Type:', type)
+
       const { data, error } = await supabase.auth.resend({
         type,
         email
       })
 
+      if (error) {
+        console.error('❌ Resend OTP failed:', error)
+        console.error('Error details:', {
+          message: error.message,
+          status: error.status,
+          code: error.code
+        })
+      } else {
+        console.log('✅ OTP resend request sent successfully!')
+        console.log('📬 Check your email (including spam folder)')
+      }
+
       return { data, error }
     } catch (err) {
-      console.error('Resend OTP error:', err)
+      console.error('❌ Resend OTP error:', err)
       return { data: null, error: err }
     } finally {
       setLoading(false)

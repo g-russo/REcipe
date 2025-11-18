@@ -31,6 +31,7 @@ import HowToUseModal from '../../components/profile/how-to-use-modal';
 import TermsPoliciesModal from '../../components/profile/terms-policies-modal';
 import ProfileEditModal from '../../components/profile/profile-edit-modal';
 import RestartModal from '../../components/profile/restart-modal';
+import { LogoutAlert } from '../../components/common/app-alert';
 
 const Profile = () => {
   const { user, customUserData, signOut, fetchCustomUserData, updateProfile } = useCustomAuth();
@@ -53,6 +54,7 @@ const Profile = () => {
   const [termsModalVisible, setTermsModalVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [restartModalVisible, setRestartModalVisible] = useState(false);
+  const [logoutAlertVisible, setLogoutAlertVisible] = useState(false);
 
   useEffect(() => {
     // Update profile data if user information is available
@@ -279,26 +281,19 @@ const Profile = () => {
   };
 
   const handleLogout = async () => {
-    Alert.alert(
-      'Log out',
-      'Are you sure you want to log out?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Log out',
-          onPress: async () => {
-            try {
-              await signOut();
-              router.replace('/signin');
-            } catch (error) {
-              console.error('Logout error:', error);
-              Alert.alert('Error', 'Failed to log out. Please try again.');
-            }
-          },
-          style: 'destructive'
-        }
-      ]
-    );
+    setLogoutAlertVisible(true);
+  };
+
+  const confirmLogout = async () => {
+    try {
+      await signOut();
+      router.replace('/signin');
+    } catch (error) {
+      console.error('Logout error:', error);
+      Alert.alert('Error', 'Failed to log out. Please try again.');
+    } finally {
+      setLogoutAlertVisible(false);
+    }
   };
 
   const handleBack = () => {
@@ -568,6 +563,12 @@ const Profile = () => {
         )}
         {/* Restart Modal */}
         <RestartModal visible={restartModalVisible} onClose={() => setRestartModalVisible(false)} />
+
+        <LogoutAlert
+          visible={logoutAlertVisible}
+          onConfirm={confirmLogout}
+          onCancel={() => setLogoutAlertVisible(false)}
+        />
       </SafeAreaView>
     </AuthGuard>
   );
@@ -634,6 +635,18 @@ const styles = StyleSheet.create({
     fontSize: wp('3%'),
     color: '#aaa',
     marginBottom: hp('3%'),
+  },
+  modalButton: {
+    backgroundColor: '#81A969',
+    paddingVertical: hp('2%'),
+    borderRadius: wp('8%'),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalButtonText: {
+    fontSize: wp('4%'),
+    color: '#fff',
+    fontWeight: '600',
   },
 });
 

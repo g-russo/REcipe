@@ -13,14 +13,14 @@ import {
   StatusBar
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import Modal from 'react-native-modal';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { useCustomAuth } from '../hooks/use-custom-auth';
 import { router } from 'expo-router';
 import { globalStyles } from '../assets/css/globalStyles';
 import { signupStyles } from '../assets/css/signupStyles';
 import TopographicBackground from '../components/TopographicBackground';
-import { AlertCircle, CheckCircle } from 'lucide-react-native';
+import AppAlert from '../components/common/app-alert';
+import rateLimiterService from '../services/rate-limiter-service';
 
 const SignUp = () => {
   const [name, setName] = useState('');
@@ -36,10 +36,7 @@ const SignUp = () => {
   const [confirmPasswordFocused, setConfirmPasswordFocused] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
-  const [showErrorModal, setShowErrorModal] = useState(false);
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [successMessage, setSuccessMessage] = useState('');
+  const [alert, setAlert] = useState({ visible: false, type: 'info', message: '' });
   const [nameError, setNameError] = useState('');
   const [birthdateError, setBirthdateError] = useState('');
   const [emailError, setEmailError] = useState('');
@@ -51,13 +48,11 @@ const SignUp = () => {
 
   // Custom styled alert function
   const showStyledError = (message) => {
-    setErrorMessage(message);
-    setShowErrorModal(true);
+    setAlert({ visible: true, type: 'error', message, actionable: true });
   };
 
   const showStyledSuccess = (message) => {
-    setSuccessMessage(message);
-    setShowSuccessModal(true);
+    setAlert({ visible: true, type: 'success', message, actionable: true });
   };
 
   useEffect(() => {
@@ -123,7 +118,7 @@ const SignUp = () => {
     const hasUppercase = /[A-Z]/.test(password);
     const hasLowercase = /[a-z]/.test(password);
     const hasNumber = /\d/.test(password);
-    const hasSpecialChar = /[!@#$%^&*(),.?":{}|<>]/.test(password);
+    const hasSpecialChar = /[!@#$%^&*(),.?":{}|<>_]/.test(password);
 
     return minLength && hasUppercase && hasLowercase && hasNumber && hasSpecialChar;
   };
@@ -161,7 +156,7 @@ const SignUp = () => {
 
     // Days in each month (accounting for leap years)
     const daysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-    
+
     // Check for leap year
     const isLeapYear = (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
     if (isLeapYear) {
@@ -170,9 +165,9 @@ const SignUp = () => {
 
     // Validate day
     if (day < 1 || day > daysInMonth[month - 1]) {
-      return { 
-        valid: false, 
-        message: `Invalid day for the selected month. ${month === 2 ? (isLeapYear ? 'February has 29 days in ' + year : 'February has 28 days in ' + year) : 'Please enter a valid day'}` 
+      return {
+        valid: false,
+        message: `Invalid day for the selected month. ${month === 2 ? (isLeapYear ? 'February has 29 days in ' + year : 'February has 28 days in ' + year) : 'Please enter a valid day'}`
       };
     }
 
@@ -181,7 +176,7 @@ const SignUp = () => {
     const today = new Date();
     let age = today.getFullYear() - birthDate.getFullYear();
     const monthDiff = today.getMonth() - birthDate.getMonth();
-    
+
     if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
       age--;
     }
@@ -195,6 +190,19 @@ const SignUp = () => {
   };
 
   const handleSignUp = async () => {
+    // Check IP-based rate limiting first (prevents spam/DoS)
+    const clientIP = await rateLimiterService.getClientIP();
+    const rateLimitCheck = rateLimiterService.checkRateLimit(clientIP);
+
+    if (!rateLimitCheck.allowed) {
+      if (rateLimitCheck.reason === 'IP_BLOCKED') {
+        showStyledError('Too many requests from this network. Please try again later.');
+      } else if (rateLimitCheck.reason === 'RATE_LIMIT_EXCEEDED') {
+        showStyledError('Too many signup attempts. Please try again in a few minutes.');
+      }
+      return;
+    }
+
     // Clear all errors first
     setNameError('');
     setBirthdateError('');
@@ -535,173 +543,34 @@ const SignUp = () => {
         </ScrollView>
       </Animated.View>
 
-      {/* Error Modal */}
-      <Modal
-        isVisible={showErrorModal}
-        onBackdropPress={() => setShowErrorModal(false)}
-        onBackButtonPress={() => setShowErrorModal(false)}
-        animationIn="fadeIn"
-        animationOut="fadeOut"
-        animationInTiming={300}
-        animationOutTiming={300}
-        backdropTransitionInTiming={300}
-        backdropTransitionOutTiming={300}
-        backdropOpacity={0.5}
-        useNativeDriver={true}
-        hideModalContentWhileAnimating={true}
-        style={{ margin: 0, justifyContent: 'center', alignItems: 'center' }}
-      >
-        <View style={{
-          backgroundColor: 'white',
-          borderRadius: wp('4%'),
-          padding: wp('6%'),
-          width: wp('85%'),
-          maxWidth: 400,
-        }}>
-          <View style={{ alignItems: 'center', marginBottom: hp('2%') }}>
-            <View style={{
-              width: wp('15%'),
-              height: wp('15%'),
-              borderRadius: wp('7.5%'),
-              backgroundColor: '#FFEBEE',
-              justifyContent: 'center',
-              alignItems: 'center',
-              marginBottom: hp('1.5%')
-            }}>
-              <AlertCircle size={wp('8%')} color="#E74C3C" />
-            </View>
-            <Text style={{
-              fontSize: wp('5%'),
-              fontWeight: '600',
-              color: '#2C3E50',
-              marginBottom: hp('1%')
-            }}>
-              Error
-            </Text>
-          </View>
-
-          <Text style={{
-            fontSize: wp('4%'),
-            color: '#5D6D7E',
-            textAlign: 'center',
-            lineHeight: wp('5.5%'),
-            marginBottom: hp('3%')
-          }}>
-            {errorMessage}
-          </Text>
-
-          <TouchableOpacity
-            style={{
-              backgroundColor: '#E74C3C',
-              paddingVertical: hp('1.5%'),
-              borderRadius: wp('2%'),
-              alignItems: 'center'
-            }}
-            onPress={() => setShowErrorModal(false)}
-          >
-            <Text style={{
-              color: 'white',
-              fontSize: wp('4.2%'),
-              fontWeight: '600'
-            }}>
-              OK
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </Modal>
-
-      {/* Success Modal */}
-      <Modal
-        isVisible={showSuccessModal}
-        onBackdropPress={() => {
-          setShowSuccessModal(false);
-          router.push({
-            pathname: '/otp-verification',
-            params: { email }
-          });
+      {/* AppAlert rendered last so it overlays other content */}
+      <AppAlert
+        visible={alert.visible}
+        type={alert.type}
+        message={alert.message}
+        actionable={alert.actionable}
+        actionLabel={alert.type === 'success' ? 'Continue' : 'OK'}
+        onAction={() => {
+          if (alert.type === 'success') {
+            setAlert({ visible: false, type: 'info', message: '' });
+            router.push({
+              pathname: '/otp-verification',
+              params: { email }
+            });
+          } else {
+            setAlert({ visible: false, type: 'info', message: '' });
+          }
         }}
-        onBackButtonPress={() => {
-          setShowSuccessModal(false);
-          router.push({
-            pathname: '/otp-verification',
-            params: { email }
-          });
+        onClose={() => {
+          if (alert.type === 'success') {
+            router.push({
+              pathname: '/otp-verification',
+              params: { email }
+            });
+          }
+          setAlert({ visible: false, type: 'info', message: '' });
         }}
-        animationIn="fadeIn"
-        animationOut="fadeOut"
-        animationInTiming={300}
-        animationOutTiming={300}
-        backdropTransitionInTiming={300}
-        backdropTransitionOutTiming={300}
-        backdropOpacity={0.5}
-        useNativeDriver={true}
-        hideModalContentWhileAnimating={true}
-        style={{ margin: 0, justifyContent: 'center', alignItems: 'center' }}
-      >
-        <View style={{
-          backgroundColor: 'white',
-          borderRadius: wp('4%'),
-          padding: wp('6%'),
-          width: wp('85%'),
-          maxWidth: 400,
-        }}>
-          <View style={{ alignItems: 'center', marginBottom: hp('2%') }}>
-            <View style={{
-              width: wp('15%'),
-              height: wp('15%'),
-              borderRadius: wp('7.5%'),
-              backgroundColor: '#E8F5E9',
-              justifyContent: 'center',
-              alignItems: 'center',
-              marginBottom: hp('1.5%')
-            }}>
-              <CheckCircle size={wp('8%')} color="#4CAF50" />
-            </View>
-            <Text style={{
-              fontSize: wp('5%'),
-              fontWeight: '600',
-              color: '#2C3E50',
-              marginBottom: hp('1%')
-            }}>
-              Success
-            </Text>
-          </View>
-
-          <Text style={{
-            fontSize: wp('4%'),
-            color: '#5D6D7E',
-            textAlign: 'center',
-            lineHeight: wp('5.5%'),
-            marginBottom: hp('3%')
-          }}>
-            {successMessage}
-          </Text>
-
-          <TouchableOpacity
-            style={{
-              backgroundColor: '#4CAF50',
-              paddingVertical: hp('1.5%'),
-              borderRadius: wp('2%'),
-              alignItems: 'center'
-            }}
-            onPress={() => {
-              setShowSuccessModal(false);
-              router.push({
-                pathname: '/otp-verification',
-                params: { email }
-              });
-            }}
-          >
-            <Text style={{
-              color: 'white',
-              fontSize: wp('4.2%'),
-              fontWeight: '600'
-            }}>
-              Continue
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </Modal>
+      />
     </TopographicBackground>
   );
 };

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { useRouter, useSegments } from 'expo-router';
 import { useCustomAuth } from '../hooks/use-custom-auth';
+import { getSuppressRedirect } from '../lib/auth-redirect-controller';
 
 /**
  * AuthGuard - Protects routes and redirects unauthenticated users
@@ -55,7 +56,10 @@ export default function AuthGuard({ children }) {
 
     // If authenticated and on signin/signup, redirect to home
     if (user && (currentPath === '/signin' || currentPath === '/signup' || currentPath === '/index' || currentPath === '/')) {
-      router.replace('/home');
+      // Respect suppress flag so pages like SignIn can show confirmation before redirect
+      if (!getSuppressRedirect()) {
+        router.replace('/home');
+      }
       return;
     }
   }, [user, loading, segments]);
