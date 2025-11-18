@@ -154,10 +154,10 @@ export default function FloatingPlayButton({
 
   const handleMenuAction = (action) => {
     if (isAnimating) return; // Prevent spam clicks during animation
-    
+
     // Trigger haptic feedback for menu selection
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    
+
     setIsAnimating(true);
 
     // Reset animations to 0 for next time
