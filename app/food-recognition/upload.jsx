@@ -7,7 +7,10 @@ import {
   SafeAreaView,
   Alert,
   ScrollView,
+  Platform,
+  StatusBar,
 } from 'react-native';
+import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -24,7 +27,7 @@ export default function FoodRecognitionUpload() {
   // Helper function to determine category
   const determineFoodCategory = (foodName) => {
     const name = foodName.toLowerCase();
-    
+
     if (/apple|banana|orange|grape|strawberry|mango|pineapple|watermelon|kiwi|berry/i.test(name)) {
       return 'Fruits';
     }
@@ -46,7 +49,7 @@ export default function FoodRecognitionUpload() {
     if (/chip|cookie|candy|chocolate|snack|cracker/i.test(name)) {
       return 'Snacks';
     }
-    
+
     return 'Other';
   };
 
@@ -94,7 +97,7 @@ export default function FoodRecognitionUpload() {
       }
 
       let inventoryID;
-      
+
       if (!inventories || inventories.length === 0) {
         // Create default inventory if none exists
         const { data: newInventory, error: createError } = await supabase
@@ -185,17 +188,17 @@ export default function FoodRecognitionUpload() {
 
     const result = useCamera
       ? await ImagePicker.launchCameraAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          allowsEditing: true,
-          aspect: [4, 3],
-          quality: 0.8,
-        })
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      })
       : await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          allowsEditing: true,
-          aspect: [4, 3],
-          quality: 0.8,
-        });
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
 
     if (!result.canceled && result.assets[0]) {
       router.push({
@@ -207,9 +210,9 @@ export default function FoodRecognitionUpload() {
 
   const handleFoodFound = async (food) => {
     console.log('Food found:', food);
-    
+
     const foodName = food.food_name || 'Unknown Food';
-    
+
     Alert.alert(
       'Food Found!',
       `${foodName}\n\nAdd to your pantry?`,
@@ -221,7 +224,7 @@ export default function FoodRecognitionUpload() {
             // Parse nutrition info
             const serving = food.servings?.serving;
             const servingData = Array.isArray(serving) ? serving[0] : serving;
-            
+
             const metadata = {
               source: 'barcode',
               food_id: food.food_id,
@@ -233,7 +236,7 @@ export default function FoodRecognitionUpload() {
             };
 
             const success = await addItemToInventory(foodName, metadata);
-            
+
             if (success) {
               Alert.alert(
                 'Added to Pantry! ✅',
@@ -252,7 +255,7 @@ export default function FoodRecognitionUpload() {
 
   const handleTextExtracted = async (text) => {
     console.log('Text extracted:', text);
-    
+
     // Parse OCR text into item names (split by newlines)
     const items = text.split('\n')
       .map(line => line.trim())
@@ -272,13 +275,13 @@ export default function FoodRecognitionUpload() {
           text: 'Add All',
           onPress: async () => {
             let successCount = 0;
-            
+
             for (const itemName of items) {
               const success = await addItemToInventory(itemName, {
                 source: 'ocr',
                 extractedText: text
               });
-              
+
               if (success) successCount++;
             }
 
@@ -298,107 +301,129 @@ export default function FoodRecognitionUpload() {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color="#333" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Add Food</Text>
-        <View style={{ width: 24 }} />
-      </View>
+      <ScrollView
+        style={styles.scrollView}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={wp('6%')} color="#333" />
+          </TouchableOpacity>
+          <View style={{ width: wp('6%') }} />
+        </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
-        {/* Title */}
-        <View style={styles.titleContainer}>
-          <Text style={styles.title}>How would you like to add food?</Text>
-          <Text style={styles.subtitle}>
-            Choose a method to identify your food and add to your pantry
+        {/* Hero Section */}
+        <View style={styles.heroSection}>
+          <View style={styles.heroIconContainer}>
+            <Ionicons name="scan" size={wp('12%')} color="#81A969" />
+          </View>
+          <Text style={styles.heroTitle}>Scan & Add Food</Text>
+          <Text style={styles.heroSubtitle}>
+            Choose your preferred method to quickly add items to your pantry
           </Text>
         </View>
 
-        {/* Options */}
-        <View style={styles.optionsContainer}>
-          {/* Take Photo */}
-          <TouchableOpacity
-            style={styles.optionCard}
-            onPress={() => pickImage(true)}
-            activeOpacity={0.7}
-          >
-            <View style={[styles.iconCircle, { backgroundColor: '#E3F2FD' }]}>
-              <Ionicons name="camera" size={32} color="#2196F3" />
-            </View>
-            <Text style={styles.optionTitle}>Take Photo</Text>
-            <Text style={styles.optionDescription}>
-              Capture food and recognize with AI
-            </Text>
-          </TouchableOpacity>
+        {/* Primary Actions */}
+        <View style={styles.primaryActionsContainer}>
+          <Text style={styles.sectionLabel}>Food Recognition</Text>
 
-          {/* Upload from Gallery */}
-          <TouchableOpacity
-            style={styles.optionCard}
-            onPress={() => pickImage(false)}
-            activeOpacity={0.7}
-          >
-            <View style={[styles.iconCircle, { backgroundColor: '#F3E5F5' }]}>
-              <Ionicons name="images" size={32} color="#9C27B0" />
-            </View>
-            <Text style={styles.optionTitle}>Choose from Gallery</Text>
-            <Text style={styles.optionDescription}>
-              Select photo to analyze with AI
-            </Text>
-          </TouchableOpacity>
+          <View style={styles.primaryGrid}>
+            {/* AI Photo Recognition */}
+            <TouchableOpacity
+              style={styles.primaryCard}
+              onPress={() => pickImage(true)}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.primaryIconCircle, { backgroundColor: '#E3F2FD' }]}>
+                <Ionicons name="camera" size={wp('10%')} color="#2196F3" />
+              </View>
+              <Text style={styles.primaryCardTitle}>Camera</Text>
+              <Text style={styles.primaryCardSubtitle}>AI Recognition</Text>
+            </TouchableOpacity>
 
-          {/* Scan Barcode */}
+            {/* Gallery Upload */}
+            <TouchableOpacity
+              style={styles.primaryCard}
+              onPress={() => pickImage(false)}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.primaryIconCircle, { backgroundColor: '#F3E5F5' }]}>
+                <Ionicons name="images" size={wp('10%')} color="#9C27B0" />
+              </View>
+              <Text style={styles.primaryCardTitle}>Gallery</Text>
+              <Text style={styles.primaryCardSubtitle}>AI Recognition</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Secondary Options */}
+        <View style={styles.secondaryOptionsContainer}>
+          <Text style={styles.sectionLabel}>More Options</Text>
+
+          {/* Barcode Scanner */}
           <TouchableOpacity
-            style={styles.optionCard}
+            style={styles.secondaryOption}
             onPress={() => setBarcodeScannerVisible(true)}
             activeOpacity={0.7}
           >
-            <View style={[styles.iconCircle, { backgroundColor: '#E8F5E9' }]}>
-              <Ionicons name="barcode" size={32} color="#4CAF50" />
+            <View style={[styles.secondaryIconCircle, { backgroundColor: '#E8F5E9' }]}>
+              <Ionicons name="barcode" size={wp('6%')} color="#4CAF50" />
             </View>
-            <Text style={styles.optionTitle}>Scan Barcode</Text>
-            <Text style={styles.optionDescription}>
-              Scan product barcode (UPC, EAN, etc.)
-            </Text>
+            <View style={styles.secondaryTextContainer}>
+              <Text style={styles.secondaryTitle}>Scan Barcode</Text>
+              <Text style={styles.secondaryDescription}>
+                Get product information instantly
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={wp('5%')} color="#999" />
           </TouchableOpacity>
 
-          {/* Scan QR Code */}
+          {/* QR Code */}
           <TouchableOpacity
-            style={styles.optionCard}
+            style={styles.secondaryOption}
             onPress={() => setQrScannerVisible(true)}
             activeOpacity={0.7}
           >
-            <View style={[styles.iconCircle, { backgroundColor: '#E3F2FD' }]}>
-              <Ionicons name="qr-code" size={32} color="#2196F3" />
+            <View style={[styles.secondaryIconCircle, { backgroundColor: '#E3F2FD' }]}>
+              <Ionicons name="qr-code" size={wp('6%')} color="#2196F3" />
             </View>
-            <Text style={styles.optionTitle}>Scan QR Code</Text>
-            <Text style={styles.optionDescription}>
-              Scan food product QR code
-            </Text>
+            <View style={styles.secondaryTextContainer}>
+              <Text style={styles.secondaryTitle}>QR Code</Text>
+              <Text style={styles.secondaryDescription}>
+                Scan product QR codes
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={wp('5%')} color="#999" />
           </TouchableOpacity>
 
           {/* OCR Text Scanner */}
           <TouchableOpacity
-            style={styles.optionCard}
+            style={styles.secondaryOption}
             onPress={() => setOcrVisible(true)}
             activeOpacity={0.7}
           >
-            <View style={[styles.iconCircle, { backgroundColor: '#FFF3E0' }]}>
-              <Ionicons name="document-text" size={32} color="#FF9800" />
+            <View style={[styles.secondaryIconCircle, { backgroundColor: '#FFF3E0' }]}>
+              <Ionicons name="document-text" size={wp('6%')} color="#FF9800" />
             </View>
-            <Text style={styles.optionTitle}>Scan Text (OCR)</Text>
-            <Text style={styles.optionDescription}>
-              Extract text from labels and menus
-            </Text>
+            <View style={styles.secondaryTextContainer}>
+              <Text style={styles.secondaryTitle}>Text Scanner (OCR)</Text>
+              <Text style={styles.secondaryDescription}>
+                Extract text from labels and lists
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={wp('5%')} color="#999" />
           </TouchableOpacity>
         </View>
 
-        {/* Info */}
-        <View style={styles.infoContainer}>
-          <Ionicons name="information-circle-outline" size={20} color="#666" />
-          <Text style={styles.infoText}>
-            Scanned items will be automatically added to your pantry
+        {/* Info Banner */}
+        <View style={styles.infoBanner}>
+          <View style={styles.infoBannerIcon}>
+            <Ionicons name="checkmark-circle" size={wp('5%')} color="#2E7D32" />
+          </View>
+          <Text style={styles.infoBannerText}>
+            All scanned items are automatically saved to your pantry
           </Text>
         </View>
       </ScrollView>
@@ -428,88 +453,174 @@ export default function FoodRecognitionUpload() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: '#fff',
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: hp('3%'),
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: wp('5%'),
+    paddingVertical: hp('2%'),
     backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
   },
   backButton: {
-    padding: 8,
+    padding: wp('2%'),
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
-  },
-  content: {
-    padding: 20,
-  },
-  titleContainer: {
-    marginBottom: 32,
-  },
-  title: {
-    fontSize: 24,
+    fontSize: wp('4.8%'),
     fontWeight: '700',
     color: '#333',
-    marginBottom: 8,
   },
-  subtitle: {
-    fontSize: 14,
-    color: '#666',
-    lineHeight: 20,
+
+  // Hero Section
+  heroSection: {
+    alignItems: 'center',
+    paddingHorizontal: wp('5%'),
+    paddingTop: hp('3%'),
+    paddingBottom: hp('4%'),
   },
-  optionsContainer: {
-    gap: 16,
-  },
-  optionCard: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  iconCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+  heroIconContainer: {
+    width: wp('24%'),
+    height: wp('24%'),
+    borderRadius: wp('12%'),
+    backgroundColor: '#F1F8EC',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: hp('2%'),
   },
-  optionTitle: {
-    fontSize: 18,
+  heroTitle: {
+    fontSize: wp('7%'),
+    fontWeight: '700',
+    color: '#333',
+    marginBottom: hp('1%'),
+  },
+  heroSubtitle: {
+    fontSize: wp('3.8%'),
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: hp('2.8%'),
+    paddingHorizontal: wp('5%'),
+  },
+
+  // Section Labels
+  sectionLabel: {
+    fontSize: wp('4.2%'),
     fontWeight: '600',
     color: '#333',
-    marginBottom: 8,
+    marginBottom: hp('2%'),
   },
-  optionDescription: {
-    fontSize: 14,
-    color: '#666',
-    lineHeight: 20,
+
+  // Primary Actions (Grid)
+  primaryActionsContainer: {
+    paddingHorizontal: wp('5%'),
+    marginBottom: hp('3%'),
   },
-  infoContainer: {
+  primaryGrid: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: '#E8F5E9',
-    borderRadius: 12,
-    padding: 16,
-    marginTop: 24,
-    gap: 12,
+    gap: wp('4%'),
   },
-  infoText: {
+  primaryCard: {
     flex: 1,
-    fontSize: 13,
+    backgroundColor: '#fff',
+    borderRadius: wp('4%'),
+    padding: wp('5%'),
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: '#F0F0F0',
+  },
+  primaryIconCircle: {
+    width: wp('18%'),
+    height: wp('18%'),
+    borderRadius: wp('9%'),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: hp('1.5%'),
+  },
+  primaryCardTitle: {
+    fontSize: wp('4.2%'),
+    fontWeight: '700',
+    color: '#333',
+    marginBottom: hp('0.3%'),
+  },
+  primaryCardSubtitle: {
+    fontSize: wp('3.2%'),
+    color: '#666',
+  },
+
+  // Secondary Options (List)
+  secondaryOptionsContainer: {
+    paddingHorizontal: wp('5%'),
+    marginBottom: hp('3%'),
+  },
+  secondaryOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: wp('3%'),
+    padding: wp('4%'),
+    marginBottom: hp('1.5%'),
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#F5F5F5',
+  },
+  secondaryIconCircle: {
+    width: wp('12%'),
+    height: wp('12%'),
+    borderRadius: wp('6%'),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: wp('3.5%'),
+  },
+  secondaryTextContainer: {
+    flex: 1,
+  },
+  secondaryTitle: {
+    fontSize: wp('4%'),
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: hp('0.3%'),
+  },
+  secondaryDescription: {
+    fontSize: wp('3.2%'),
+    color: '#666',
+    lineHeight: hp('2%'),
+  },
+
+  // Info Banner
+  infoBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F1F8EC',
+    borderRadius: wp('3%'),
+    padding: wp('4%'),
+    marginHorizontal: wp('5%'),
+    borderLeftWidth: 4,
+    borderLeftColor: '#81A969',
+  },
+  infoBannerIcon: {
+    marginRight: wp('3%'),
+  },
+  infoBannerText: {
+    flex: 1,
+    fontSize: wp('3.3%'),
     color: '#2E7D32',
-    lineHeight: 18,
+    lineHeight: hp('2.2%'),
+    fontWeight: '500',
   },
 });

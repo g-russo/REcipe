@@ -1,62 +1,167 @@
 import React, { useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, Animated, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 
-export default function FloatingPlayButton({ 
-  onStartRecipe, 
+export default function FloatingPlayButton({
+  onStartRecipe,
   onScheduleRecipe,
-  hasMissingIngredients = false 
+  hasMissingIngredients = false
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
-  
+  const [isAnimating, setIsAnimating] = useState(false);
+
   const playButtonScale = useRef(new Animated.Value(1)).current;
   const menuOpacity = useRef(new Animated.Value(0)).current;
   const menuTranslateY = useRef(new Animated.Value(20)).current;
 
-  const handleLongPress = () => {
-    setIsExpanded(!isExpanded);
-    
+  // Individual animations for each menu item
+  const scheduleScale = useRef(new Animated.Value(0)).current;
+  const scheduleOpacity = useRef(new Animated.Value(0)).current;
+  const startScale = useRef(new Animated.Value(0)).current;
+  const startOpacity = useRef(new Animated.Value(0)).current;
+
+  const handleToggle = () => {
+    if (isAnimating) return; // Prevent spam clicks during animation
+
+    // Trigger haptic feedback
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
     if (!isExpanded) {
-      // Expand animation
+      setIsAnimating(true);
+      // Opening - show the menu first, then animate items
+      setIsExpanded(true);
+
+      // Reset all animations to 0 before starting
+      scheduleScale.setValue(0);
+      scheduleOpacity.setValue(0);
+      startScale.setValue(0);
+      startOpacity.setValue(0);
+
+      // Expand animation - staggered pop-out effect
       Animated.parallel([
         Animated.spring(playButtonScale, {
           toValue: 1.1,
+          friction: 6,
+          tension: 60,
           useNativeDriver: true,
         }),
         Animated.timing(menuOpacity, {
           toValue: 1,
-          duration: 200,
+          duration: 120,
           useNativeDriver: true,
         }),
         Animated.spring(menuTranslateY, {
           toValue: 0,
-          friction: 8,
+          friction: 6,
+          tension: 60,
           useNativeDriver: true,
         }),
       ]).start();
+
+      // Schedule button appears first (closest to main button)
+      Animated.parallel([
+        Animated.spring(scheduleScale, {
+          toValue: 1,
+          friction: 5,
+          tension: 60,
+          useNativeDriver: true,
+          delay: 30,
+        }),
+        Animated.timing(scheduleOpacity, {
+          toValue: 1,
+          duration: 120,
+          useNativeDriver: true,
+          delay: 30,
+        }),
+      ]).start();
+
+      // Start Recipe button appears second
+      Animated.parallel([
+        Animated.spring(startScale, {
+          toValue: 1,
+          friction: 5,
+          tension: 60,
+          useNativeDriver: true,
+          delay: 80,
+        }),
+        Animated.timing(startOpacity, {
+          toValue: 1,
+          duration: 120,
+          useNativeDriver: true,
+          delay: 80,
+        }),
+      ]).start(() => {
+        setIsAnimating(false); // Re-enable after entrance animation completes
+      });
     } else {
-      // Collapse animation
+      setIsAnimating(true);
+      // Exit: Start Recipe disappears first (farthest from button)
+      Animated.parallel([
+        Animated.timing(startScale, {
+          toValue: 0,
+          duration: 100,
+          useNativeDriver: true,
+        }),
+        Animated.timing(startOpacity, {
+          toValue: 0,
+          duration: 100,
+          useNativeDriver: true,
+        }),
+      ]).start();
+
+      // Schedule disappears second (closest to button)
+      Animated.parallel([
+        Animated.timing(scheduleScale, {
+          toValue: 0,
+          duration: 100,
+          useNativeDriver: true,
+          delay: 40,
+        }),
+        Animated.timing(scheduleOpacity, {
+          toValue: 0,
+          duration: 100,
+          useNativeDriver: true,
+          delay: 40,
+        }),
+      ]).start();
+
+      // Collapse main button and menu
       Animated.parallel([
         Animated.spring(playButtonScale, {
           toValue: 1,
+          friction: 6,
+          tension: 60,
           useNativeDriver: true,
         }),
         Animated.timing(menuOpacity, {
           toValue: 0,
-          duration: 150,
+          duration: 120,
           useNativeDriver: true,
         }),
         Animated.timing(menuTranslateY, {
           toValue: 20,
-          duration: 150,
+          duration: 120,
           useNativeDriver: true,
         }),
-      ]).start();
+      ]).start(() => {
+        // Hide menu after animation completes
+        setIsExpanded(false);
+        setIsAnimating(false); // Re-enable after exit animation completes
+      });
     }
   };
 
   const handleMenuAction = (action) => {
-    setIsExpanded(false);
+    if (isAnimating) return; // Prevent spam clicks during animation
+    
+    // Trigger haptic feedback for menu selection
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    
+    setIsAnimating(true);
+
+    // Reset animations to 0 for next time
+    // Collapse animations
     Animated.parallel([
       Animated.spring(playButtonScale, {
         toValue: 1,
@@ -67,15 +172,40 @@ export default function FloatingPlayButton({
         duration: 150,
         useNativeDriver: true,
       }),
-    ]).start();
-    action();
+      Animated.spring(startScale, {
+        toValue: 0,
+        friction: 6,
+        useNativeDriver: true,
+      }),
+      Animated.timing(startOpacity, {
+        toValue: 0,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scheduleScale, {
+        toValue: 0,
+        friction: 6,
+        useNativeDriver: true,
+        delay: 50,
+      }),
+      Animated.timing(scheduleOpacity, {
+        toValue: 0,
+        duration: 100,
+        useNativeDriver: true,
+        delay: 50,
+      }),
+    ]).start(() => {
+      setIsExpanded(false);
+      setIsAnimating(false);
+      action();
+    });
   };
 
   return (
     <View style={styles.floatingButtonContainer}>
       {/* Expanded Menu */}
       {isExpanded && (
-        <Animated.View 
+        <Animated.View
           style={[
             styles.expandedMenu,
             {
@@ -84,51 +214,59 @@ export default function FloatingPlayButton({
             }
           ]}
         >
-          <TouchableOpacity 
-            style={styles.menuButton}
-            onPress={() => handleMenuAction(onStartRecipe)}
-            activeOpacity={0.8}
+          <Animated.View
+            style={{
+              opacity: startOpacity,
+              transform: [{ scale: startScale }],
+            }}
           >
-            <View style={styles.menuIconContainer}>
-              <Ionicons name="play-circle" size={24} color="#fff" />
-            </View>
-            <View style={styles.menuTextContainer}>
-              <Text style={styles.menuButtonText}>Start Recipe</Text>
-              {hasMissingIngredients && (
-                <Text style={styles.warningText}>Missing ingredients</Text>
-              )}
-            </View>
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.menuButton}
+              onPress={() => handleMenuAction(onStartRecipe)}
+              activeOpacity={0.8}
+            >
+              <View style={styles.menuIconContainer}>
+                <Ionicons name="play-circle" size={24} color="#fff" />
+              </View>
+              <View style={styles.menuTextContainer}>
+                <Text style={styles.menuButtonText}>Start Recipe</Text>
+                {hasMissingIngredients && (
+                  <Text style={styles.warningText}>Missing ingredients</Text>
+                )}
+              </View>
+            </TouchableOpacity>
+          </Animated.View>
 
-          <TouchableOpacity 
-            style={styles.menuButton}
-            onPress={() => handleMenuAction(onScheduleRecipe)}
-            activeOpacity={0.8}
+          <Animated.View
+            style={{
+              opacity: scheduleOpacity,
+              transform: [{ scale: scheduleScale }],
+            }}
           >
-            <View style={styles.menuIconContainer}>
-              <Ionicons name="time-outline" size={24} color="#fff" />
-            </View>
-            <Text style={styles.menuButtonText}>Schedule</Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.menuButton}
+              onPress={() => handleMenuAction(onScheduleRecipe)}
+              activeOpacity={0.8}
+            >
+              <View style={styles.menuIconContainer}>
+                <Ionicons name="time-outline" size={24} color="#fff" />
+              </View>
+              <Text style={styles.menuButtonText}>Schedule</Text>
+            </TouchableOpacity>
+          </Animated.View>
         </Animated.View>
       )}
 
       {/* Main Play Button */}
       <Animated.View style={{ transform: [{ scale: playButtonScale }] }}>
         <TouchableOpacity
-          style={styles.playButton}
-          onPress={() => {
-            if (isExpanded) {
-              // If menu is expanded, collapse it
-              handleLongPress();
-            } else {
-              // Single tap - start recipe directly
-              onStartRecipe();
-            }
-          }}
-          onLongPress={handleLongPress}
-          activeOpacity={0.9}
-          delayLongPress={500}
+          style={[
+            styles.playButton,
+            isAnimating && styles.playButtonDisabled
+          ]}
+          onPress={handleToggle}
+          activeOpacity={isAnimating ? 1 : 0.9}
+          disabled={isAnimating}
         >
           <Ionicons name="play" size={32} color="#fff" />
         </TouchableOpacity>
@@ -153,6 +291,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     elevation: 8,
+  },
+  playButtonDisabled: {
+    backgroundColor: '#B0B0B0',
+    opacity: 0.6,
   },
   expandedMenu: {
     position: 'absolute',
