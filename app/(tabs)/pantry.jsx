@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Text,
   View,
+  Platform,
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useCustomAuth } from '../../hooks/use-custom-auth';
@@ -17,6 +18,7 @@ import ExpirationNotificationService from '../../services/expiration-notificatio
 import BackgroundNotificationRefresh from '../../services/background-notification-refresh';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 
 // Components
 import PantryHeader from '../../components/pantry/pantry-header';
@@ -966,18 +968,13 @@ const Pantry = () => {
           <StatusBar barStyle="dark-content" backgroundColor="#fff" />
           
           {/* CONDITIONAL HEADER */}
-          {selectionMode ? (
+          {selectionMode && (
             <SelectionModeHeader
               selectedCount={selectedItems.length}
               onCancel={exitSelectionMode}
               onAddToGroup={handleAddToGroup}
               onDeleteSelected={handleDeleteSelectedItems}
               isDisabled={selectedItems.length === 0}
-            />
-          ) : (
-            <PantryHeader 
-              onSearchPress={() => setSearchModalVisible(true)}
-              onBackPress={handleBackPress}
             />
           )}
 
@@ -986,6 +983,8 @@ const Pantry = () => {
             contentContainerStyle={styles.scrollViewContent}
             showsVerticalScrollIndicator={false}
           >
+            {!selectionMode && <PantryHeader onSearchPress={() => setSearchModalVisible(true)} />}
+            
             <ExpiringItemsBanner
               expiringItems={expiringItems}
               onItemPress={handleItemPress}
@@ -1099,7 +1098,8 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
-    paddingTop: 12, // added extra top space
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight || 0 : 0,
+    backgroundColor: '#fff',
   },
   scrollView: {
     flex: 1,
