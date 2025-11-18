@@ -33,7 +33,7 @@ const categoryIconMap = {
   'Snacks': 'cookie-outline',
   'Beverages': 'coffee-outline',
   'Frozen': 'snowflake',
-  'Baking': 'rolling-pin',
+  'Baking': 'cake',
   'Other': 'help-circle-outline',
 };
 
