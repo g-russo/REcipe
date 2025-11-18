@@ -222,10 +222,92 @@ const Pantry = () => {
     return inventories[0].inventoryID;
   };
 
+  const normalizeItemName = (name = '') => name.trim().toLowerCase();
+
+  const findDuplicateItem = (candidateName, candidateInventoryID) => {
+    if (!candidateName || !candidateInventoryID) return null;
+    const targetInventoryId = String(candidateInventoryID);
+    const normalizedName = normalizeItemName(candidateName);
+    return items.find((item) =>
+      String(item.inventoryID) === targetInventoryId &&
+      normalizeItemName(item.itemName || '') === normalizedName
+    );
+  };
+
+  const canMergeDuplicateItems = (existingItem, incomingItem) => {
+    const existingUnit = (existingItem.unit || '').trim().toLowerCase();
+    const incomingUnit = (incomingItem.unit || '').trim().toLowerCase();
+    const existingQty = Number(existingItem.quantity);
+    const incomingQty = Number(incomingItem.quantity);
+    const quantitiesValid = !Number.isNaN(existingQty) && !Number.isNaN(incomingQty);
+    return quantitiesValid && existingQty >= 0 && incomingQty >= 0 && existingUnit === incomingUnit;
+  };
+
+  const promptDuplicateResolution = (existingItem, incomingItem, mergeAvailable) =>
+    new Promise((resolve) => {
+      const messageParts = [
+        `You already have "${existingItem.itemName}" in this inventory (${existingItem.quantity || 0} ${existingItem.unit || ''}).`,
+        'Would you like to merge the quantities or add it anyway?'
+      ];
+      const buttons = [
+        { text: 'Cancel', style: 'cancel', onPress: () => resolve('cancel') },
+        { text: 'Add Anyway', onPress: () => resolve('create') },
+      ];
+      if (mergeAvailable) {
+        buttons.splice(1, 0, {
+          text: 'Merge Quantities',
+          onPress: () => resolve('merge'),
+        });
+      }
+      if (!mergeAvailable) {
+        messageParts.push('Units differ, so auto-merge is unavailable.');
+      }
+      Alert.alert(
+        'Duplicate Item Detected',
+        messageParts.join('\n\n'),
+        buttons,
+        {
+          cancelable: true,
+          onDismiss: () => resolve('cancel'),
+        }
+      );
+    });
+
+  const mergeDuplicateItem = async (existingItem, incomingItem) => {
+    const existingQty = Number(existingItem.quantity) || 0;
+    const incomingQty = Number(incomingItem.quantity) || 0;
+    const mergedQty = existingQty + incomingQty;
+    const updates = {
+      quantity: mergedQty,
+      userID: customUserData.userID,
+    };
+
+    if (incomingItem.itemDescription && incomingItem.itemDescription !== existingItem.itemDescription) {
+      updates.itemDescription = incomingItem.itemDescription;
+    }
+
+    if (incomingItem.itemExpiration) {
+      const existingDate = existingItem.itemExpiration ? new Date(existingItem.itemExpiration) : null;
+      const incomingDate = new Date(incomingItem.itemExpiration);
+      if (!existingDate || (incomingDate instanceof Date && !Number.isNaN(incomingDate.getTime()) && incomingDate < existingDate)) {
+        updates.itemExpiration = incomingItem.itemExpiration;
+      }
+    }
+
+    await PantryService.updateItem(existingItem.itemID, updates);
+    Alert.alert(
+      'Duplicate Merged',
+      `Updated "${existingItem.itemName}" to ${mergedQty} ${existingItem.unit || ''}`.trim()
+    );
+  };
+
   // Handle save item
   const handleSaveItem = async (itemData) => {
     try {
       console.log('💾 Saving item...', itemData);
+      const wasEditing = !!editingItem;
+      const editingItemSnapshot = editingItem;
+      let newlyCreatedItem = null;
       
       if (editingItem) {
         // Update existing item
@@ -251,24 +333,43 @@ const Pantry = () => {
       } else {
         // Create new item
         console.log('➕ Creating new item...');
-        
+
         // Ensure we have an inventory
-        const inventoryID = await ensureInventoryExists();
-        console.log('📦 Inventory ID:', inventoryID);
-        
-        if (!inventoryID) {
+        const ensuredInventoryID = await ensureInventoryExists();
+        console.log('📦 Inventory ID:', ensuredInventoryID);
+
+        if (!ensuredInventoryID) {
           console.log('❌ No inventory ID available');
           return;
         }
 
+        const resolvedInventoryID = itemData.inventoryID || ensuredInventoryID;
+        const potentialDuplicate = findDuplicateItem(itemData.itemName, resolvedInventoryID);
+        if (potentialDuplicate) {
+          const mergeAvailable = canMergeDuplicateItems(potentialDuplicate, itemData);
+          const duplicateAction = await promptDuplicateResolution(potentialDuplicate, itemData, mergeAvailable);
+          if (duplicateAction === 'cancel') {
+            console.log('⚠️ Duplicate detected - user cancelled save');
+            return { status: 'duplicate-cancelled' };
+          }
+          if (duplicateAction === 'merge' && mergeAvailable) {
+            await mergeDuplicateItem(potentialDuplicate, itemData);
+            await loadData();
+            setItemFormVisible(false);
+            return { status: 'duplicate-merged', item: potentialDuplicate };
+          }
+          // Otherwise user chose to create anyway
+          console.log('⚠️ Duplicate detected - user opted to create another entry');
+        }
+
         const itemToCreate = {
           ...itemData,
-          inventoryID: itemData.inventoryID || inventoryID,
+          inventoryID: resolvedInventoryID,
           userID: customUserData.userID,
         };
-        
+
         console.log('📤 Sending item to database:', itemToCreate);
-        
+
         const createdItem = await PantryService.createItem(itemToCreate);
         console.log('✅ Item created successfully:', createdItem);
         
@@ -289,6 +390,7 @@ const Pantry = () => {
         await checkAndPromptForCategoryGroup(createdItem);
         
         Alert.alert('Success', 'Item added successfully');
+        newlyCreatedItem = createdItem;
       }
       
       // Reload data
@@ -296,6 +398,10 @@ const Pantry = () => {
       await loadData();
       setEditingItem(null);
       setItemFormVisible(false);
+      return {
+        status: wasEditing ? 'updated' : 'created',
+        item: wasEditing ? editingItemSnapshot : newlyCreatedItem,
+      };
     } catch (error) {
       console.error('❌ Error saving item:', error);
       console.error('❌ Error details:', {
@@ -304,6 +410,7 @@ const Pantry = () => {
         name: error.name,
       });
       Alert.alert('Error', error.message || 'Failed to save item');
+      return { status: 'error', error };
     }
   };
 
