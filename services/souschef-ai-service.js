@@ -189,10 +189,23 @@ class SousChefAIService {
     const newInstructions = newRecipe.instructions.map(inst => inst.instruction.toLowerCase()).join(' ');
 
     for (const existing of existingRecipes) {
-      // Check 1: Recipe name similarity (exact match or very close)
+      // Check 1: Recipe name similarity (exact match or very similar)
       const existingName = existing.recipeName?.toLowerCase() || existing.label?.toLowerCase() || '';
+      
+      // Exact match
       if (existingName === newRecipeName) {
         console.log('⚠️ Duplicate detected: Exact recipe name match');
+        return true;
+      }
+      
+      // Very similar names (70%+ word overlap)
+      const newWords = newRecipeName.split(' ').filter(w => w.length > 3);
+      const existingWords = existingName.split(' ').filter(w => w.length > 3);
+      const commonWords = newWords.filter(w => existingWords.includes(w));
+      const nameSimilarity = commonWords.length / Math.max(newWords.length, 1);
+      
+      if (nameSimilarity >= 0.7) {
+        console.log(`⚠️ Duplicate detected: ${(nameSimilarity * 100).toFixed(0)}% name similarity`);
         return true;
       }
 
@@ -211,7 +224,8 @@ class SousChefAIService {
         );
         const similarityPercentage = (matchingIngredients.length / newIngredients.length) * 100;
         
-        if (similarityPercentage >= 80) {
+        // Stricter threshold: 70% match = duplicate (was 80%)
+        if (similarityPercentage >= 70) {
           console.log(`⚠️ Duplicate detected: ${similarityPercentage.toFixed(0)}% ingredient match`);
           return true;
         }
@@ -229,13 +243,30 @@ class SousChefAIService {
         const matchingWords = newWords.filter(word => existingWords.includes(word));
         const instructionSimilarity = (matchingWords.length / newWords.length) * 100;
 
-        if (instructionSimilarity >= 70) {
+        // Stricter: 60% instruction match = duplicate (was 70%)
+        if (instructionSimilarity >= 60) {
           console.log(`⚠️ Duplicate detected: ${instructionSimilarity.toFixed(0)}% instruction match`);
           return true;
         }
       }
+      
+      // Check 4: Cooking method similarity
+      const cookingMethods = ['grilled', 'fried', 'baked', 'steamed', 'boiled', 'roasted', 'stir-fry', 'sautéed'];
+      const newMethod = cookingMethods.find(method => 
+        newRecipeName.includes(method) || newInstructions.includes(method)
+      );
+      const existingMethod = cookingMethods.find(method => 
+        existingName.includes(method) || 
+        (existing.instructions && JSON.stringify(existing.instructions).toLowerCase().includes(method))
+      );
+      
+      if (newMethod && existingMethod && newMethod === existingMethod && nameSimilarity >= 0.5) {
+        console.log(`⚠️ Duplicate detected: Same cooking method (${newMethod}) with similar name`);
+        return true;
+      }
     }
 
+    console.log('✅ Recipe is unique - no duplicates detected');
     return false;
   }
 
@@ -265,9 +296,11 @@ class SousChefAIService {
   async generateSingleRecipe(searchQuery, filters = {}, pantryItems = [], existingCount = 0, existingRecipesInUI = []) {
     try {
       console.log(`🤖 Generating 1 recipe with SousChef AI (${existingCount + 1}/5)...`);
+      console.log(`🎯 PRIMARY FOCUS: "${searchQuery}" (this will be the main ingredient/dish)`);
+      console.log(`📦 Supporting ingredients: ${pantryItems.length} pantry items`);
       console.log('📝 API Key Status:', process.env.OPENAI_API_KEY ? `Loaded (${process.env.OPENAI_API_KEY.substring(0, 10)}...)` : '❌ Missing');
 
-      // Build prompt for 1 recipe only
+      // Build prompt for 1 recipe only (search query is prioritized)
       const prompt = this.buildRecipePrompt(searchQuery, filters, pantryItems, 1);
 
       console.log('📤 Sending request to OpenAI API...');
@@ -324,11 +357,20 @@ class SousChefAIService {
       const isDuplicate = await this.isDuplicateRecipe(newRecipe, allExistingRecipes);
 
       if (isDuplicate) {
-        console.log('⚠️ Duplicate recipe detected, regenerating with higher temperature...');
+        console.log('⚠️ Duplicate recipe detected, regenerating with different approach...');
         
-        // Retry with higher temperature (more creativity) and explicit instruction
+        // Retry with explicit uniqueness instructions
         const retryPrompt = this.buildRecipePrompt(searchQuery, filters, pantryItems, 1);
-        const retryInstructions = `\n\n⚠️ IMPORTANT: Generate a COMPLETELY DIFFERENT recipe than these existing ones:\n${allExistingRecipes.map(r => `- ${r.recipeName || r.label}`).slice(0, 5).join('\n')}\n\nUse different ingredients, cooking methods, and cuisines. BE CREATIVE AND UNIQUE!`;
+        const existingRecipeNames = allExistingRecipes.map(r => r.recipeName || r.label).slice(0, 10).join('\n- ');
+        const existingIngredients = allExistingRecipes.slice(0, 3).map(r => {
+          const ingredients = r.ingredients || r.ingredientLines || [];
+          const ingredientNames = Array.isArray(ingredients) 
+            ? ingredients.map(ing => ing.name || ing.toString()).slice(0, 5).join(', ')
+            : '';
+          return `${r.recipeName || r.label}: ${ingredientNames}`;
+        }).join('\n  ');
+        
+        const retryInstructions = `\n\n🚨 CRITICAL: AVOID DUPLICATES!\n\n❌ DO NOT CREATE THESE RECIPES (already exist):\n- ${existingRecipeNames}\n\n❌ DO NOT USE THESE INGREDIENT COMBINATIONS:\n  ${existingIngredients}\n\n✅ REQUIREMENTS FOR NEW RECIPE:\n1. COMPLETELY different recipe name\n2. DIFFERENT cooking method (if they grilled, you stir-fry/bake/steam)\n3. DIFFERENT ingredient combinations\n4. DIFFERENT cuisine style (if they have Filipino, try Asian fusion/Western/International)\n5. DIFFERENT presentation style\n\n🎯 Still center the recipe around "${searchQuery}" but make it UNIQUE!\n\nExample: If existing recipes are grilled/fried, create a soup/stew/curry/casserole instead.`;
 
         const retryResponse = await fetch(OPENAI_API_URL, {
           method: 'POST',
@@ -357,8 +399,18 @@ class SousChefAIService {
         if (retryResponse.ok) {
           const retryAiResponse = await retryResponse.json();
           const retryRecipesData = JSON.parse(retryAiResponse.choices[0].message.content);
-          recipesData.recipes = retryRecipesData.recipes; // Use the new unique recipe
-          console.log('✅ Generated unique recipe on retry');
+          const retryRecipe = retryRecipesData.recipes[0];
+          
+          // Verify the retry recipe is actually unique
+          const stillDuplicate = await this.isDuplicateRecipe(retryRecipe, allExistingRecipes);
+          
+          if (!stillDuplicate) {
+            recipesData.recipes = retryRecipesData.recipes; // Use the new unique recipe
+            console.log(`✅ Generated unique recipe on retry: "${retryRecipe.recipeName}"`);
+          } else {
+            console.log(`⚠️ Retry recipe "${retryRecipe.recipeName}" still duplicate, using anyway (user can generate another)`);
+            recipesData.recipes = retryRecipesData.recipes; // Use it anyway, let user try again
+          }
         } else {
           console.log('⚠️ Retry failed, using original recipe anyway');
         }
@@ -407,7 +459,8 @@ class SousChefAIService {
         .update({ recipeImage: imageGenerationResult })
         .eq('recipeID', savedRecipes[0].recipeID);
 
-      console.log('✅ Recipe ready with image!');
+      console.log(`✅ Recipe ready with image: "${recipeWithImage.recipeName}"`);
+      console.log(`🎯 Verify: Recipe name includes "${searchQuery}"? ${recipeWithImage.recipeName.toLowerCase().includes(searchQuery.toLowerCase()) ? 'YES ✅' : 'NO ⚠️'}`);
 
       return {
         success: true,
@@ -516,16 +569,23 @@ class SousChefAIService {
    */
   buildRecipePrompt(searchQuery, filters, pantryItems, recipeCount = 5) {
     // System instructions matching your Custom GPT
-    let prompt = `You are SousChef AI, an expert culinary assistant that generates ${recipeCount} personalized ${recipeCount === 1 ? 'recipe' : 'recipes'} based on user's pantry items, dietary preferences, and leftover cooked foods.
+    let prompt = `You are SousChef AI, an expert culinary assistant that generates ${recipeCount} personalized ${recipeCount === 1 ? 'recipe' : 'recipes'}.
 
-## CORE FEATURES
-- Pantry-based recipe generation (raw + cooked ingredients)
-- Leftover transformation (turn Adobo → Adobo Fried Rice, Caldereta → Empanada)
-- Multi-cultural expertise (Filipino, Asian, Western, Fusion)
-- Dietary accommodation (vegetarian, vegan, gluten-free, allergies, etc.)
+## PRIMARY OBJECTIVE
+🎯 CREATE RECIPES CENTERED AROUND THE SEARCH QUERY: "${searchQuery}"
+
+⚠️ CRITICAL REQUIREMENTS:
+1. The recipe MUST be directly related to "${searchQuery}"
+2. "${searchQuery}" should be the MAIN ingredient, dish name, or primary focus
+3. If "${searchQuery}" is a specific ingredient (e.g., "kabayo", "chicken", "beef"):
+   - It MUST be the primary protein/ingredient in the recipe
+   - Recipe name should feature "${searchQuery}" prominently
+   - Do NOT substitute with other ingredients
+4. Use pantry items as SUPPORTING ingredients only
+5. If pantry doesn't have "${searchQuery}", assume user will buy it - STILL create recipe with it
 
 ## CURRENT REQUEST
-Search Query: "${searchQuery}"
+Search Query: "${searchQuery}" ← THIS IS THE STAR OF THE RECIPE!
 `;
 
     // Add filters
@@ -556,7 +616,8 @@ Search Query: "${searchQuery}"
 
     // Add pantry items with leftover detection
     if (pantryItems.length > 0) {
-      prompt += '\n## AVAILABLE PANTRY ITEMS\n';
+      prompt += '\n## AVAILABLE PANTRY ITEMS (Use as SUPPORTING ingredients)\n';
+      prompt += `⚠️ Remember: "${searchQuery}" is the MAIN focus. Use these pantry items to complement it.\n`;
       
       const leftoverItems = [];
       const freshItems = [];
@@ -602,7 +663,7 @@ Search Query: "${searchQuery}"
       }
     } else {
       prompt += '\n## NO PANTRY ITEMS PROVIDED\n';
-      prompt += 'Generate creative recipes based on the search query and filters.\n\n';
+      prompt += `Generate creative recipes centered around "${searchQuery}". Assume user can buy any needed ingredients.\n\n`;
     }
 
     // JSON output format
@@ -780,6 +841,89 @@ Return ONLY valid JSON. No additional text.`;
       }
     } catch (error) {
       console.error('Error updating recipe images:', error);
+    }
+  }
+
+  /**
+   * Validate if a search term is a valid food ingredient or dish
+   * @param {string} searchTerm - The search term to validate
+   * @returns {Promise<{isValid: boolean, reason: string}>}
+   */
+  async validateFoodIngredient(searchTerm) {
+    try {
+      console.log(`🔍 Validating food ingredient: "${searchTerm}"`);
+
+      const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+      if (!apiKey) {
+        console.error('❌ OpenAI API key not found');
+        return { isValid: true, reason: 'Validation skipped - API key missing' };
+      }
+
+      const validationPrompt = `Is "${searchTerm}" a valid food ingredient, dish name, or cuisine type that can be used to create a recipe?
+
+Respond with ONLY a JSON object in this exact format:
+{
+  "isValid": true/false,
+  "reason": "brief explanation"
+}
+
+Guidelines:
+- Return isValid: true for: food ingredients (chicken, rice, tomato), dishes (adobo, pasta, curry), cuisines (Filipino, Italian), cooking methods with food (grilled fish)
+- Return isValid: false for: gibberish, random text, non-food items, profanity, names of people/places unrelated to food
+- Be lenient with misspellings of real food terms
+- Consider Filipino, Asian, and international food terms
+
+Examples:
+"bangus" → {"isValid": true, "reason": "Bangus (milkfish) is a common Filipino fish"}
+"asdfgh" → {"isValid": false, "reason": "Not a recognizable food term"}
+"table" → {"isValid": false, "reason": "Not a food ingredient or dish"}
+"tapang kabayo" → {"isValid": true, "reason": "Filipino cured horse meat dish"}`;
+
+      const response = await fetch(OPENAI_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a food ingredient validator. Respond ONLY with valid JSON.'
+            },
+            {
+              role: 'user',
+              content: validationPrompt
+            }
+          ],
+          temperature: 0.3, // Low temperature for consistent validation
+          max_tokens: 100
+        })
+      });
+
+      if (!response.ok) {
+        console.error(`❌ OpenAI API error: ${response.status}`);
+        return { isValid: true, reason: 'Validation skipped - API error' };
+      }
+
+      const data = await response.json();
+      const content = data.choices[0].message.content.trim();
+      
+      // Parse JSON response
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const validation = JSON.parse(jsonMatch[0]);
+        console.log(`✅ Validation result:`, validation);
+        return validation;
+      }
+
+      console.warn('⚠️ Could not parse validation response:', content);
+      return { isValid: true, reason: 'Validation inconclusive' };
+    } catch (error) {
+      console.error('❌ Validation error:', error);
+      // Fail-safe: If validation fails, allow generation
+      return { isValid: true, reason: 'Validation error - proceeding with generation' };
     }
   }
 }
