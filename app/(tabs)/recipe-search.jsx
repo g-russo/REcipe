@@ -1562,6 +1562,7 @@ const styles = StyleSheet.create({
     width: wp('32%'),
     borderRadius: wp('4%'),
     marginLeft: wp('3%'),
+    marginTop: hp('2%'),
     marginBottom: hp('1.5%'),
     elevation: 6,
   },

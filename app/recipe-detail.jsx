@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Svg, { Path } from 'react-native-svg';
 import * as Haptics from 'expo-haptics';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import cacheService from '../services/supabase-cache-service';
 import EdamamService from '../services/edamam-service';
 import RecipeMatcherService from '../services/recipe-matcher-service';
@@ -42,12 +43,79 @@ const RecipeDetail = () => {
   const router = useRouter();
   const { recipeData } = useLocalSearchParams();
   const { user, customUserData } = useCustomAuth();
+  const insets = useSafeAreaInsets();
+  
+  // Animation Values
+  const scrollY = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
-  const fillAnim = useRef(new Animated.Value(0)).current;
-  const toastAnim = useRef(new Animated.Value(0)).current;
   const backButtonScaleAnim = useRef(new Animated.Value(1)).current;
+  
+  // Parallax animations
+  const imageTranslateY = scrollY.interpolate({
+    inputRange: [-hp('35%'), 0, hp('35%')],
+    outputRange: [-hp('35%') / 2, 0, -hp('35%') * 0.5],
+    extrapolate: 'clamp'
+  });
+
+  const imageScale = scrollY.interpolate({
+    inputRange: [-hp('35%'), 0],
+    outputRange: [2, 1],
+    extrapolateRight: 'clamp'
+  });
+
+  // --- Sticky Header & Button Animations ---
+  
+  // Master progress value: 0 (top) -> 1 (scrolled past image)
+  const headerProgress = scrollY.interpolate({
+    inputRange: [hp('25%'), hp('32%')],
+    outputRange: [0, 1],
+    extrapolate: 'clamp'
+  });
+
+  // Header Opacity & Translation
+  const headerOpacity = headerProgress;
+  const headerTranslateY = headerProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-20, 0], // Slide down slightly
+  });
+
+  // Button Animations
+  const buttonBgOpacity = headerProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 0], // White background fades out
+  });
+
+  const buttonScale = headerProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 0.85], // Buttons shrink slightly
+  });
+
+  // Icon Color Transitions (Cross-fade)
+  const iconGreenOpacity = headerProgress.interpolate({
+    inputRange: [0, 0.5],
+    outputRange: [1, 0],
+  });
+  
+  const iconWhiteOpacity = headerProgress.interpolate({
+    inputRange: [0.5, 1],
+    outputRange: [0, 1],
+  });
+
+  // Title Animation
+  const titleOpacity = headerProgress.interpolate({
+    inputRange: [0.6, 1],
+    outputRange: [0, 1],
+  });
+
+  const titleTranslateY = headerProgress.interpolate({
+    inputRange: [0.6, 1],
+    outputRange: [10, 0], // Slide up slightly
+  });
+
+
   const saveTimeoutRef = useRef(null);
   const pendingFavoriteState = useRef(null);
+  const toastIdCounter = useRef(0);
 
   const [recipe, setRecipe] = useState(null);
   const [similarRecipes, setSimilarRecipes] = useState([]);
@@ -65,18 +133,16 @@ const RecipeDetail = () => {
   const [substitutionMode, setSubstitutionMode] = useState('manual'); // 'manual' or 'auto'
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [toastQueue, setToastQueue] = useState([]);
-  const toastIdCounter = useRef(0);
 
   // Use the substitution hook
   const {
     missingIngredients,
     availableIngredients,
-    insufficientIngredients, // NEW
+    insufficientIngredients,
     modifiedRecipe,
     showUsePantryIngredientsAlert,
     showMissingIngredientsAlert,
     applySubstitutions,
-    showIngredientUsageConfirmation,
     hasMissingIngredients,
     hasAvailableIngredients,
     hasSubstitutions,
@@ -719,40 +785,148 @@ const RecipeDetail = () => {
       <View style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
+        {/* Sticky Header Background & Title */}
+        <Animated.View
+          style={[
+            styles.stickyHeader,
+            { 
+              opacity: headerOpacity,
+              transform: [{ translateY: headerTranslateY }],
+              // Calculate height: Top Padding + Content Height (wp(12%)) + Bottom Padding
+              height: insets.top + hp('2%') + wp('12%') + hp('1.5%'),
+              paddingTop: insets.top + hp('2%'), // More space at the top
+            }
+          ]}
+        >
+          <View style={styles.stickyHeaderContent}>
+            {/* Title slides in next to the back button */}
+            <Animated.Text 
+              style={[
+                styles.stickyHeaderTitle,
+                {
+                  opacity: titleOpacity,
+                  transform: [{ translateY: titleTranslateY }]
+                }
+              ]} 
+              numberOfLines={1}
+              adjustsFontSizeToFit={true}
+              minimumFontScale={0.7}
+            >
+              {recipe.label || recipe.recipeName}
+            </Animated.Text>
+          </View>
+        </Animated.View>
+
         {/* Fixed Header Buttons Overlay */}
-        <View style={styles.fixedHeaderOverlay}>
+        <View 
+          style={[
+            styles.fixedHeaderOverlay, 
+            { top: insets.top + hp('2%') } // Match stickyHeader paddingTop
+          ]}
+        >
           <TouchableOpacity
             onPress={handleBackPress}
-            activeOpacity={1}
+            activeOpacity={0.8}
           >
-            <Animated.View style={[styles.fixedBackButton, { transform: [{ scale: backButtonScaleAnim }] }]}>
-              <Svg width={wp('6%')} height={wp('6%')} viewBox="0 0 24 24" fill="none" stroke="#81A969" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <Path d="m15 18-6-6 6-6" />
-              </Svg>
+            <Animated.View 
+              style={[
+                styles.fixedButtonContainer, 
+                { 
+                  transform: [
+                    { scale: backButtonScaleAnim },
+                    { scale: buttonScale } // Shrink on scroll
+                  ],
+                  backgroundColor: 'transparent' // Base background
+                }
+              ]}
+            >
+              {/* White Background (Fades out) */}
+              <Animated.View style={[StyleSheet.absoluteFill, styles.buttonBackground, { opacity: buttonBgOpacity }]} />
+              
+              {/* Green Icon (Fades out) */}
+              <Animated.View style={[styles.iconContainer, { opacity: iconGreenOpacity }]}>
+                <Svg width={wp('6%')} height={wp('6%')} viewBox="0 0 24 24" fill="none" stroke="#81A969" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <Path d="m15 18-6-6 6-6" />
+                </Svg>
+              </Animated.View>
+
+              {/* White Icon (Fades in) */}
+              <Animated.View style={[styles.iconContainer, { opacity: iconWhiteOpacity }]}>
+                <Svg width={wp('6%')} height={wp('6%')} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <Path d="m15 18-6-6 6-6" />
+                </Svg>
+              </Animated.View>
             </Animated.View>
           </TouchableOpacity>
+
           <TouchableOpacity
             onPress={toggleFavorite}
             disabled={savingFavorite}
-            activeOpacity={1}
+            activeOpacity={0.8}
           >
-            <Animated.View style={[styles.fixedFavoriteButton, { transform: [{ scale: scaleAnim }] }]}>
-              <Ionicons
-                name={isFavorite ? "heart" : "heart-outline"}
-                size={wp('6%')}
-                color={isFavorite ? "#ff4757" : "#81A969"}
-              />
+            <Animated.View 
+              style={[
+                styles.fixedButtonContainer, 
+                { 
+                  transform: [
+                    { scale: scaleAnim },
+                    { scale: buttonScale } // Shrink on scroll
+                  ],
+                  backgroundColor: 'transparent'
+                }
+              ]}
+            >
+               {/* White Background (Fades out) */}
+               <Animated.View style={[StyleSheet.absoluteFill, styles.buttonBackground, { opacity: buttonBgOpacity }]} />
+              
+              {/* Green/Red Icon (Fades out) */}
+              <Animated.View style={[styles.iconContainer, { opacity: iconGreenOpacity }]}>
+                <Ionicons
+                  name={isFavorite ? "heart" : "heart-outline"}
+                  size={wp('6%')}
+                  color={isFavorite ? "#ff4757" : "#81A969"}
+                />
+              </Animated.View>
+
+              {/* White/Red Icon (Fades in) */}
+              <Animated.View style={[styles.iconContainer, { opacity: iconWhiteOpacity }]}>
+                <Ionicons
+                  name={isFavorite ? "heart" : "heart-outline"}
+                  size={wp('6%')}
+                  color={isFavorite ? "#fff" : "#fff"}
+                />
+              </Animated.View>
             </Animated.View>
           </TouchableOpacity>
         </View>
 
-        <ScrollView
+        {/* Parallax Hero Image Background */}
+        <Animated.View
+          style={[
+            styles.parallaxHeader,
+            {
+              transform: [
+                { translateY: imageTranslateY },
+                { scale: imageScale }
+              ]
+            }
+          ]}
+        >
+          <RecipeHero image={recipe.image} />
+        </Animated.View>
+
+        <Animated.ScrollView
           style={styles.scrollView}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollViewContent}
+          onScroll={Animated.event(
+            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+            { useNativeDriver: true }
+          )}
+          scrollEventThrottle={16}
         >
-          {/* Hero Image */}
-          <RecipeHero image={recipe.image} />
+          {/* Spacer to push content down */}
+          <View style={styles.parallaxSpacer} />
 
           {/* Recipe Info Card */}
           <View style={styles.recipeCard}>
@@ -831,7 +1005,7 @@ const RecipeDetail = () => {
               onRecipePress={handleSimilarRecipePress}
             />
           </View>
-        </ScrollView>
+        </Animated.ScrollView>
 
         {/* Floating Play Button */}
         <FloatingPlayButton
@@ -898,7 +1072,7 @@ const styles = StyleSheet.create({
   },
   fixedHeaderOverlay: {
     position: 'absolute',
-    top: Platform.OS === 'android' ? StatusBar.currentHeight + hp('2%') : hp('6%'),
+    // top is now dynamic
     left: 0,
     right: 0,
     flexDirection: 'row',
@@ -906,199 +1080,240 @@ const styles = StyleSheet.create({
     paddingHorizontal: wp('5%'),
     zIndex: 1000,
   },
-  fixedBackButton: {
+  fixedButtonContainer: {
     width: wp('12%'),
     height: wp('12%'),
-    backgroundColor: '#FFFFFF',
     borderRadius: wp('3%'),
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
+    overflow: 'hidden', // For background fade
   },
-  fixedFavoriteButton: {
-    width: wp('12%'),
-    height: wp('12%'),
+  buttonBackground: {
     backgroundColor: '#FFFFFF',
     borderRadius: wp('3%'),
+  },
+  iconContainer: {
+    position: 'absolute',
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 8,
+    width: '100%',
+    height: '100%',
+  },
+  stickyHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    // height is now dynamic
+    backgroundColor: '#81A969',
+    zIndex: 900,
+    justifyContent: 'flex-start', // Align from top
+    // paddingTop is now dynamic
+    borderBottomLeftRadius: wp('6%'),
+    borderBottomRightRadius: wp('6%'),
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  stickyHeaderContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: wp('5%'),
+    paddingLeft: wp('18%'), // Make room for back button
+    paddingRight: wp('18%'), // Make room for favorite button
+    width: '100%',
+    justifyContent: 'center', // Center the title
+    height: wp('12%'), // Match button height for vertical alignment
+  },
+  stickyHeaderTitle: {
+    color: '#fff',
+    fontSize: wp('4.5%'),
+    fontWeight: 'bold',
+    textAlign: 'center', // Center align
+    flex: 1,
+  },
+  parallaxHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: hp('35%'),
+    zIndex: 0,
   },
   scrollView: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: 'transparent', // Important for parallax
   },
   scrollViewContent: {
     paddingBottom: hp('10%'),
-    backgroundColor: '#fff',
+    backgroundColor: 'transparent',
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    fontSize: wp('4%'),
-    color: '#7f8c8d',
-    marginTop: hp('1.5%'),
-    fontWeight: '500',
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: wp('5%'),
-  },
-  errorText: {
-    fontSize: wp('4.5%'),
-    color: '#e74c3c',
-    marginBottom: hp('2.5%'),
-    textAlign: 'center',
-    fontWeight: '600',
-  },
-  backButton: {
-    backgroundColor: '#81A969',
-    paddingHorizontal: wp('6%'),
-    paddingVertical: hp('1.5%'),
-    borderRadius: wp('6%'),
-  },
-  backButtonText: {
-    color: '#fff',
-    fontSize: wp('4%'),
-    fontWeight: '600',
+  parallaxSpacer: {
+    height: hp('35%'),
+    backgroundColor: 'transparent',
   },
   recipeCard: {
     backgroundColor: '#fff',
     borderTopLeftRadius: wp('7%'),
     borderTopRightRadius: wp('7%'),
-    marginTop: wp('-6%'),
+    marginTop: wp('-6%'), // Overlap the spacer/image
     paddingHorizontal: wp('5%'),
     paddingTop: hp('3%'),
     flex: 1,
+    minHeight: hp('70%'), // Ensure it covers the screen when scrolled up
   },
   tabContainer: {
     flexDirection: 'row',
-    backgroundColor: '#f5f5f5',
-    borderRadius: wp('7%'),
-    padding: wp('1.5%'),
-    marginBottom: hp('2.5%'),
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
+    marginTop: hp('2%'),
+    marginBottom: hp('2%'),
+    backgroundColor: '#F5F7FA',
+    borderRadius: wp('3%'),
+    padding: wp('1%'),
   },
   tab: {
     flex: 1,
     paddingVertical: hp('1.5%'),
     alignItems: 'center',
-    borderRadius: wp('5.5%'),
-  },
-  tabContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  tabSpinner: {
-    marginLeft: wp('2%'),
+    borderRadius: wp('2.5%'),
   },
   activeTab: {
     backgroundColor: '#81A969',
-    elevation: 3,
-    shadowColor: '#81A969',
+    elevation: 2,
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
   },
   tabText: {
-    fontSize: wp('3.8%'),
-    color: '#7f8c8d',
+    fontSize: wp('4%'),
+    color: '#666',
     fontWeight: '600',
   },
   activeTabText: {
     color: '#fff',
+    fontWeight: 'bold',
+  },
+  tabContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabSpinner: {
+    marginLeft: wp('2%'),
   },
   tabContentWrapper: {
-    marginBottom: hp('3%'),
+    minHeight: hp('20%'),
   },
   creatorSection: {
-    marginBottom: hp('3%'),
+    marginTop: hp('4%'),
+    marginBottom: hp('2%'),
   },
   sectionTitle: {
     fontSize: wp('5%'),
     fontWeight: 'bold',
-    color: '#2c3e50',
-    marginBottom: hp('1.5%'),
+    color: '#333',
+    marginBottom: hp('2%'),
   },
   creatorCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f8f9fa',
-    borderRadius: wp('4%'),
+    backgroundColor: '#F9FAFB',
     padding: wp('4%'),
+    borderRadius: wp('4%'),
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
   creatorIcon: {
     width: wp('12%'),
     height: wp('12%'),
     borderRadius: wp('6%'),
-    backgroundColor: '#81A969',
+    backgroundColor: '#E8F5E9',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: wp('3%'),
+    marginRight: wp('4%'),
   },
   creatorIconText: {
-    fontSize: wp('5.5%'),
+    fontSize: wp('6%'),
     fontWeight: 'bold',
-    color: '#fff',
+    color: '#81A969',
   },
   creatorInfo: {
     flex: 1,
   },
   creatorName: {
-    fontSize: wp('4.2%'),
-    fontWeight: '600',
-    color: '#2c3e50',
-    marginBottom: hp('0.3%'),
+    fontSize: wp('4.5%'),
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: hp('0.5%'),
   },
   creatorDescription: {
     fontSize: wp('3.5%'),
-    color: '#7f8c8d',
+    color: '#666',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+  },
+  loadingText: {
+    marginTop: hp('2%'),
+    fontSize: wp('4.5%'),
+    color: '#666',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    padding: wp('5%'),
+  },
+  errorText: {
+    fontSize: wp('5%'),
+    color: '#333',
+    marginBottom: hp('3%'),
+  },
+  backButton: {
+    paddingHorizontal: wp('6%'),
+    paddingVertical: hp('1.5%'),
+    backgroundColor: '#81A969',
+    borderRadius: wp('2%'),
+  },
+  backButtonText: {
+    color: '#fff',
+    fontSize: wp('4%'),
+    fontWeight: 'bold',
   },
   toastContainer: {
     position: 'absolute',
-    bottom: hp('10%'),
+    bottom: hp('12%'), // Above the floating button
     left: wp('5%'),
     right: wp('5%'),
-    zIndex: 9999,
+    alignItems: 'center',
+    zIndex: 2000,
   },
   toastContent: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff',
-    paddingHorizontal: wp('5%'),
-    paddingVertical: hp('2%'),
-    borderRadius: wp('4%'),
-    elevation: 8,
+    paddingHorizontal: wp('4%'),
+    paddingVertical: hp('1.5%'),
+    borderRadius: wp('3%'),
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.15,
     shadowRadius: 8,
+    elevation: 6,
     borderLeftWidth: 4,
-    borderLeftColor: '#81A969',
+    minWidth: wp('80%'),
   },
   toastText: {
-    fontSize: wp('4%'),
-    color: '#2c3e50',
-    fontWeight: '600',
     marginLeft: wp('3%'),
-    flex: 1,
+    fontSize: wp('3.8%'),
+    color: '#333',
+    fontWeight: '500',
   },
 });
 
