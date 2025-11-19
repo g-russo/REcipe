@@ -147,7 +147,7 @@ const GroupItemsModal = ({
               
               <View>
                 <Text style={styles.modalTitle}>{group.groupTitle}</Text>
-                <Text style={styles.itemCount}>{items.length} items</Text>
+                <Text style={styles.itemCount}>{items.length} {items.length === 1 ? 'item' : 'items'}</Text>
               </View>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>

@@ -492,9 +492,7 @@ const ItemFormModal = ({
                 </View>
                 
                 {/* Date Section */}
-                <View style={styles.dateSection}>
-                  <Text style={styles.sectionLabel}>Dates</Text>
-                  
+                <View style={styles.dateSection}>            
                   <View style={styles.formRow}>
                     <Text style={styles.formLabel}>Date Added:</Text>
                     <View style={[styles.dateInput, styles.disabledInput]}>
@@ -533,7 +531,7 @@ const ItemFormModal = ({
                 <Text style={styles.formLabel}>Item Description:</Text>
                 <TextInput
                   style={styles.textAreaInput}
-                  placeholder="Type item description..."
+                  placeholder="Describe this item (optional)"
                   placeholderTextColor="#999"
                   multiline={true}
                   numberOfLines={4}
@@ -638,18 +636,25 @@ const styles = StyleSheet.create({
   modalContainer: {
     flex: 1,
     backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 4,
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingVertical: 15,
+    paddingVertical: 13,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
   },
   modalTitle: {
-    fontSize: 20,
+    fontSize: 19,
     fontWeight: '600',
     color: '#333',
   },
@@ -664,14 +669,14 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     paddingHorizontal: 20,
-    paddingTop: 20,
+    paddingTop: 16,
   },
   imageUploadArea: {
     width: '100%',
-    height: 200,
-    backgroundColor: '#8ac551',
+    height: 180,
+    backgroundColor: '#81A969',
     borderRadius: 12,
-    marginBottom: 20,
+    marginBottom: 16,
     overflow: 'hidden',
   },
   uploadedImage: {
@@ -692,11 +697,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e0e0e0',
     borderRadius: 8,
-    paddingHorizontal: 15,
-    paddingVertical: 12,
-    fontSize: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
     color: '#333',
-    marginBottom: 15,
+    marginBottom: 8,
   },
   dropdownInput: {
     flexDirection: 'row',
@@ -705,9 +710,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e0e0e0',
     borderRadius: 8,
-    paddingHorizontal: 15,
-    paddingVertical: 12,
-    marginBottom: 15,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 8,
   },
   dropdownPlaceholder: {
     fontSize: 16,
@@ -720,24 +725,25 @@ const styles = StyleSheet.create({
   formRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 15,
+    marginBottom: 10,
+    gap: 10,
   },
   formColumn: {
     flex: 1,
-    marginRight: 10,
+    marginRight: 0,
   },
   columnLabel: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#555',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   smallInput: {
     borderWidth: 1,
     borderColor: '#e0e0e0',
     borderRadius: 8,
-    paddingHorizontal: 15,
-    paddingVertical: 12,
-    fontSize: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 15,
     color: '#333',
   },
   smallDropdown: {
@@ -747,22 +753,22 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e0e0e0',
     borderRadius: 8,
-    paddingHorizontal: 15,
-    paddingVertical: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
   },
   dateSection: {
-    marginBottom: 15,
-  },
-  sectionLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
     marginBottom: 10,
   },
-  formLabel: {
-    fontSize: 14,
-    color: '#555',
+  sectionLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#333',
     marginBottom: 8,
+  },
+  formLabel: {
+    fontSize: 13,
+    color: '#555',
+    marginBottom: 6,
   },
   dateInput: {
     flexDirection: 'row',
@@ -771,8 +777,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e0e0e0',
     borderRadius: 8,
-    paddingHorizontal: 15,
-    paddingVertical: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
   },
   disabledInput: {
     backgroundColor: '#f5f5f5',
@@ -785,23 +791,26 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e0e0e0',
     borderRadius: 8,
-    paddingHorizontal: 15,
-    paddingVertical: 12,
-    fontSize: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
     color: '#333',
-    height: 100,
+    height: 90,
     textAlignVertical: 'top',
-    marginBottom: 20,
+    marginBottom: 12,
   },
   buttonContainer: {
-    marginTop: 10,
+    marginTop: 8,
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'space-between',
   },
   saveButton: {
-    backgroundColor: '#8ac551',
-    paddingVertical: 15,
+    backgroundColor: '#81A969',
+    paddingVertical: 13,
     borderRadius: 8,
     alignItems: 'center',
-    marginBottom: 10,
+    flex: 1,
   },
   saveButtonText: {
     color: '#fff',
@@ -810,9 +819,10 @@ const styles = StyleSheet.create({
   },
   cancelButton: {
     backgroundColor: '#f5f5f5',
-    paddingVertical: 15,
+    paddingVertical: 13,
     borderRadius: 8,
     alignItems: 'center',
+    flex: 1,
   },
   cancelButtonText: {
     color: '#555',

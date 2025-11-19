@@ -26,7 +26,7 @@ const PantryItemsGrid = ({
             style={styles.sectionAddButton}
             onPress={onAddItem}
           >
-            <Ionicons name="add-circle" size={28} color="#8BC34A" />
+            <Ionicons name="add-circle" size={28} color="#81A969" />
           </TouchableOpacity>
         </View>
         
@@ -55,7 +55,7 @@ const PantryItemsGrid = ({
           style={styles.sectionAddButton}
           onPress={onAddItem}
         >
-          <Ionicons name="add-circle" size={28} color="#8BC34A" />
+          <Ionicons name="add-circle" size={28} color="#81A969" />
         </TouchableOpacity>
       </View>
       
@@ -124,7 +124,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   addItemButton: {
-    backgroundColor: '#8BC34A',
+    backgroundColor: '#81A969',
     paddingVertical: 12,
     paddingHorizontal: 30,
     borderRadius: 8,

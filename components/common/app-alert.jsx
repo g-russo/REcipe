@@ -1,82 +1,146 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Text, View, StyleSheet, TouchableOpacity, Modal } from 'react-native';
+import { Animated, Text, View, StyleSheet, TouchableOpacity, Modal, Easing, TouchableWithoutFeedback } from 'react-native';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { Ionicons } from '@expo/vector-icons';
 
-// Simple animated toast component
-// props: visible (bool), type: 'success' | 'error' | 'info', message (string), onClose (fn), duration (ms)
+// Animated button component with press feedback
+const AnimatedButton = ({ children, onPress, style, activeOpacity = 0.85 }) => {
+    const scaleAnim = useRef(new Animated.Value(1)).current;
+
+    const handlePressIn = () => {
+        Animated.spring(scaleAnim, {
+            toValue: 0.92,
+            friction: 4,
+            tension: 120,
+            useNativeDriver: true,
+        }).start();
+    };
+
+    const handlePressOut = () => {
+        Animated.spring(scaleAnim, {
+            toValue: 1,
+            friction: 4,
+            tension: 120,
+            useNativeDriver: true,
+        }).start();
+    };
+
+    return (
+        <TouchableWithoutFeedback
+            onPress={onPress}
+            onPressIn={handlePressIn}
+            onPressOut={handlePressOut}
+        >
+            <Animated.View style={[style, { transform: [{ scale: scaleAnim }] }]}>
+                {children}
+            </Animated.View>
+        </TouchableWithoutFeedback>
+    );
+};
+
+// Modal Alert component (no auto-dismiss)
+// props: visible (bool), type: 'success' | 'error' | 'info', message (string), onClose (fn)
 const AppAlert = ({
     visible = false,
     type = 'info',
     message = '',
     title = null,
     onClose = () => { },
-    duration = 1800,
+    // duration intentionally unused now (no auto dismiss)
+    duration = 0,
     actionable = false,
     actionLabel = 'OK',
     onAction = null,
     children = null,
+    // Optional: provide a custom icon React element to override default
+    customIcon = null,
 }) => {
     const [show, setShow] = useState(visible);
     const opacity = useRef(new Animated.Value(0)).current;
+    const scale = useRef(new Animated.Value(0.8)).current;
+    const translateY = useRef(new Animated.Value(30)).current;
 
     useEffect(() => {
-        let timeout;
         if (visible) {
             setShow(true);
-            Animated.spring(opacity, {
-                toValue: 1,
-                friction: 8,
-                tension: 40,
-                useNativeDriver: true,
-            }).start();
-
-            if (!actionable) {
-                timeout = setTimeout(() => {
-                    Animated.timing(opacity, {
-                        toValue: 0,
-                        duration: 250,
-                        useNativeDriver: true,
-                    }).start(() => {
-                        setShow(false);
-                        onClose && onClose();
-                    });
-                }, duration);
-            }
+            Animated.parallel([
+                Animated.timing(opacity, {
+                    toValue: 1,
+                    duration: 300,
+                    easing: Easing.out(Easing.cubic),
+                    useNativeDriver: true,
+                }),
+                Animated.spring(scale, {
+                    toValue: 1,
+                    friction: 7,
+                    tension: 50,
+                    useNativeDriver: true,
+                }),
+                Animated.timing(translateY, {
+                    toValue: 0,
+                    duration: 300,
+                    easing: Easing.out(Easing.cubic),
+                    useNativeDriver: true,
+                }),
+            ]).start();
         } else {
-            Animated.timing(opacity, {
-                toValue: 0,
-                duration: 250,
-                useNativeDriver: true,
-            }).start(() => setShow(false));
+            Animated.parallel([
+                Animated.timing(opacity, {
+                    toValue: 0,
+                    duration: 200,
+                    easing: Easing.in(Easing.ease),
+                    useNativeDriver: true,
+                }),
+                Animated.timing(scale, {
+                    toValue: 0.9,
+                    duration: 200,
+                    easing: Easing.in(Easing.ease),
+                    useNativeDriver: true,
+                }),
+                Animated.timing(translateY, {
+                    toValue: 20,
+                    duration: 200,
+                    easing: Easing.in(Easing.ease),
+                    useNativeDriver: true,
+                }),
+            ]).start(() => {
+                setShow(false);
+                // Reset values for next show
+                opacity.setValue(0);
+                scale.setValue(0.8);
+                translateY.setValue(30);
+                // Only call onClose after animation completes and modal is hidden
+                if (!visible && typeof onClose === 'function') {
+                    onClose();
+                }
+            });
         }
-
-        return () => {
-            if (timeout) clearTimeout(timeout);
-        };
-    }, [visible, actionable]);
+    }, [visible]);
 
     useEffect(() => {
-        // sync visible prop
-        if (!visible) setShow(false);
+        // sync visible prop - removed to prevent interference with animation
     }, [visible]);
 
     if (!show) return null;
 
     const backgroundColor = '#81A969'; // Green color for all alerts
 
+    const handleClose = () => {
+        // Call onClose to update parent state (this will trigger the exit animation via useEffect)
+        onClose && onClose();
+    };
+
     const handleAction = () => {
         if (onAction && typeof onAction === 'function') {
             try { onAction(); } catch (e) { console.error(e); }
         }
-        onClose && onClose();
-        setShow(false);
+        handleClose();
     };
 
     const getIcon = () => {
         if (type === 'success') return { name: 'checkmark-circle', color: '#81A969' };
         if (type === 'error') return { name: 'alert-circle', color: '#E74C3C' };
-        return { name: 'hand-left', color: '#81A969' };
+        return { name: 'information-circle', color: '#81A969' };
     };
 
     const getTitle = () => {
@@ -89,57 +153,61 @@ const AppAlert = ({
     const icon = getIcon();
 
     return (
-        <Modal transparent visible={show} animationType="none">
-            <Animated.View style={[styles.modalBackdrop, { opacity }]}>
-                <View style={styles.modalWrapper}>
-                    <View style={styles.modalCard}>
-                        {/* Icon */}
-                        <View style={styles.iconContainer}>
-                            <Ionicons name={icon.name} size={wp('16%')} color={icon.color} />
-                        </View>
+        <Modal transparent visible={show} animationType="none" onRequestClose={handleClose}>
+            <TouchableWithoutFeedback onPress={() => {}}>
+                <Animated.View style={[styles.modalBackdrop, { opacity }]}>
+                    <TouchableWithoutFeedback onPress={() => {}}>
+                        <Animated.View style={[
+                            styles.modalWrapper,
+                            {
+                                opacity,
+                                transform: [{ scale }, { translateY }]
+                            }
+                        ]}>
+                            <View style={styles.modalCard}>
+                                {/* Icon */}
+                                <View style={styles.iconContainer}>
+                                    {customIcon ? customIcon : null}
+                                </View>
 
-                        {/* Title */}
-                        <View style={styles.modalHeader}>
-                            <Text style={[styles.modalTitle, { color: '#333' }]}>
-                                {getTitle()}
-                            </Text>
-                        </View>
+                                {/* Title */}
+                                <View style={styles.modalHeader}>
+                                    <Text style={[styles.modalTitle, { color: '#333' }]}>
+                                        {getTitle()}
+                                    </Text>
+                                </View>
 
-                        {/* Message */}
-                        <View style={styles.modalContent}>
-                            <Text style={styles.modalMessage}>{message}</Text>
-                        </View>
+                                {/* Message */}
+                                <View style={styles.modalContent}>
+                                    <Text style={styles.modalMessage}>{message}</Text>
+                                </View>
 
-                        {/* Actions */}
-                        <View style={[styles.modalActions, children && styles.modalActionsVertical]}>
-                            {children ? (
-                                <>
+                                {/* Actions */}
+                                <View style={[styles.modalActions, children && styles.modalActionsVertical]}>
                                     {actionable && (
-                                        <TouchableOpacity
-                                            style={[styles.modalButton, styles.primaryButton, styles.fullWidthButton, { backgroundColor: '#81A969' }]}
+                                        <AnimatedButton
+                                            style={[styles.modalButton, styles.primaryButton, children && styles.fullWidthButton, { backgroundColor: '#81A969' }]}
                                             onPress={handleAction}
-                                            activeOpacity={0.8}
                                         >
                                             <Text style={styles.modalButtonText}>{actionLabel}</Text>
-                                        </TouchableOpacity>
+                                        </AnimatedButton>
                                     )}
                                     {children}
-                                </>
-                            ) : (
-                                actionable && (
-                                    <TouchableOpacity
-                                        style={[styles.modalButton, styles.primaryButton, { backgroundColor: '#81A969' }]}
-                                        onPress={handleAction}
-                                        activeOpacity={0.8}
+                                </View>
+                                {/* Floating circular close button below card */}
+                                <View style={styles.floatingCloseWrapper} pointerEvents="box-none">
+                                    <AnimatedButton
+                                        style={styles.floatingCloseButton}
+                                        onPress={handleClose}
                                     >
-                                        <Text style={styles.modalButtonText}>{actionLabel}</Text>
-                                    </TouchableOpacity>
-                                )
-                            )}
-                        </View>
-                    </View>
-                </View>
-            </Animated.View>
+                                        <Ionicons name="close" size={wp('6.5%')} color="#333" />
+                                    </AnimatedButton>
+                                </View>
+                            </View>
+                        </Animated.View>
+                    </TouchableWithoutFeedback>
+                </Animated.View>
+            </TouchableWithoutFeedback>
         </Modal>
     );
 };
@@ -150,6 +218,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         paddingHorizontal: wp('5%'),
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
     },
     modalWrapper: {
         width: '100%',
@@ -187,10 +256,12 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     modalMessage: {
-        fontSize: wp('3.8%'),
-        color: '#999',
+        fontSize: wp('4.2%'),
+        color: '#555',
         textAlign: 'center',
-        lineHeight: wp('5.5%'),
+        lineHeight: wp('6%'),
+        fontWeight: '500',
+        letterSpacing: 0.2,
     },
     modalActions: {
         width: '100%',
@@ -232,8 +303,31 @@ const styles = StyleSheet.create({
         fontWeight: '700',
         fontSize: wp('4%'),
         letterSpacing: 0.3,
-    }
+    },
+    floatingCloseWrapper: {
+        width: '100%',
+        alignItems: 'center',
+        marginBottom: hp('2%'),
+    },
+    floatingCloseButton: {
+        marginTop: hp('1%'),
+        backgroundColor: '#fff',
+        width: wp('12%'),
+        height: wp('12%'),
+        borderRadius: wp('6%'),
+        alignItems: 'center',
+        justifyContent: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.15,
+        shadowRadius: 6,
+        elevation: 6,
+        borderWidth: 2,
+        borderColor: '#f2f2f2',
+    },
 });
+
+export { AnimatedButton };
 
 export const LogoutAlert = ({ visible, onConfirm, onCancel }) => {
     const cancelButtonStyle = {

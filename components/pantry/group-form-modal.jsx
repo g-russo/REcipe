@@ -194,7 +194,7 @@ const GroupFormModal = ({
 
             {/* Info Text */}
             <Text style={styles.infoText}>
-              Groups help you organize your pantry items into categories like "Spices", "Baking", or "Vegetables".
+              Groups help you organize your pantry items into the categories available here. You can create custom groups to suit your needs.
             </Text>
           </ScrollView>
 
@@ -277,9 +277,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    paddingTop: 32, // was 20
-    paddingBottom: 30,
+    paddingTop: 24,
+    paddingBottom: 18,
+    paddingHorizontal: 20,
     maxHeight: '85%',
+    minHeight: 420,
+    justifyContent: 'flex-start',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -296,29 +299,32 @@ const styles = StyleSheet.create({
     color: '#333',
   },
   scrollView: {
-    paddingHorizontal: 20,
-    paddingTop: 28, // was 20
+    paddingHorizontal: 0,
+    paddingTop: 0,
   },
   label: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     color: '#333',
-    marginBottom: 8,
-    marginTop: 15,
+    marginBottom: 6,
+    marginTop: 14,
   },
   input: {
     borderWidth: 1,
     borderColor: '#e0e0e0',
     borderRadius: 8,
-    paddingHorizontal: 15,
-    paddingVertical: 12,
-    fontSize: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
     color: '#333',
+    marginBottom: 2,
   },
   colorPickerContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: 10,
+    marginTop: 6,
+    marginBottom: 8,
   },
   colorOption: {
     width: 50,
@@ -377,15 +383,18 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   buttonContainer: {
-    paddingHorizontal: 20,
-    marginTop: 20,
+    paddingHorizontal: 0,
+    marginTop: 16,
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'space-between',
   },
   saveButton: {
     backgroundColor: '#8ac551',
-    paddingVertical: 15,
+    paddingVertical: 13,
     borderRadius: 8,
     alignItems: 'center',
-    marginBottom: 10,
+    flex: 1,
   },
   saveButtonText: {
     color: '#fff',
@@ -394,9 +403,10 @@ const styles = StyleSheet.create({
   },
   cancelButton: {
     backgroundColor: '#f5f5f5',
-    paddingVertical: 15,
+    paddingVertical: 13,
     borderRadius: 8,
     alignItems: 'center',
+    flex: 1,
   },
   cancelButtonText: {
     color: '#555',

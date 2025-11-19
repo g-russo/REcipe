@@ -4,6 +4,7 @@ import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Dimensions } from
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 // We also need Ionicons for the original fallback (just in case)
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -37,6 +38,7 @@ const InventoryGroupsSection = ({
   onCreateGroup,
   userName = 'My'
 }) => {
+  const router = useRouter();
   
   // Helper function to render icon or letter
   const renderGroupIcon = (group) => {
@@ -64,7 +66,9 @@ const InventoryGroupsSection = ({
   if (groups.length === 0) {
     return (
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Groups</Text>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Groups</Text>
+        </View>
         <View style={styles.emptyStateContainer}>
           <View style={styles.emptyIconContainer}>
             {/* Use folder-outline from MaterialCommunityIcons now */}
@@ -85,7 +89,16 @@ const InventoryGroupsSection = ({
 
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>Groups</Text>
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>Groups</Text>
+        <TouchableOpacity 
+          style={styles.viewAllButton}
+          onPress={() => router.push('/all-groups')}
+        >
+          <Text style={styles.viewAllText}>View All</Text>
+          <MaterialCommunityIcons name="chevron-right" size={16} color="#81A969" />
+        </TouchableOpacity>
+      </View>
       
       <ScrollView 
         horizontal
@@ -111,7 +124,7 @@ const InventoryGroupsSection = ({
                   <MaterialCommunityIcons name="chevron-right" size={18} color="#fff" />
                 </View>
               </View>
-              <Text style={styles.itemCount}>{group.itemCount || 0} items</Text>
+              <Text style={styles.itemCount}>{group.itemCount || 0} {(group.itemCount || 0) === 1 ? 'item' : 'items'}</Text>
               
               {group.groupCategory && (
                 <View style={styles.categoryBadge}>
@@ -147,12 +160,31 @@ const styles = StyleSheet.create({
   section: {
     marginBottom: 20,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    marginBottom: 15,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '600',
     color: '#333',
-    marginBottom: 15,
-    paddingHorizontal: 20,
+  },
+  viewAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: 'rgba(129, 169, 105, 0.1)',
+  },
+  viewAllText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#81A969',
+    marginRight: 2,
   },
   categoriesScrollView: {
     paddingLeft: 20,

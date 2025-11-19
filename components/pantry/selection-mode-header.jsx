@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Platform, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 /**
@@ -12,13 +12,80 @@ const SelectionModeHeader = ({
   onAddToGroup,
   onDeleteSelected, // NEW: Prop for deleting items
   isDisabled,
+  isExiting = false,
 }) => {
-  const appGreen = '#4CAF50'; // Using the app's green color
+  const appGreen = '#81A969'; // Using the app's green color
   const appRed = '#FF3B30';
   const disabledColor = '#aaa';
 
+  // Animation values
+  const slideAnim = useRef(new Animated.Value(-80)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.9)).current;
+  const hasAnimatedIn = useRef(false);
+
+  useEffect(() => {
+    if (isExiting) {
+      // Exit animation - slide up and fade out
+      Animated.parallel([
+        Animated.timing(slideAnim, {
+          toValue: -80,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+        Animated.timing(fadeAnim, {
+          toValue: 0,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 0.85,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+      ]).start();
+      hasAnimatedIn.current = false;
+    } else if (!hasAnimatedIn.current) {
+      // Entrance animation - only play once on mount
+      hasAnimatedIn.current = true;
+      Animated.parallel([
+        Animated.spring(slideAnim, {
+          toValue: 0,
+          useNativeDriver: true,
+          tension: 70,
+          friction: 9,
+          delay: 50,
+        }),
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 300,
+          delay: 0,
+          useNativeDriver: true,
+        }),
+        Animated.spring(scaleAnim, {
+          toValue: 1,
+          useNativeDriver: true,
+          tension: 70,
+          friction: 9,
+          delay: 50,
+        }),
+      ]).start();
+    }
+  }, [isExiting]);
+
   return (
-    <View style={styles.container}>
+    <Animated.View 
+      style={[
+        styles.container,
+        {
+          transform: [
+            { translateY: slideAnim },
+            { scale: scaleAnim }
+          ],
+          opacity: fadeAnim,
+        }
+      ]}
+    >
       {/* Left Action: Cancel */}
       <TouchableOpacity style={styles.actionButton} onPress={onCancel}>
         <Ionicons name="close" size={26} color={appGreen} />
@@ -46,7 +113,7 @@ const SelectionModeHeader = ({
           <Ionicons name="trash-outline" size={24} color={isDisabled ? disabledColor : appRed} />
         </TouchableOpacity>
       </View>
-    </View>
+    </Animated.View>
   );
 };
 
