@@ -19,6 +19,8 @@ export const useIngredientSubstitution = (recipe, userID) => {
   // Modal control states
   const [showMissingModal, setShowMissingModal] = useState(false);
   const [missingModalCallbacks, setMissingModalCallbacks] = useState({ onProceed: null, onSubstitute: null });
+  const [showAvailableModal, setShowAvailableModal] = useState(false);
+  const [availableModalCallbacks, setAvailableModalCallbacks] = useState({ onYes: null, onNo: null });
 
   // Check ingredient availability when recipe or userID changes
   useEffect(() => {
@@ -56,7 +58,7 @@ export const useIngredientSubstitution = (recipe, userID) => {
   };
 
   /**
-   * Show alert asking if user wants to use available pantry ingredients
+   * Show modal asking if user wants to use available pantry ingredients
    * @param {Function} onYes - Callback when user chooses to use pantry ingredients
    * @param {Function} onNo - Callback when user chooses not to use pantry ingredients
    */
@@ -67,34 +69,25 @@ export const useIngredientSubstitution = (recipe, userID) => {
       return;
     }
 
-    // Note: Keeping this as Alert for now since it's a simple yes/no question
-    // Can be converted to modal later if needed
-    const { Alert } = require('react-native');
-    const availableList = availableIngredients
-      .map(ing => `• ${ing.text || ing}`)
-      .join('\n');
+    // Show modal instead of alert
+    setAvailableModalCallbacks({ onYes, onNo });
+    setShowAvailableModal(true);
+  };
 
-    Alert.alert(
-      'Available Ingredients',
-      `The following ingredients are available in your pantry:\n\n${availableList}\n\nWould you like to use them for this recipe?`,
-      [
-        {
-          text: 'No',
-          onPress: () => {
-            setUsingPantryIngredients(false);
-            onNo();
-          },
-          style: 'cancel'
-        },
-        {
-          text: 'Yes',
-          onPress: () => {
-            setUsingPantryIngredients(true);
-            onYes();
-          }
-        }
-      ]
-    );
+  const handleAvailableModalYes = () => {
+    setShowAvailableModal(false);
+    setUsingPantryIngredients(true);
+    if (availableModalCallbacks.onYes) {
+      availableModalCallbacks.onYes();
+    }
+  };
+
+  const handleAvailableModalNo = () => {
+    setShowAvailableModal(false);
+    setUsingPantryIngredients(false);
+    if (availableModalCallbacks.onNo) {
+      availableModalCallbacks.onNo();
+    }
   };
 
   /**
@@ -371,6 +364,9 @@ export const useIngredientSubstitution = (recipe, userID) => {
     handleCloseMissingModal,
     handleMissingModalProceed,
     handleMissingModalSubstitute,
+    showAvailableModal,
+    handleAvailableModalYes,
+    handleAvailableModalNo,
 
     // Methods
     checkIngredientAvailability,
