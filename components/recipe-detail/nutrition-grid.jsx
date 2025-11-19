@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 
 export default function NutritionGrid({ nutrition }) {
   if (!nutrition || !nutrition.nutrients) {
@@ -15,115 +16,116 @@ export default function NutritionGrid({ nutrition }) {
 
   return (
     <>
-      <View style={styles.nutritionGrid}>
-        <View style={styles.nutritionItem}>
-          <View style={[styles.nutritionIcon, { backgroundColor: '#e8f5e8' }]}>
-            <Ionicons name="leaf-outline" size={20} color="#4CAF50" />
+      <View style={styles.nutritionContainer}>
+        <View style={styles.nutritionGrid}>
+          <View style={styles.nutritionCard}>
+            <View style={[styles.nutritionIcon, { backgroundColor: '#e8f5e9' }]}>
+              <Ionicons name="nutrition-outline" size={wp('5.5%')} color="#81A969" />
+            </View>
+            <Text style={styles.nutritionValue}>{carbs}g</Text>
+            <Text style={styles.nutritionLabel}>Carbs</Text>
           </View>
-          <Text style={styles.nutritionValue}>
-            {carbs}g carbs
-          </Text>
-        </View>
-        
-        <View style={styles.nutritionItem}>
-          <View style={[styles.nutritionIcon, { backgroundColor: '#e3f2fd' }]}>
-            <Ionicons name="fitness-outline" size={20} color="#2196F3" />
-          </View>
-          <Text style={styles.nutritionValue}>
-            {protein}g protein
-          </Text>
-        </View>
-        
-        <View style={styles.nutritionItem}>
-          <View style={[styles.nutritionIcon, { backgroundColor: '#fff3e0' }]}>
-            <Ionicons name="flame-outline" size={20} color="#FF9800" />
-          </View>
-          <Text style={styles.nutritionValue}>
-            {calories} kcal
-          </Text>
-        </View>
-        
-        <View style={styles.nutritionItem}>
-          <View style={[styles.nutritionIcon, { backgroundColor: '#f3e5f5' }]}>
-            <Ionicons name="water-outline" size={20} color="#9C27B0" />
-          </View>
-          <Text style={styles.nutritionValue}>
-            {fat}g fat
-          </Text>
-        </View>
-      </View>
 
-      {/* AI Nutrition Disclaimer */}
-      {nutrition.isAIEstimate && (
-        <View style={styles.aiDisclaimer}>
-          <Ionicons name="information-circle-outline" size={14} color="#666" />
-          <Text style={styles.aiDisclaimerText}>
-            Nutritional values are AI estimates based on USDA standard ingredient values
+          <View style={styles.nutritionCard}>
+            <View style={[styles.nutritionIcon, { backgroundColor: '#e3f2fd' }]}>
+              <Ionicons name="fitness-outline" size={wp('5.5%')} color="#2196F3" />
+            </View>
+            <Text style={styles.nutritionValue}>{protein}g</Text>
+            <Text style={styles.nutritionLabel}>Protein</Text>
+          </View>
+
+          <View style={styles.nutritionCard}>
+            <View style={[styles.nutritionIcon, { backgroundColor: '#fff3e0' }]}>
+              <Ionicons name="flame-outline" size={wp('5.5%')} color="#FF9800" />
+            </View>
+            <Text style={styles.nutritionValue}>{calories}</Text>
+            <Text style={styles.nutritionLabel}>Kcal</Text>
+          </View>
+
+          <View style={styles.nutritionCard}>
+            <View style={[styles.nutritionIcon, { backgroundColor: '#f3e5f5' }]}>
+              <Ionicons name="water-outline" size={wp('5.5%')} color="#9C27B0" />
+            </View>
+            <Text style={styles.nutritionValue}>{fat}g</Text>
+            <Text style={styles.nutritionLabel}>Fat</Text>
+          </View>
+        </View>
+
+        {/* AI Nutrition Disclaimer */}
+        {nutrition.isAIEstimate && (
+          <View style={styles.aiDisclaimer}>
+            <Ionicons name="information-circle-outline" size={wp('3.5%')} color="#7f8c8d" />
+            <Text style={styles.aiDisclaimerText}>
+              Nutritional values are AI estimates
+            </Text>
+          </View>
+        )}
+
+        {/* Per Serving Note */}
+        <View style={styles.servingNote}>
+          <Text style={styles.servingNoteText}>
+            * Values shown are per serving
           </Text>
         </View>
-      )}
-
-      {/* Per Serving Note */}
-      <View style={styles.servingNote}>
-        <Text style={styles.servingNoteText}>
-          * Values shown are per serving
-        </Text>
       </View>
     </>
   );
 }
 
 const styles = StyleSheet.create({
+  nutritionContainer: {
+    marginBottom: hp('3%'),
+  },
   nutritionGrid: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     justifyContent: 'space-between',
-    marginBottom: 25,
+    marginBottom: hp('1.5%'),
   },
-  nutritionItem: {
-    width: '48%',
-    flexDirection: 'row',
+  nutritionCard: {
+    width: '23%',
     alignItems: 'center',
-    marginBottom: 12,
+    backgroundColor: '#f8f9fa',
+    borderRadius: wp('3%'),
+    paddingVertical: hp('1.5%'),
+    paddingHorizontal: wp('1%'),
   },
   nutritionIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: wp('11%'),
+    height: wp('11%'),
+    borderRadius: wp('5.5%'),
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginBottom: hp('1%'),
   },
   nutritionValue: {
-    fontSize: 14,
-    color: '#333',
+    fontSize: wp('4%'),
+    color: '#2c3e50',
+    fontWeight: 'bold',
+    marginBottom: hp('0.3%'),
+  },
+  nutritionLabel: {
+    fontSize: wp('3%'),
+    color: '#7f8c8d',
     fontWeight: '500',
   },
   aiDisclaimer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f9f9f9',
-    padding: 10,
-    borderRadius: 8,
-    marginBottom: 20,
-    borderLeftWidth: 3,
-    borderLeftColor: '#9C27B0',
+    paddingHorizontal: wp('2%'),
+    marginBottom: hp('0.5%'),
   },
   aiDisclaimerText: {
-    fontSize: 11,
-    color: '#666',
-    fontStyle: 'italic',
-    marginLeft: 6,
+    fontSize: wp('3%'),
+    color: '#7f8c8d',
+    marginLeft: wp('1.5%'),
     flex: 1,
   },
   servingNote: {
-    alignItems: 'center',
-    marginTop: -10,
-    marginBottom: 15,
+    paddingHorizontal: wp('2%'),
   },
   servingNoteText: {
-    fontSize: 10,
-    color: '#999',
+    fontSize: wp('2.8%'),
+    color: '#95a5a6',
     fontStyle: 'italic',
   },
 });

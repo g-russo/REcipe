@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, Animated, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import * as Haptics from 'expo-haptics';
 
 export default function FloatingPlayButton({
@@ -226,7 +227,7 @@ export default function FloatingPlayButton({
               activeOpacity={0.8}
             >
               <View style={styles.menuIconContainer}>
-                <Ionicons name="play-circle" size={24} color="#fff" />
+                <Ionicons name="play-circle" size={wp('6%')} color="#fff" />
               </View>
               <View style={styles.menuTextContainer}>
                 <Text style={styles.menuButtonText}>Start Recipe</Text>
@@ -249,7 +250,7 @@ export default function FloatingPlayButton({
               activeOpacity={0.8}
             >
               <View style={styles.menuIconContainer}>
-                <Ionicons name="time-outline" size={24} color="#fff" />
+                <Ionicons name="time-outline" size={wp('6%')} color="#fff" />
               </View>
               <Text style={styles.menuButtonText}>Schedule</Text>
             </TouchableOpacity>
@@ -268,7 +269,7 @@ export default function FloatingPlayButton({
           activeOpacity={isAnimating ? 1 : 0.9}
           disabled={isAnimating}
         >
-          <Ionicons name="play" size={32} color="#fff" />
+          <Ionicons name="play" size={wp('8%')} color="#fff" />
         </TouchableOpacity>
       </Animated.View>
     </View>
@@ -278,19 +279,23 @@ export default function FloatingPlayButton({
 const styles = StyleSheet.create({
   floatingButtonContainer: {
     position: 'absolute',
-    bottom: 30,
-    right: 20,
+    bottom: hp('4%'),
+    right: wp('5%'),
     alignItems: 'flex-end',
     zIndex: 1000,
   },
   playButton: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#6FA36D',
+    width: wp('16%'),
+    height: wp('16%'),
+    borderRadius: wp('8%'),
+    backgroundColor: '#81A969',
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 8,
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
   },
   playButtonDisabled: {
     backgroundColor: '#B0B0B0',
@@ -298,7 +303,7 @@ const styles = StyleSheet.create({
   },
   expandedMenu: {
     position: 'absolute',
-    bottom: 75,
+    bottom: wp('18%'),
     right: 0,
     backgroundColor: 'transparent',
   },
@@ -306,34 +311,39 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    paddingRight: 24,
-    borderRadius: 30,
-    marginBottom: 12,
-    minWidth: 180,
-    elevation: 4,
+    paddingVertical: hp('1.5%'),
+    paddingHorizontal: wp('4%'),
+    paddingRight: wp('6%'),
+    borderRadius: wp('8%'),
+    marginBottom: hp('1.5%'),
+    minWidth: wp('45%'),
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
   },
   menuIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#6FA36D',
+    width: wp('10%'),
+    height: wp('10%'),
+    borderRadius: wp('5%'),
+    backgroundColor: '#81A969',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: wp('3%'),
   },
   menuTextContainer: {
     flex: 1,
   },
   menuButtonText: {
-    fontSize: 16,
+    fontSize: wp('4%'),
     fontWeight: '600',
-    color: '#6FA36D',
+    color: '#2c3e50',
   },
   warningText: {
-    fontSize: 12,
+    fontSize: wp('3%'),
     color: '#FF9800',
-    marginTop: 2,
+    marginTop: hp('0.3%'),
+    fontWeight: '500',
   },
 });
