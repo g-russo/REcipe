@@ -417,12 +417,17 @@ const Home = () => {
         });
 
       setPopularRecipes(normalized);
+      
+      // ✅ Keep loading visible until recipes render (prevents flash of empty state)
+      setTimeout(() => {
+        setLoadingPopularRecipes(false);
+        console.log('✅ Popular recipes loaded and rendered');
+      }, 2000); // 2 seconds for smooth transition
     } catch (error) {
       console.error('Error loading popular recipes:', error);
       setPopularRecipes([]);
       setPopularRecipesError('Unable to load popular recipes right now.');
-    } finally {
-      setLoadingPopularRecipes(false);
+      setLoadingPopularRecipes(false); // Stop loading immediately on error
     }
   }, []);
 
