@@ -31,7 +31,8 @@ import GroupFormModal from '../../components/pantry/group-form-modal';
 import GroupItemsModal from '../../components/pantry/group-items-modal';
 import SearchFilterModal from '../../components/pantry/search-filter-modal';
 import ExpiringItemsBanner from '../../components/pantry/expiring-items-banner';
-import AppAlert, { AnimatedButton } from '../../components/common/app-alert';
+import AppAlert from '../../components/common/app-alert';
+import PantryAlert, { AnimatedButton } from '../../components/pantry/pantry-alert';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 // Category icon mapping for consistent icon usage across alerts
@@ -1068,7 +1069,7 @@ const Pantry = () => {
         )}
       </View>
 
-      <AppAlert
+      <PantryAlert
         visible={alert.visible}
         type={alert.type}
         message={alert.message}
@@ -1080,7 +1081,7 @@ const Pantry = () => {
       />
 
       {/* Duplicate Alert */}
-      <AppAlert
+      <PantryAlert
         visible={duplicateAlert.visible}
         type="info"
         title="Duplicate Item Detected"
@@ -1138,10 +1139,10 @@ const Pantry = () => {
             }}>Add Anyway</Text>
           </AnimatedButton>
         </View>
-      </AppAlert>
+      </PantryAlert>
 
       {/* Delete Item Alert */}
-      <AppAlert
+      <PantryAlert
         visible={deleteAlert.visible}
         type="error"
         title={deleteAlert.expired ? 'Delete Expired Item' : 'Delete Item'}
@@ -1184,10 +1185,10 @@ const Pantry = () => {
             <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '700', fontSize: 16 }}>Delete</Text>
           </TouchableOpacity>
         </View>
-      </AppAlert>
+      </PantryAlert>
 
       {/* Delete Expired Items Alert */}
-      <AppAlert
+      <PantryAlert
         visible={deleteExpiredAlert.visible}
         type="error"
         title="Delete All Expired Items"
@@ -1223,10 +1224,10 @@ const Pantry = () => {
             <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '700', fontSize: 16 }}>Delete {deleteExpiredAlert.count} Item(s)</Text>
           </TouchableOpacity>
         </View>
-      </AppAlert>
+      </PantryAlert>
 
       {/* Item Menu Alert */}
-      <AppAlert
+      <PantryAlert
         visible={itemMenuAlert.visible}
         type="info"
         title="Item Actions"
@@ -1292,10 +1293,10 @@ const Pantry = () => {
             <Text style={{ color: '#dc3545', textAlign: 'center', fontWeight: '700', fontSize: 16 }}>Delete</Text>
           </TouchableOpacity>
         </View>
-      </AppAlert>
+      </PantryAlert>
 
       {/* Group Selection Alert */}
-      <AppAlert
+      <PantryAlert
         visible={groupSelectionAlert.visible}
         type="info"
         title={groupSelectionAlert.groups?.length === 0 ? 'No Groups Available' : 'Select Group'}
@@ -1352,10 +1353,10 @@ const Pantry = () => {
             </View>
           )}
         </View>
-      </AppAlert>
+      </PantryAlert>
 
       {/* Delete Group Alert */}
-      <AppAlert
+      <PantryAlert
         visible={deleteGroupAlert.visible}
         type="error"
         title="Delete Group"
@@ -1416,7 +1417,7 @@ const Pantry = () => {
             <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '700', fontSize: 16 }}>Delete Group & All Items</Text>
           </TouchableOpacity>
         </View>
-      </AppAlert>
+      </PantryAlert>
     </AuthGuard>
   );
 };
