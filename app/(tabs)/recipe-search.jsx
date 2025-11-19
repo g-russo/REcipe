@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -39,6 +40,8 @@ const RecipeSearch = () => {
   const [aiRecipeCount, setAiRecipeCount] = useState(0); // Track how many AI recipes generated
   const [canGenerateMore, setCanGenerateMore] = useState(false); // Show "Generate Another" button
   const [currentSearchQuery, setCurrentSearchQuery] = useState(''); // Store current search for "Generate Another"
+  const [showGenerateButton, setShowGenerateButton] = useState(false); // Show "Generate AI Recipe" button when no results
+  const [isValidSearchTerm, setIsValidSearchTerm] = useState(false); // Track if search term is valid for AI generation
   const [filters, setFilters] = useState({
     allergy: [],   // 14 allergen-free options (health labels)
     dietary: [],   // 13 lifestyle/restriction options (health labels)
@@ -378,6 +381,10 @@ const RecipeSearch = () => {
     // Add to recent searches
     addToRecentSearches(query);
 
+    // ✅ CRITICAL: Save search query IMMEDIATELY for "Generate Another" button
+    setCurrentSearchQuery(query);
+    console.log(`🎯 Search query saved for AI generation: "${query}"`);
+
     // Clear previous results to show loading screen
     setRecipes([]);
     setLoading(true);
@@ -390,15 +397,18 @@ const RecipeSearch = () => {
       clearTimeout(searchTimeoutRef.current);
     }
 
-    // Set 7-second timeout to force stop loading
+    // Set 30-second timeout to allow for AI generation (usually takes 18+ seconds)
     searchTimeoutRef.current = setTimeout(() => {
-      console.log('⏱️ Search timeout reached (7 seconds) - stopping loading state');
-      setLoading(false);
-      setGeneratingAI(false);
-      if (recipes.length === 0) {
-        setHasSearched(true);
+      if (!generatingAI) {
+        console.log('⏱️ Search timeout reached (30 seconds) - stopping loading state');
+        setLoading(false);
+        if (recipes.length === 0) {
+          setHasSearched(true);
+        }
+      } else {
+        console.log('⏳ Still generating AI recipe, keeping loading active...');
       }
-    }, 7000);
+    }, 30000); // 30 seconds to allow for AI recipe generation
 
     try {
       console.log('='.repeat(60));
@@ -552,104 +562,62 @@ const RecipeSearch = () => {
             recipeImageCacheService.batchCacheImages(imageUrls.slice(0, 10)); // Batch cache first 10
           }
 
-          // Keep loading animation visible until recipes are fully rendered (5 seconds)
+          // ✅ Keep loading animation visible until recipes are ready (prevents false "No Recipes" screen)
+          // Wait for images to start loading and UI to render
           setTimeout(() => {
             setLoading(false);
-          }, 5000);
+            console.log('✅ Search complete - recipes rendered');
+          }, 3000); // 3 seconds for smoother transition
         } else {
-          // ❌ No results anywhere - Generate 1 AI recipe
-          console.log('ℹ️ No existing recipes found, generating 1 AI recipe...');
-          // ✅ Transition from search loading to AI generation loading
-          setTimeout(() => {
-            setLoading(false); // Stop search loading after recipes render
-          }, 5000);
-          setGeneratingAI(true); // Start AI loading
-          setCurrentSearchQuery(query);
-
+          // ❌ No results anywhere - Validate search term and show Generate button
+          console.log(`ℹ️ No existing recipes found for "${query}"`);
+          
+          // ✅ Validate if search term is food-related using AI
+          console.log(`🔍 Validating if "${query}" is a valid food ingredient...`);
+          // Keep loading visible during validation
+          
           try {
-            // Get user's pantry items
-            let pantryItems = [];
-            if (user?.email) {
-              pantryItems = await SousChefAIService.getUserPantryItems(user.email);
-              console.log(`📦 Found ${pantryItems.length} pantry items`);
-            }
-
-            // Generate 1 AI recipe (with duplicate detection)
-            const aiResult = await SousChefAIService.generateSingleRecipe(
-              query,
-              filters,
-              pantryItems,
-              0, // First recipe
-              [] // No existing recipes yet
-            );
-
-            if (aiResult.success && aiResult.recipe) {
-              // Format AI recipe
-              const formattedRecipe = {
-                id: aiResult.recipe.recipeID,
-                uri: `souschef://recipe/${aiResult.recipe.recipeID}`,
-                label: aiResult.recipe.recipeName,
-                image: aiResult.recipe.recipeImage,
-                source: 'SousChef AI',
-                url: null,
-                yield: aiResult.recipe.servings,
-                dietLabels: aiResult.recipe.dietLabels || [],
-                healthLabels: aiResult.recipe.healthLabels || [],
-                cautions: aiResult.recipe.allergens || [],
-                ingredientLines: aiResult.recipe.ingredients.map(ing =>
-                  `${ing.quantity} ${ing.unit} ${ing.name}${ing.notes ? ` (${ing.notes})` : ''}`
-                ),
-                ingredients: aiResult.recipe.ingredients,
-                // ✅ Nutrition values (per serving from AI)
-                calories: Math.round(aiResult.recipe.calories || 0),
-                protein: Math.round(aiResult.recipe.protein || 0),
-                carbs: Math.round(aiResult.recipe.carbs || 0),
-                fat: Math.round(aiResult.recipe.fat || 0),
-                totalTime: aiResult.recipe.cookingTime,
-                cuisineType: [aiResult.recipe.cuisineType],
-                mealType: [aiResult.recipe.mealType],
-                dishType: [aiResult.recipe.dishType],
-                isCustom: true,
-                recipeID: aiResult.recipe.recipeID,
-                instructions: aiResult.recipe.instructions,
-                difficulty: aiResult.recipe.difficulty
-              };
-
-              setRecipes([formattedRecipe]);
-              setAiRecipeCount(1);
-              setCanGenerateMore(true); // Enable "Generate Another"
-              setHasSearched(true); // ✅ Set hasSearched AFTER AI recipe is created
-              console.log(`✅ Generated 1 AI recipe (1/5)`);
-
+            // Quick AI validation check
+            const validationResult = await SousChefAIService.validateFoodIngredient(query);
+            
+            if (!validationResult.isValid) {
+              // Search term is gibberish or not food-related
+              console.log(`❌ "${query}" is not a valid food ingredient: ${validationResult.reason}`);
+              setLoading(false);
+              setRecipes([]);
+              setShowGenerateButton(false);
+              setIsValidSearchTerm(false);
+              setCanGenerateMore(false);
+              setHasSearched(true);
+              
               Alert.alert(
-                '🤖 AI Recipe Created!',
-                `No existing recipes found, so SousChef AI created a custom recipe just for you!${pantryItems.length > 0 ? '\n\n✨ Personalized with your pantry items!' : ''}\n\nWant more options? Tap "Generate Another" (up to 5 total).`,
-                [{ text: 'Awesome!', style: 'default' }]
-              );
-            } else {
-              console.error('❌ AI generation failed:', aiResult.error);
-              Alert.alert(
-                'No Recipes Found',
-                'Sorry, we couldn\'t find or generate any recipes. Please try a different search term.',
+                'Invalid Search Term',
+                `"${query}" doesn't appear to be a food ingredient or dish.\n\n${validationResult.reason}\n\nPlease try searching for:\n• Food ingredients (chicken, beef, rice)\n• Dish names (adobo, sinigang, pasta)\n• Cuisine types (Filipino, Italian, Mexican)`,
                 [{ text: 'OK' }]
               );
-              setRecipes([]);
-              setCanGenerateMore(false);
-              setHasSearched(true); // ✅ Set hasSearched even if AI fails
+              return; // Exit early
             }
-          } catch (aiError) {
-            console.error('❌ AI generation error:', aiError);
-            Alert.alert(
-              'Generation Failed',
-              `Could not generate AI recipe: ${aiError.message}`,
-              [{ text: 'OK' }]
-            );
-            setRecipes([]);
-            setCanGenerateMore(false);
-            setHasSearched(true); // ✅ Set hasSearched even if error occurs
-          } finally {
-            setGeneratingAI(false);
+            
+            console.log(`✅ "${query}" is valid: ${validationResult.reason}`);
+            
+            // ✅ Search term is valid - Show Generate AI Recipe button
             setLoading(false);
+            setRecipes([]);
+            setShowGenerateButton(true);
+            setIsValidSearchTerm(true);
+            setHasSearched(true);
+            console.log(`💡 Showing "Generate AI Recipe" button for "${query}"`);
+            return; // Exit - wait for user to click Generate button
+            
+          } catch (validationError) {
+            console.error('⚠️ Validation check failed:', validationError);
+            // If validation fails, show button anyway (fail-safe)
+            setLoading(false);
+            setRecipes([]);
+            setShowGenerateButton(true);
+            setIsValidSearchTerm(true);
+            setHasSearched(true);
+            return;
           }
         }
       } else {
@@ -702,23 +670,47 @@ const RecipeSearch = () => {
       return;
     }
 
+    // ✅ Show loading during generation
+    setLoading(true);
     setGeneratingAI(true);
+    
+    // ✅ CRITICAL: Clear search timeout so it doesn't stop loading during AI generation
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+      searchTimeoutRef.current = null;
+      console.log('🔄 Cleared search timeout - AI generation in progress');
+    }
+    
+    // Verify currentSearchQuery is set
+    if (!currentSearchQuery || currentSearchQuery.trim() === '') {
+      console.error('⚠️ ERROR: currentSearchQuery is empty!', { currentSearchQuery });
+      Alert.alert('Error', 'Search query is missing. Please try searching again.');
+      setLoading(false);
+      setGeneratingAI(false);
+      return;
+    }
+    
+    console.log(`🎯 Generating with search query: "${currentSearchQuery}"`);
 
     try {
       const recipesNeeded = 5 - currentTotal;
-      console.log(`🤖 Generating another recipe (Total: ${currentTotal}/5, Need: ${recipesNeeded} more)...`);
+      console.log(`🤖 Generating another recipe based on search "${currentSearchQuery}" (Total: ${currentTotal}/5, Need: ${recipesNeeded} more)...`);
 
       // Get user's pantry items
       let pantryItems = [];
       if (user?.email) {
         pantryItems = await SousChefAIService.getUserPantryItems(user.email);
+        console.log(`📦 Using ${pantryItems.length} pantry items for recipe generation`);
       }
 
+      // ✅ Generate recipe based on BOTH search query AND pantry items
+      console.log(`🔍 Generating recipe with search: "${currentSearchQuery}", pantry: ${pantryItems.length} items`);
+      
       // Generate 1 more AI recipe (pass existing recipes for duplicate detection)
       const aiResult = await SousChefAIService.generateSingleRecipe(
-        currentSearchQuery,
+        currentSearchQuery, // ✅ Use current search query
         filters,
-        pantryItems,
+        pantryItems, // ✅ Use user's pantry items
         aiRecipeCount, // Pass current count
         recipes // Pass existing recipes to avoid duplicates
       );
@@ -783,13 +775,24 @@ const RecipeSearch = () => {
 
         console.log(`✅ Generated another recipe (Total: ${newTotal}/5, AI: ${newAiCount})`);
 
+        // ✅ Stop loading ONLY after recipe is successfully added
+        setGeneratingAI(false);
+        setLoading(false);
+        console.log('✅ Generate Another complete - recipe rendered');
+
         Alert.alert(
           '✨ New Recipe Added!',
-          `Now showing ${newTotal} recipes!${newTotal < 5 ? `\n\nWant ${5 - newTotal} more? Tap "Generate Another" again.` : '\n\nThat\'s 5 recipes! Try a new search for more.'}`,
+          `Created a new recipe based on "${currentSearchQuery}"${pantryItems.length > 0 ? ` using ${pantryItems.length} items from your pantry` : ''}!\n\nNow showing ${newTotal} recipes!${newTotal < 5 ? `\n\nWant ${5 - newTotal} more? Tap "Generate Another" again.` : '\n\nThat\'s 5 recipes! Try a new search for more.'}`,
           [{ text: 'Nice!', style: 'default' }]
         );
       } else {
         console.error('❌ AI generation failed:', aiResult.error);
+        
+        // ✅ Stop loading on failure
+        setGeneratingAI(false);
+        setLoading(false);
+        console.log('❌ Generate Another failed');
+        
         Alert.alert(
           'Generation Failed',
           'Could not generate another recipe. Please try again.',
@@ -798,13 +801,122 @@ const RecipeSearch = () => {
       }
     } catch (error) {
       console.error('❌ Generate another error:', error);
+      
+      // ✅ Stop loading on error
+      setGeneratingAI(false);
+      setLoading(false);
+      console.log('❌ Generate Another error occurred');
+      
       Alert.alert(
         'Error',
         `Failed to generate recipe: ${error.message}`,
         [{ text: 'OK' }]
       );
-    } finally {
+    }
+  };
+
+  const handleGenerateFirstAIRecipe = async () => {
+    if (!currentSearchQuery || !isValidSearchTerm) {
+      Alert.alert('Error', 'Invalid search term. Please try a different search.');
+      return;
+    }
+
+    setGeneratingAI(true);
+    setShowGenerateButton(false); // Hide button during generation
+    
+    // ✅ Clear search timeout - AI generation will control loading state
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+      searchTimeoutRef.current = null;
+      console.log('🔄 Cleared search timeout - AI generation starting');
+    }
+
+    try {
+      // Get user's pantry items
+      let pantryItems = [];
+      if (user?.email) {
+        pantryItems = await SousChefAIService.getUserPantryItems(user.email);
+        console.log(`📦 Found ${pantryItems.length} pantry items`);
+      }
+
+      // ✅ Generate 1 AI recipe based on BOTH search query AND pantry items
+      console.log(`🤖 Creating recipe for "${currentSearchQuery}" with ${pantryItems.length} pantry items`);
+      const aiResult = await SousChefAIService.generateSingleRecipe(
+        currentSearchQuery,
+        filters,
+        pantryItems,
+        0, // First recipe
+        [] // No existing recipes yet
+      );
+
+      if (aiResult.success && aiResult.recipe) {
+        // Format AI recipe
+        const formattedRecipe = {
+          id: aiResult.recipe.recipeID,
+          uri: `souschef://recipe/${aiResult.recipe.recipeID}`,
+          label: aiResult.recipe.recipeName,
+          image: aiResult.recipe.recipeImage,
+          source: 'SousChef AI',
+          url: null,
+          yield: aiResult.recipe.servings,
+          dietLabels: aiResult.recipe.dietLabels || [],
+          healthLabels: aiResult.recipe.healthLabels || [],
+          cautions: aiResult.recipe.allergens || [],
+          ingredientLines: aiResult.recipe.ingredients.map(ing =>
+            `${ing.quantity} ${ing.unit} ${ing.name}${ing.notes ? ` (${ing.notes})` : ''}`
+          ),
+          ingredients: aiResult.recipe.ingredients,
+          calories: Math.round(aiResult.recipe.calories || 0),
+          protein: Math.round(aiResult.recipe.protein || 0),
+          carbs: Math.round(aiResult.recipe.carbs || 0),
+          fat: Math.round(aiResult.recipe.fat || 0),
+          totalTime: aiResult.recipe.cookingTime,
+          cuisineType: [aiResult.recipe.cuisineType],
+          mealType: [aiResult.recipe.mealType],
+          dishType: [aiResult.recipe.dishType],
+          isCustom: true,
+          recipeID: aiResult.recipe.recipeID,
+          instructions: aiResult.recipe.instructions,
+          difficulty: aiResult.recipe.difficulty
+        };
+
+        setRecipes([formattedRecipe]);
+        setAiRecipeCount(1);
+        setCanGenerateMore(true); // Enable "Generate Another"
+        console.log(`✅ Generated 1 AI recipe (1/5)`);
+
+        // ✅ Stop loading ONLY after recipe is successfully added
+        setGeneratingAI(false);
+        console.log('✅ AI generation complete - recipe rendered');
+
+        Alert.alert(
+          '🤖 AI Recipe Created!',
+          `SousChef AI created a custom recipe for "${currentSearchQuery}"!${pantryItems.length > 0 ? `\n\n✨ Personalized using ${pantryItems.length} items from your pantry!` : ''}\n\nWant more options? Tap "Generate Another" (up to 5 total).`,
+          [{ text: 'Awesome!', style: 'default' }]
+        );
+      } else {
+        console.error('❌ AI generation failed:', aiResult.error);
+        
+        setGeneratingAI(false);
+        setShowGenerateButton(true); // Show button again
+        
+        Alert.alert(
+          'Generation Failed',
+          'Sorry, we couldn\'t generate a recipe. Please try again.',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (aiError) {
+      console.error('❌ AI generation error:', aiError);
+      
       setGeneratingAI(false);
+      setShowGenerateButton(true); // Show button again
+      
+      Alert.alert(
+        'Generation Failed',
+        `Could not generate AI recipe: ${aiError.message}`,
+        [{ text: 'OK' }]
+      );
     }
   };
 
@@ -1190,14 +1302,51 @@ const RecipeSearch = () => {
             </View>
           )}
 
-          {/* No Results Message - Only show when search AND AI generation both fail */}
-          {hasSearched && recipes.length === 0 && !loading && !generatingAI && (
+          {/* Generate AI Recipe Button - Show when no results found but search term is valid */}
+          {showGenerateButton && !generatingAI && (
+            <View style={styles.section}>
+              <View style={styles.noResultsContainer}>
+                <Ionicons name="search-outline" size={60} color="#8A2BE2" style={{ marginBottom: 15 }} />
+                <Text style={styles.noResultsTitle}>No Recipes Found</Text>
+                <Text style={styles.noResultsSubtext}>
+                  No existing recipes for "{currentSearchQuery}" in Edamam or our database.
+                </Text>
+                <Text style={[styles.noResultsSubtext, { marginTop: 10, fontWeight: '600', color: '#8A2BE2' }]}>
+                  ✨ But don't worry! Our AI can create one for you!
+                </Text>
+                
+                <TouchableOpacity
+                  style={styles.generateAIButton}
+                  onPress={handleGenerateFirstAIRecipe}
+                  activeOpacity={0.8}
+                >
+                  <LinearGradient
+                    colors={['#8A2BE2', '#9D4EDD', '#C77DFF']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.generateAIButtonGradient}
+                  >
+                    <Ionicons name="sparkles" size={28} color="#fff" style={{ marginRight: 12 }} />
+                    <View style={styles.generateAIButtonTextContainer}>
+                      <Text style={styles.generateAIButtonText}>Generate AI Recipe</Text>
+                      <Text style={styles.generateAIButtonSubtext}>
+                        Create a custom recipe for {currentSearchQuery}
+                      </Text>
+                    </View>
+                    <Ionicons name="arrow-forward" size={24} color="#fff" />
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          {/* No Results Message - Only show when search term is invalid */}
+          {hasSearched && recipes.length === 0 && !loading && !generatingAI && !showGenerateButton && (
             <View style={styles.section}>
               <View style={styles.emptyContainer}>
                 <Ionicons name="alert-circle-outline" size={60} color="#ff6b6b" style={{ marginBottom: 15 }} />
                 <Text style={styles.emptyText}>No Recipes Available</Text>
                 <Text style={styles.emptySubtext}>No results found in Edamam or our AI database.</Text>
-                <Text style={styles.emptySubtext}>AI generation also encountered an error.</Text>
                 <Text style={[styles.emptySubtext, { marginTop: 10, color: '#4CAF50' }]}>
                   💡 Try a different search term or check your spelling
                 </Text>
@@ -1726,6 +1875,56 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.8)',
     fontSize: wp('3.2%'),
     marginTop: hp('0.2%'),
+  },
+  noResultsContainer: {
+    alignItems: 'center',
+    padding: wp('8%'),
+    backgroundColor: '#fff',
+    borderRadius: wp('4%'),
+    marginVertical: hp('2%'),
+  },
+  noResultsTitle: {
+    fontSize: wp('5.5%'),
+    fontWeight: '700',
+    color: '#333',
+    marginBottom: hp('1%'),
+    textAlign: 'center',
+  },
+  noResultsSubtext: {
+    fontSize: wp('4%'),
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: hp('3%'),
+  },
+  generateAIButton: {
+    width: '100%',
+    borderRadius: wp('3%'),
+    marginTop: hp('3%'),
+    elevation: 8,
+    shadowColor: '#8A2BE2',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    overflow: 'hidden',
+  },
+  generateAIButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: wp('5%'),
+  },
+  generateAIButtonTextContainer: {
+    flex: 1,
+  },
+  generateAIButtonText: {
+    color: '#fff',
+    fontSize: wp('4.8%'),
+    fontWeight: '700',
+    marginBottom: hp('0.5%'),
+  },
+  generateAIButtonSubtext: {
+    color: 'rgba(255, 255, 255, 0.9)',
+    fontSize: wp('3.5%'),
   },
 });
 
