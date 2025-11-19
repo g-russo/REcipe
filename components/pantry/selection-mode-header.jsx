@@ -119,6 +119,10 @@ const SelectionModeHeader = ({
 
 const styles = StyleSheet.create({
   container: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -129,6 +133,7 @@ const styles = StyleSheet.create({
     borderBottomColor: '#f0f0f0', // Lighter border
     paddingTop: Platform.OS === 'android' ? 10 : 0,
     height: Platform.OS === 'android' ? 60 : 50,
+    zIndex: 1000,
   },
   actionButton: {
     flexDirection: 'row',
