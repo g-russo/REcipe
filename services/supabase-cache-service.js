@@ -411,14 +411,14 @@ class SupabaseCacheService {
 
       const result = await scrapeFunction(recipeUrl);
 
-      if (result.success && result.instructions?.length > 0) {
-        // Save to cache
+      if (result.success && result.instructions?.length > 0 && !result.fallback) {
+        // Only save to cache if NOT a fallback (successful scraping only)
         await this.saveRecipeInstructions(recipeUrl, result.instructions, result.source || 'scraped');
         return result;
       }
 
-      // Scraping failed, return fallback
-      console.log('⚠️ Scraping failed, using fallback');
+      // Scraping failed, return fallback (don't cache)
+      console.log('⚠️ Scraping failed, using fallback (not cached)');
       return this.generateInstructionFallback(recipeUrl);
 
     } catch (error) {
