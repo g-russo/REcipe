@@ -1,38 +1,34 @@
 /**
- * Recipe Image Cache Service - Supabase Storage Implementation
+ * Recipe Image Cache Service - Database + Supabase Storage Implementation
  * 
- * Stores recipe images in Supabase Storage for persistent, fast access
+ * Stores recipe images in Supabase Storage with database tracking
  * Benefits:
  * - Images available across all devices
  * - CDN-backed for fast delivery
- * - No device storage limits
+ * - Database tracking (no AsyncStorage bloat)
  * - Automatic deduplication
- * - Works like history images (proven approach)
+ * - Recipe associations for easy cleanup
  */
 
 import { supabase } from '../lib/supabase';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const STORAGE_BUCKET = 'recipe-images';
-const CACHE_INDEX_KEY = '@recipe_image_cache_index_v1';
 const CACHE_EXPIRY_DAYS = 30; // Images valid for 30 days
-const MAX_CACHE_ENTRIES = 500; // Limit cache index size
+const CACHE_TABLE = 'cache_recipe_images';
 
 class RecipeImageCacheService {
   constructor() {
-    this.cacheIndex = null; // Maps original URL to Supabase URL
     this.uploadQueue = new Set(); // Track ongoing uploads
     this.initializeService();
   }
 
   /**
-   * Initialize service and load cache index
+   * Initialize service and ensure bucket exists
    */
   async initializeService() {
     try {
-      await this.loadCacheIndex();
       await this.ensureBucketExists();
-      console.log('📸 Recipe Image Cache Service initialized');
+      console.log('📸 Recipe Image Cache Service initialized (database-backed)');
     } catch (error) {
       console.error('❌ Failed to initialize image cache service:', error);
     }
@@ -80,77 +76,96 @@ class RecipeImageCacheService {
     }
   }
 
-  /**
-   * Load cache index from AsyncStorage
-   */
-  async loadCacheIndex() {
-    try {
-      const indexData = await AsyncStorage.getItem(CACHE_INDEX_KEY);
-      this.cacheIndex = indexData ? JSON.parse(indexData) : {};
-      console.log(`📊 Image cache index loaded: ${Object.keys(this.cacheIndex).length} entries`);
-    } catch (error) {
-      console.error('❌ Failed to load cache index:', error);
-      this.cacheIndex = {};
-    }
-  }
+
 
   /**
-   * Save cache index to AsyncStorage
-   */
-  async saveCacheIndex() {
-    try {
-      await AsyncStorage.setItem(CACHE_INDEX_KEY, JSON.stringify(this.cacheIndex));
-    } catch (error) {
-      console.error('❌ Failed to save cache index:', error);
-    }
-  }
-
-  /**
-   * Generate cache key from original image URL
+   * Generate deterministic cache key from original image URL
+   * Same URL = Same cache key (prevents duplicates)
    */
   generateCacheKey(originalUrl) {
     if (!originalUrl) return null;
 
-    // Create a hash-like key from URL
+    // Create a deterministic hash from URL (no timestamp!)
     const cleanUrl = originalUrl.split('?')[0]; // Remove query params
-    const urlHash = cleanUrl
-      .replace(/[^a-zA-Z0-9]/g, '_')
-      .substring(0, 100);
+    
+    // Simple but effective hash function
+    let hash = 0;
+    for (let i = 0; i < cleanUrl.length; i++) {
+      const char = cleanUrl.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    
+    // Convert to positive hex string
+    const hashStr = Math.abs(hash).toString(16).padStart(8, '0');
+    
+    return hashStr; // Return just the hash for flexibility
+  }
 
-    const timestamp = Date.now().toString(36);
-    return `${urlHash}_${timestamp}`;
+  /**
+   * Sanitize recipe ID for use in filename
+   */
+  sanitizeRecipeId(recipeId) {
+    if (!recipeId) return '';
+    
+    // For Edamam URIs, extract just the ID part
+    if (recipeId.includes('recipe_')) {
+      const match = recipeId.match(/recipe_([a-zA-Z0-9]+)/);
+      if (match) return match[1].substring(0, 12);
+    }
+    
+    // For numeric IDs or other formats
+    return String(recipeId)
+      .replace(/[^a-zA-Z0-9]/g, '_')
+      .substring(0, 20);
+  }
+
+  /**
+   * Sanitize recipe name for use in filename
+   */
+  sanitizeFileName(name) {
+    if (!name) return '';
+    
+    return name
+      .toLowerCase()
+      .replace(/[^a-zA-Z0-9]/g, '_')
+      .replace(/_+/g, '_') // Replace multiple underscores with single
+      .substring(0, 30);
   }
 
   /**
    * Get cached image URL or cache it if not exists
    * @param {string} originalUrl - Original recipe image URL
+   * @param {string} recipeId - Recipe ID (recipeID for AI, uri for Edamam) to tie image to recipe
+   * @param {string} recipeName - Recipe name for better filename organization
    * @returns {Promise<string>} Supabase storage URL or original URL as fallback
    */
-  async getCachedImageUrl(originalUrl) {
+  async getCachedImageUrl(originalUrl, recipeId = null, recipeName = null) {
     if (!originalUrl) return null;
 
     try {
-      // Check if already cached
-      const cached = this.cacheIndex[originalUrl];
-      if (cached) {
-        const age = Date.now() - cached.timestamp;
-        const maxAge = CACHE_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
+      // Check database cache
+      const { data: cached, error } = await supabase
+        .from(CACHE_TABLE)
+        .select('cached_url, expires_at, id')
+        .eq('original_url', originalUrl)
+        .single();
 
-        if (age < maxAge) {
-          // Cache hit - return Supabase URL (or original if skipped)
-          return cached.supabaseUrl;
-        } else if (!cached.skipped) {
-          // Cache expired - remove and re-cache (unless it was skipped due to 403)
-          delete this.cacheIndex[originalUrl];
-          await this.saveCacheIndex();
+      if (!error && cached) {
+        const isExpired = new Date(cached.expires_at) < new Date();
+        
+        if (!isExpired) {
+          // Cache hit - increment access count and return cached URL
+          await supabase.rpc('increment_image_access', { p_original_url: originalUrl });
+          return cached.cached_url;
         } else {
-          // Was skipped (403 error), keep using original
-          return cached.supabaseUrl;
+          // Cache expired - delete and re-cache
+          await this.deleteCachedImage(cached.id);
         }
       }
 
-      // Cache miss - upload to Supabase
-      return await this.cacheImage(originalUrl);
+      // Cache miss - upload to Supabase with recipe association
+      return await this.cacheImage(originalUrl, recipeId, recipeName);
     } catch (error) {
       console.error('❌ Error getting cached image:', error);
       return originalUrl; // Fallback to original URL
@@ -158,11 +173,13 @@ class RecipeImageCacheService {
   }
 
   /**
-   * Cache image to Supabase Storage
+   * Cache image to Supabase Storage with recipe association
    * @param {string} originalUrl - Original image URL
+   * @param {string} recipeId - Recipe ID (recipeID for AI, uri for Edamam)
+   * @param {string} recipeName - Recipe name for better organization
    * @returns {Promise<string>} Supabase storage URL
    */
-  async cacheImage(originalUrl) {
+  async cacheImage(originalUrl, recipeId = null, recipeName = null) {
     // Prevent duplicate uploads
     if (this.uploadQueue.has(originalUrl)) {
       console.log('⏳ Upload already in progress for:', originalUrl.substring(0, 50));
@@ -172,6 +189,29 @@ class RecipeImageCacheService {
     this.uploadQueue.add(originalUrl);
 
     try {
+      // Always save as WebP (per bucket RLS policy)
+      const fileExt = 'webp';
+      
+      // Generate filename with recipe association
+      const baseKey = this.generateCacheKey(originalUrl);
+      const recipePrefix = recipeId ? `recipe-${this.sanitizeRecipeId(recipeId)}_` : '';
+      const namePrefix = recipeName ? `${this.sanitizeFileName(recipeName)}_` : '';
+      const fileName = `${recipePrefix}${namePrefix}${baseKey}.${fileExt}`;
+      const filePath = `cached/${fileName}`;
+
+      // ✅ CHECK IF FILE ALREADY EXISTS IN DATABASE (prevents duplicates)
+      const { data: existingCache } = await supabase
+        .from(CACHE_TABLE)
+        .select('cached_url')
+        .eq('original_url', originalUrl)
+        .single();
+
+      if (existingCache) {
+        console.log('♻️ Image already cached in database');
+        await supabase.rpc('increment_image_access', { p_original_url: originalUrl });
+        return existingCache.cached_url;
+      }
+
       // Download image with better error handling
       const response = await fetch(originalUrl, {
         headers: {
@@ -182,13 +222,16 @@ class RecipeImageCacheService {
       if (!response.ok) {
         if (response.status === 403) {
           console.warn('⚠️ Image protected (403), skipping cache:', originalUrl.substring(0, 50));
-          // Mark as "don't cache" so we don't keep trying
-          this.cacheIndex[originalUrl] = {
-            supabaseUrl: originalUrl, // Use original URL
-            timestamp: Date.now(),
-            skipped: true // Flag to prevent retries
-          };
-          await this.saveCacheIndex();
+          // Store in database with original URL (so we don't keep trying)
+          await supabase.from(CACHE_TABLE).insert({
+            original_url: originalUrl,
+            cached_url: originalUrl,
+            recipe_id: recipeId,
+            recipe_name: recipeName,
+            file_path: 'skipped',
+            source: 'skipped-403',
+            expires_at: new Date(Date.now() + CACHE_EXPIRY_DAYS * 24 * 60 * 60 * 1000).toISOString()
+          });
           return originalUrl;
         }
         throw new Error(`Failed to fetch image: ${response.status}`);
@@ -196,16 +239,7 @@ class RecipeImageCacheService {
 
       // React Native: Convert arrayBuffer to Uint8Array (Supabase supports this)
       const arrayBuffer = await response.arrayBuffer();
-      const contentType = response.headers.get('content-type') || 'image/jpeg';
-
       const uint8Array = new Uint8Array(arrayBuffer);
-
-      // Determine file extension from content type
-      const fileExt = contentType.includes('png') ? 'png' :
-        contentType.includes('webp') ? 'webp' :
-          contentType.includes('gif') ? 'gif' : 'jpg';
-      const fileName = `${this.generateCacheKey(originalUrl)}.${fileExt}`;
-      const filePath = `cached/${fileName}`;
 
       // Upload to Supabase Storage using Uint8Array
       // Force contentType to image/webp to bypass bucket restrictions if needed
@@ -215,10 +249,28 @@ class RecipeImageCacheService {
           contentType: 'image/webp', // Force WebP to bypass bucket MIME restrictions
           cacheControl: '2592000', // 30 days
           upsert: false
-        }); if (error) {
-          console.error('❌ Upload error:', error);
-          return originalUrl;
+        });
+
+      if (error) {
+        // If file already exists (race condition), check database
+        if (error.message?.includes('already exists')) {
+          console.log('♻️ Image already exists (race condition):', fileName);
+          
+          const { data: existingCache } = await supabase
+            .from(CACHE_TABLE)
+            .select('cached_url')
+            .eq('original_url', originalUrl)
+            .single();
+
+          if (existingCache) {
+            await supabase.rpc('increment_image_access', { p_original_url: originalUrl });
+            return existingCache.cached_url;
+          }
         }
+        
+        console.error('❌ Upload error:', error);
+        return originalUrl;
+      }
 
       // Get public URL
       const { data: urlData } = supabase.storage
@@ -227,17 +279,29 @@ class RecipeImageCacheService {
 
       const supabaseUrl = urlData.publicUrl;
 
-      // Update cache index
-      this.cacheIndex[originalUrl] = {
-        supabaseUrl,
-        timestamp: Date.now(),
-        fileName: filePath
-      };
+      // Determine source
+      const source = originalUrl.includes('edamam') ? 'edamam' : 
+                     originalUrl.includes('supabase') ? 'ai-generated' : 'external';
 
-      await this.saveCacheIndex();
-      await this.cleanupIfNeeded();
+      // Store in database cache with recipe association
+      const { error: insertError } = await supabase
+        .from(CACHE_TABLE)
+        .insert({
+          original_url: originalUrl,
+          cached_url: supabaseUrl,
+          recipe_id: recipeId,
+          recipe_name: recipeName,
+          file_path: filePath,
+          source: source,
+          file_size: uint8Array.length,
+          expires_at: new Date(Date.now() + CACHE_EXPIRY_DAYS * 24 * 60 * 60 * 1000).toISOString()
+        });
 
-      console.log('✅ Image cached to Supabase:', fileName);
+      if (insertError) {
+        console.error('❌ Failed to save cache entry to database:', insertError);
+      }
+
+      console.log('✅ Image cached to Supabase:', fileName, recipeId ? `(Recipe: ${recipeId})` : '');
       return supabaseUrl;
 
     } catch (error) {
@@ -263,25 +327,30 @@ class RecipeImageCacheService {
   }
 
   /**
-   * Batch cache multiple images in background
-   * @param {Array<string>} imageUrls - Array of image URLs to cache
+   * Batch cache multiple images in background with recipe associations
+   * @param {Array<Object|string>} items - Array of {url, recipeId, recipeName} or just URLs
    */
-  async batchCacheImages(imageUrls) {
-    if (!imageUrls || imageUrls.length === 0) return;
+  async batchCacheImages(items) {
+    if (!items || items.length === 0) return;
 
-    console.log(`🔄 Batch caching ${imageUrls.length} images...`);
+    console.log(`🔄 Batch caching ${items.length} images...`);
 
     // Process in batches to avoid overwhelming the system
     const BATCH_SIZE = 3;
     let cached = 0;
 
-    for (let i = 0; i < imageUrls.length; i += BATCH_SIZE) {
-      const batch = imageUrls.slice(i, i + BATCH_SIZE);
+    for (let i = 0; i < items.length; i += BATCH_SIZE) {
+      const batch = items.slice(i, i + BATCH_SIZE);
 
       await Promise.allSettled(
-        batch.map(async url => {
+        batch.map(async item => {
           try {
-            await this.getCachedImageUrl(url);
+            // Support both string URLs and objects with metadata
+            const url = typeof item === 'string' ? item : item.url;
+            const recipeId = typeof item === 'object' ? item.recipeId : null;
+            const recipeName = typeof item === 'object' ? item.recipeName : null;
+            
+            await this.getCachedImageUrl(url, recipeId, recipeName);
             cached++;
           } catch (error) {
             console.error('Batch cache error:', error);
@@ -290,51 +359,42 @@ class RecipeImageCacheService {
       );
 
       // Small delay between batches
-      if (i + BATCH_SIZE < imageUrls.length) {
+      if (i + BATCH_SIZE < items.length) {
         await new Promise(resolve => setTimeout(resolve, 500));
       }
     }
 
-    console.log(`✅ Batch cached ${cached}/${imageUrls.length} images`);
+    console.log(`✅ Batch cached ${cached}/${items.length} images`);
   }
 
   /**
-   * Cleanup old cache entries if needed
+   * Delete a cached image by ID
    */
-  async cleanupIfNeeded() {
-    const entries = Object.entries(this.cacheIndex);
+  async deleteCachedImage(cacheId) {
+    try {
+      const { data: cacheEntry } = await supabase
+        .from(CACHE_TABLE)
+        .select('file_path')
+        .eq('id', cacheId)
+        .single();
 
-    if (entries.length <= MAX_CACHE_ENTRIES) return;
-
-    console.log('🧹 Cleaning up old cache entries...');
-
-    // Sort by timestamp (oldest first)
-    entries.sort((a, b) => a[1].timestamp - b[1].timestamp);
-
-    // Remove oldest 20% of entries
-    const toRemove = Math.floor(entries.length * 0.2);
-    const removedEntries = entries.slice(0, toRemove);
-
-    // Delete from Supabase Storage
-    const filesToDelete = removedEntries
-      .map(([_, entry]) => entry.fileName)
-      .filter(Boolean);
-
-    if (filesToDelete.length > 0) {
-      const { error } = await supabase.storage
-        .from(STORAGE_BUCKET)
-        .remove(filesToDelete);
-
-      if (error) {
-        console.error('Error deleting old images:', error);
+      if (cacheEntry && cacheEntry.file_path !== 'skipped') {
+        // Delete from storage
+        await supabase.storage
+          .from(STORAGE_BUCKET)
+          .remove([cacheEntry.file_path]);
       }
+
+      // Delete from database
+      await supabase
+        .from(CACHE_TABLE)
+        .delete()
+        .eq('id', cacheId);
+
+      console.log('🗑️ Deleted cached image:', cacheId);
+    } catch (error) {
+      console.error('Error deleting cached image:', error);
     }
-
-    // Remove from index
-    removedEntries.forEach(([url]) => delete this.cacheIndex[url]);
-    await this.saveCacheIndex();
-
-    console.log(`✅ Removed ${toRemove} old cache entries`);
   }
 
   /**
@@ -342,19 +402,27 @@ class RecipeImageCacheService {
    */
   async clearCache() {
     try {
-      // Delete all cached images from Supabase
-      const { data: files, error: listError } = await supabase.storage
-        .from(STORAGE_BUCKET)
-        .list('cached');
+      // Get all cached images from database
+      const { data: allCached } = await supabase
+        .from(CACHE_TABLE)
+        .select('file_path');
 
-      if (!listError && files && files.length > 0) {
-        const filePaths = files.map(f => `cached/${f.name}`);
-        await supabase.storage.from(STORAGE_BUCKET).remove(filePaths);
+      if (allCached && allCached.length > 0) {
+        // Delete from storage
+        const filePaths = allCached
+          .filter(c => c.file_path !== 'skipped')
+          .map(c => c.file_path);
+        
+        if (filePaths.length > 0) {
+          await supabase.storage.from(STORAGE_BUCKET).remove(filePaths);
+        }
       }
 
-      // Clear local index
-      this.cacheIndex = {};
-      await AsyncStorage.removeItem(CACHE_INDEX_KEY);
+      // Clear database cache
+      await supabase
+        .from(CACHE_TABLE)
+        .delete()
+        .neq('id', 0); // Delete all rows
 
       console.log('🗑️ Image cache cleared');
     } catch (error) {
@@ -363,24 +431,99 @@ class RecipeImageCacheService {
   }
 
   /**
-   * Get cache statistics
+   * Get cached images for a specific recipe
+   * @param {string} recipeId - Recipe ID to lookup
+   * @returns {Promise<Array<Object>>} Array of cached image entries for this recipe
+   */
+  async getImagesByRecipe(recipeId) {
+    if (!recipeId) return [];
+    
+    try {
+      const { data, error } = await supabase.rpc('get_recipe_images', {
+        p_recipe_id: recipeId
+      });
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error getting images by recipe:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Delete images associated with a recipe
+   * @param {string} recipeId - Recipe ID to delete images for
+   */
+  async deleteRecipeImages(recipeId) {
+    if (!recipeId) return;
+
+    try {
+      // Get all images for this recipe
+      const { data: recipeImages } = await supabase
+        .from(CACHE_TABLE)
+        .select('file_path, id')
+        .eq('recipe_id', recipeId);
+      
+      if (!recipeImages || recipeImages.length === 0) {
+        console.log('ℹ️ No cached images found for recipe:', recipeId);
+        return;
+      }
+
+      // Delete from Supabase Storage
+      const filesToDelete = recipeImages
+        .filter(img => img.file_path !== 'skipped')
+        .map(img => img.file_path);
+      
+      if (filesToDelete.length > 0) {
+        const { error } = await supabase.storage
+          .from(STORAGE_BUCKET)
+          .remove(filesToDelete);
+
+        if (error) {
+          console.error('Error deleting recipe images from storage:', error);
+        }
+      }
+
+      // Delete from database
+      await supabase
+        .from(CACHE_TABLE)
+        .delete()
+        .eq('recipe_id', recipeId);
+      
+      console.log(`🗑️ Deleted ${recipeImages.length} images for recipe: ${recipeId}`);
+    } catch (error) {
+      console.error('Error deleting recipe images:', error);
+    }
+  }
+
+  /**
+   * Get cache statistics from database
    */
   async getStats() {
-    const entries = Object.entries(this.cacheIndex);
-    const now = Date.now();
+    try {
+      const { data, error } = await supabase
+        .from('cache_images_stats')
+        .select('*')
+        .single();
 
-    const aged = entries.map(([_, entry]) => {
-      const age = now - entry.timestamp;
-      return Math.round(age / 1000 / 60 / 60 / 24); // Days
-    });
+      if (error) throw error;
 
-    return {
-      totalCached: entries.length,
-      maxEntries: MAX_CACHE_ENTRIES,
-      expiryDays: CACHE_EXPIRY_DAYS,
-      avgAgeDays: aged.length > 0 ? Math.round(aged.reduce((a, b) => a + b, 0) / aged.length) : 0,
-      uploadsInProgress: this.uploadQueue.size
-    };
+      return {
+        ...data,
+        expiryDays: CACHE_EXPIRY_DAYS,
+        uploadsInProgress: this.uploadQueue.size
+      };
+    } catch (error) {
+      console.error('Error getting cache stats:', error);
+      return {
+        totalCached: 0,
+        withRecipeAssociation: 0,
+        orphanedImages: 0,
+        expiryDays: CACHE_EXPIRY_DAYS,
+        uploadsInProgress: this.uploadQueue.size
+      };
+    }
   }
 }
 

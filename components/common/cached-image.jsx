@@ -11,6 +11,8 @@ import recipeImageCacheService from '../../services/recipe-image-cache-service';
 
 export default function CachedImage({ 
   uri, 
+  recipeId = null,
+  recipeName = null,
   style, 
   resizeMode = 'cover',
   showLoader = true,
@@ -33,8 +35,8 @@ export default function CachedImage({
     }
 
     try {
-      // Get Supabase-cached image URL
-      const cached = await recipeImageCacheService.getCachedImageUrl(uri);
+      // Get Supabase-cached image URL with recipe association
+      const cached = await recipeImageCacheService.getCachedImageUrl(uri, recipeId, recipeName);
       setCachedUri(cached);
       setLoading(false);
     } catch (err) {

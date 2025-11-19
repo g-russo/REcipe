@@ -540,26 +540,76 @@ const RecipeSearch = () => {
         const totalRecipes = allRecipes.length;
 
         if (totalRecipes > 0) {
+          // ✅ If ONLY AI recipes from cache (no Edamam results), validate search term
+          if (result.data.recipes.length === 0 && dbResult.count > 0) {
+            console.log(`⚠️ Only cached AI recipes found. Validating if "${query}" is still a valid search term...`);
+            
+            // Keep loading visible during validation
+            try {
+              const validationResult = await SousChefAIService.validateFoodIngredient(query);
+              
+              if (!validationResult.isValid) {
+                // Search term is gibberish - don't show cached results
+                console.log(`❌ "${query}" is not valid: ${validationResult.reason}`);
+                console.log(`🗑️ Hiding ${totalRecipes} cached AI recipes for invalid search term`);
+                
+                // Stop loading and show "No Recipes Available" message
+                setLoading(false);
+                setRecipes([]);
+                setShowGenerateButton(false);
+                setIsValidSearchTerm(false);
+                setCanGenerateMore(false);
+                setHasSearched(true);
+                
+                // No alert needed - "No Recipes Available" message is sufficient
+                return; // Exit early - don't show cached results
+              }
+              
+              console.log(`✅ "${query}" is valid - showing cached AI recipes`);
+            } catch (validationError) {
+              console.error('⚠️ Validation check failed, showing cached results anyway:', validationError);
+              // If validation fails technically, show cached results (fail-safe)
+            }
+          }
+          
           // ✅ Show all recipes (AI + Edamam)
           setRecipes(allRecipes);
           setHasSearched(true); // ✅ Set hasSearched AFTER we have results
 
-          // 🤖 If less than 5 recipes, enable "Generate More" button
-          if (totalRecipes < 5) {
+          // 🤖 Only show "Generate More" button if NO Edamam results and total < 5
+          const hasEdamamResults = result.data.recipes.length > 0;
+          
+          if (!hasEdamamResults && totalRecipes < 5) {
+            // Only AI recipes from cache, and less than 5 total
             setCanGenerateMore(true);
+            setShowGenerateButton(true);
+            setIsValidSearchTerm(true);
             const recipesNeeded = 5 - totalRecipes;
-            console.log(`📊 Only ${totalRecipes} recipes found. User can generate ${recipesNeeded} more AI recipes.`);
+            console.log(`📊 Only ${totalRecipes} AI recipes (no Edamam). User can generate ${recipesNeeded} more.`);
           } else {
+            // Either has Edamam results OR already 5+ recipes
             setCanGenerateMore(false);
+            setShowGenerateButton(false);
+            if (hasEdamamResults) {
+              console.log(`✅ Found ${result.data.recipes.length} Edamam recipes - no AI generation needed`);
+            }
           }
 
           setAiRecipeCount(dbResult.count || 0);
           console.log(`✅ Displaying ${totalRecipes} total recipes (${dbResult.count} AI, ${result.data.recipes.length} Edamam)`);
 
-          // Prefetch images to Supabase Storage for faster loading
-          const imageUrls = allRecipes.map(r => r.image).filter(Boolean);
-          if (imageUrls.length > 0) {
-            recipeImageCacheService.batchCacheImages(imageUrls.slice(0, 10)); // Batch cache first 10
+          // Prefetch images to Supabase Storage with recipe associations
+          const imagesToCache = allRecipes
+            .filter(r => r.image)
+            .slice(0, 10)
+            .map(r => ({
+              url: r.image,
+              recipeId: r.recipeID || r.uri, // AI recipes have recipeID, Edamam have uri
+              recipeName: r.recipeName || r.label
+            }));
+          
+          if (imagesToCache.length > 0) {
+            recipeImageCacheService.batchCacheImages(imagesToCache);
           }
 
           // ✅ Keep loading animation visible until recipes are ready (prevents false "No Recipes" screen)
@@ -590,11 +640,9 @@ const RecipeSearch = () => {
               setCanGenerateMore(false);
               setHasSearched(true);
               
-              Alert.alert(
-                'Invalid Search Term',
-                `"${query}" doesn't appear to be a food ingredient or dish.\n\n${validationResult.reason}\n\nPlease try searching for:\n• Food ingredients (chicken, beef, rice)\n• Dish names (adobo, sinigang, pasta)\n• Cuisine types (Filipino, Italian, Mexican)`,
-                [{ text: 'OK' }]
-              );
+              // No alert - "No Recipes Available" message is sufficient
+              // User will see the validation reason in console if needed
+              console.log(`💡 Suggestion: Try searching for food ingredients, dishes, or cuisines`);
               return; // Exit early
             }
             
@@ -971,7 +1019,7 @@ const RecipeSearch = () => {
           <View style={styles.recipeStats}>
             <View style={styles.statItem}>
               <Ionicons name="time-outline" size={wp('4%')} color="#7f8c8d" style={styles.statIcon} />
-              <Text style={styles.statLabel}>{item.totalTime || 'N/A'} min</Text>
+              <Text style={styles.statLabel}>{item.totalTime || 30} min</Text>
             </View>
             <View style={styles.statItem}>
               <Ionicons name="flame-outline" size={wp('4%')} color="#7f8c8d" style={styles.statIcon} />

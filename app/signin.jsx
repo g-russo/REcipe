@@ -28,7 +28,6 @@ import rateLimiterService from '../services/rate-limiter-service';
 const SignIn = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
   const [emailFocused, setEmailFocused] = useState(false);
   const [passwordFocused, setPasswordFocused] = useState(false);
@@ -213,7 +212,7 @@ const SignIn = () => {
       setLoading(true);
 
       // Attempt sign-in first (validates both email AND password)
-      const { data, error } = await signIn(email, password, rememberMe);
+      const { data, error } = await signIn(email, password);
 
       // Always reset loading state immediately after sign-in attempt
       setLoading(false);
@@ -403,20 +402,6 @@ const SignIn = () => {
           </View>
 
           <View style={[signinStyles.optionsContainer, { marginVertical: 0, marginTop: hp('0.8%') }]}>
-            <TouchableOpacity
-              style={globalStyles.checkboxContainer}
-              onPress={() => setRememberMe(!rememberMe)}
-            >
-              <View style={[
-                globalStyles.checkbox,
-                rememberMe && globalStyles.checkboxChecked,
-                { width: wp('5%'), height: wp('5%'), borderRadius: wp('1%') }
-              ]}>
-                {rememberMe && <Text style={[signinStyles.checkmark, { fontSize: wp('3.5%') }]}>✓</Text>}
-              </View>
-              <Text style={[globalStyles.checkboxText, { fontSize: wp('3.5%'), marginLeft: wp('2%') }]}>Keep me logged in</Text>
-            </TouchableOpacity>
-
             <TouchableOpacity onPress={goToForgotPassword}>
               <Text style={[globalStyles.linkText, { fontSize: wp('3.5%') }]}>Forgot Password?</Text>
             </TouchableOpacity>

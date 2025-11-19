@@ -3,7 +3,7 @@ import { View, Image, StyleSheet, ActivityIndicator } from 'react-native';
 import { heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import recipeImageCacheService from '../../services/recipe-image-cache-service';
 
-export default function RecipeHero({ image }) {
+export default function RecipeHero({ image, recipeId = null, recipeName = null }) {
   const [cachedImageUri, setCachedImageUri] = useState(null);
   const [imageLoading, setImageLoading] = useState(true);
 
@@ -18,7 +18,7 @@ export default function RecipeHero({ image }) {
     }
 
     try {
-      const uri = await recipeImageCacheService.getCachedImageUrl(image);
+      const uri = await recipeImageCacheService.getCachedImageUrl(image, recipeId, recipeName);
       setCachedImageUri(uri);
     } catch (error) {
       console.error('Error loading cached image:', error);
