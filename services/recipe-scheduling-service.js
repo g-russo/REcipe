@@ -11,6 +11,51 @@ import ImageGenerationService from './image-generation-service';
 
 class RecipeSchedulingService {
   /**
+   * Check if a recipe is already scheduled
+   * @param {number} userID - User's ID
+   * @param {Object} recipe - Recipe data to check
+   * @returns {Promise<Object>} { isDuplicate: boolean, existingSchedule: Object }
+   */
+  async checkForDuplicateSchedule(userID, recipe) {
+    try {
+      if (!userID || !recipe) {
+        return { isDuplicate: false, existingSchedule: null };
+      }
+
+      const recipeName = recipe.label || recipe.recipeName || 'Untitled Recipe';
+      const recipeURI = recipe.uri || recipe.recipeID || recipeName;
+
+      const { data: existingSchedules, error: checkError } = await supabase
+        .from('tbl_scheduled_recipes')
+        .select('scheduleID, scheduledDate, recipeName, recipeData')
+        .eq('userID', userID)
+        .eq('isCompleted', false);
+
+      if (checkError) {
+        console.error('Error checking for duplicate schedules:', checkError);
+        throw checkError;
+      }
+
+      if (existingSchedules && existingSchedules.length > 0) {
+        const existingSchedule = existingSchedules.find(schedule => {
+          const scheduleRecipeData = schedule.recipeData || {};
+          const existingURI = scheduleRecipeData.uri || scheduleRecipeData.recipeID || schedule.recipeName;
+          return existingURI === recipeURI;
+        });
+
+        if (existingSchedule) {
+          return { isDuplicate: true, existingSchedule };
+        }
+      }
+
+      return { isDuplicate: false, existingSchedule: null };
+    } catch (error) {
+      console.error('Error checking for duplicate schedule:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Schedule a recipe for a future date
    * @param {number} userID - User's ID
    * @param {Object} recipe - Recipe data
