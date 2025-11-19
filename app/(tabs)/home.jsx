@@ -17,7 +17,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Path, Circle } from 'react-native-svg';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { useCustomAuth } from '../../hooks/use-custom-auth';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import AuthGuard from '../../components/auth-guard';
 import NotificationDatabaseService from '../../services/notification-database-service';
 import RecipeHistoryService from '../../services/recipe-history-service';
@@ -150,6 +150,23 @@ const Home = () => {
       subscription?.unsubscribe?.();
     };
   }, [userId]);
+
+  // Refresh notification count when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      const refreshNotificationCount = async () => {
+        if (!userId) {
+          setUnreadCount(0);
+          return;
+        }
+
+        const count = await NotificationDatabaseService.getUnreadCount(userId);
+        setUnreadCount(count);
+      };
+
+      refreshNotificationCount();
+    }, [userId])
+  );
 
   // Load recipe history for "Make It Again" section
   const loadRecentHistory = useCallback(async () => {
