@@ -113,7 +113,7 @@ const RecipeSearch = () => {
       setLoading(false);
       setGeneratingAI(false);
       setLoadingPopular(false);
-      
+
       // Clear any active timeouts
       if (searchTimeoutRef.current) {
         clearTimeout(searchTimeoutRef.current);
@@ -143,7 +143,7 @@ const RecipeSearch = () => {
 
   const loadPopularRecipesFromCache = async () => {
     setLoadingPopular(true);
-    
+
     // Clear any existing popular timeout
     if (popularTimeoutRef.current) {
       clearTimeout(popularTimeoutRef.current);
@@ -196,7 +196,7 @@ const RecipeSearch = () => {
         clearTimeout(popularTimeoutRef.current);
         popularTimeoutRef.current = null;
       }
-      
+
       console.error('❌ Error loading popular recipes from cache:', error);
       // Fallback: fetch fresh popular recipes
       await handleRefreshPopularRecipes();
@@ -207,7 +207,7 @@ const RecipeSearch = () => {
 
   const handleRefreshPopularRecipes = async () => {
     setLoadingPopular(true);
-    
+
     // Clear any existing popular timeout
     if (popularTimeoutRef.current) {
       clearTimeout(popularTimeoutRef.current);
@@ -259,7 +259,7 @@ const RecipeSearch = () => {
         clearTimeout(popularTimeoutRef.current);
         popularTimeoutRef.current = null;
       }
-      
+
       console.error('❌ Error refreshing popular recipes:', error);
 
       Alert.alert(
@@ -607,13 +607,13 @@ const RecipeSearch = () => {
 
           setAiRecipeCount(dbResult.count || 0);
           console.log(`✅ Displaying ${totalRecipes} total recipes (${dbResult.count} AI, ${result.data.recipes.length} Edamam)`);
-          
+
           // Prefetch images to Supabase Storage for faster loading
           const imageUrls = allRecipes.map(r => r.image).filter(Boolean);
           if (imageUrls.length > 0) {
             recipeImageCacheService.batchCacheImages(imageUrls.slice(0, 10)); // Batch cache first 10
           }
-          
+
           // Keep loading animation visible until recipes are fully rendered (5 seconds)
           setTimeout(() => {
             setLoading(false);
@@ -720,7 +720,7 @@ const RecipeSearch = () => {
           clearTimeout(searchTimeoutRef.current);
           searchTimeoutRef.current = null;
         }
-        
+
         // API error
         Alert.alert('Search Error', result.error || 'Failed to search recipes. Please try again.');
         setRecipes([]);
@@ -891,26 +891,28 @@ const RecipeSearch = () => {
 
     return (
       <TouchableOpacity style={styles.recipeCard} onPress={() => handleRecipePress(item)}>
-        {item.image ? (
-          <CachedImage
-            uri={item.image}
-            style={styles.recipeImage}
-            resizeMode="cover"
-            fallbackIcon={<Ionicons name="image-outline" size={50} color="#ccc" />}
-          />
-        ) : (
-          <View style={[styles.recipeImage, { backgroundColor: '#f0f0f0', alignItems: 'center', justifyContent: 'center' }]}>
-            <Ionicons name="image-outline" size={50} color="#ccc" />
-          </View>
-        )}
+        <View style={styles.recipeImageContainer}>
+          {item.image ? (
+            <CachedImage
+              uri={item.image}
+              style={styles.recipeImage}
+              resizeMode="cover"
+              fallbackIcon={<Ionicons name="image-outline" size={50} color="#ccc" />}
+            />
+          ) : (
+            <View style={[styles.recipeImage, { backgroundColor: '#f0f0f0', alignItems: 'center', justifyContent: 'center' }]}>
+              <Ionicons name="image-outline" size={50} color="#ccc" />
+            </View>
+          )}
 
-        {/* AI Badge */}
-        {isAI && (
-          <View style={styles.aiBadge}>
-            <Ionicons name="sparkles" size={12} color="#fff" />
-            <Text style={styles.aiBadgeText}>SousChef AI</Text>
-          </View>
-        )}
+          {/* AI Badge */}
+          {isAI && (
+            <View style={styles.aiBadge}>
+              <Ionicons name="sparkles" size={12} color="#fff" />
+              <Text style={styles.aiBadgeText}>SousChef AI</Text>
+            </View>
+          )}
+        </View>
 
         <View style={styles.recipeInfo}>
           <Text style={styles.recipeTitle} numberOfLines={2}>{item.label}</Text>
@@ -918,13 +920,16 @@ const RecipeSearch = () => {
 
           <View style={styles.recipeStats}>
             <View style={styles.statItem}>
-              <Text style={styles.statLabel}>⏱️ {item.totalTime || 'N/A'}min</Text>
+              <Ionicons name="time-outline" size={wp('4%')} color="#7f8c8d" style={styles.statIcon} />
+              <Text style={styles.statLabel}>{item.totalTime || 'N/A'} min</Text>
             </View>
             <View style={styles.statItem}>
-              <Text style={styles.statLabel}>🔥 {Math.round(item.calories || 0)} kcal</Text>
+              <Ionicons name="flame-outline" size={wp('4%')} color="#7f8c8d" style={styles.statIcon} />
+              <Text style={styles.statLabel}>{Math.round(item.calories || 0)} kcal</Text>
             </View>
             <View style={styles.statItem}>
-              <Text style={styles.statLabel}>👥 {item.yield} servings</Text>
+              <Ionicons name="people-outline" size={wp('4%')} color="#7f8c8d" style={styles.statIcon} />
+              <Text style={styles.statLabel}>{item.yield} servings</Text>
             </View>
           </View>
 
@@ -1140,7 +1145,11 @@ const RecipeSearch = () => {
           </View>
         )}
 
-        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          style={styles.content}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: hp('12%') }}
+        >
           {/* Search Results - Show when user has searched */}
           {hasSearched && recipes.length > 0 && (
             <View style={styles.section}>
@@ -1387,7 +1396,7 @@ const styles = StyleSheet.create({
   filterTitle: {
     fontSize: wp('4.5%'),
     fontWeight: '600',
-    color: '#333',
+    color: '#000000ff',
   },
   filterHeaderActions: {
     flexDirection: 'row',
@@ -1459,7 +1468,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: wp('5%'),
     fontWeight: '600',
-    color: '#333',
+    color: '#000000ff',
   },
   clearText: {
     fontSize: wp('4%'),
@@ -1478,19 +1487,31 @@ const styles = StyleSheet.create({
   },
   recipeCard: {
     backgroundColor: '#fff',
+    borderRadius: wp('4%'),
+    marginBottom: hp('2.5%'),
+    marginHorizontal: wp('1.5%'),
+    marginTop: hp('0.5%'),
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+  },
+  recipeImageContainer: {
+    margin: wp('3%'),
     borderRadius: wp('3%'),
-    marginBottom: hp('1.8%'),
-    elevation: 5,
     overflow: 'hidden',
+    height: hp('25%'),
+    position: 'relative',
   },
   recipeImage: {
     width: '100%',
-    height: hp('25%'),
+    height: '100%',
   },
   aiBadge: {
     position: 'absolute',
-    top: wp('3%'),
-    right: wp('3%'),
+    top: wp('2%'),
+    right: wp('2%'),
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(138, 43, 226, 0.9)',
@@ -1511,7 +1532,7 @@ const styles = StyleSheet.create({
   recipeTitle: {
     fontSize: wp('4.5%'),
     fontWeight: 'bold',
-    color: '#2c3e50',
+    color: '#000000ff',
     marginBottom: hp('0.6%'),
   },
   recipeSource: {
@@ -1526,7 +1547,12 @@ const styles = StyleSheet.create({
   },
   statItem: {
     flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statIcon: {
+    marginRight: wp('1%'),
   },
   statLabel: {
     fontSize: wp('3%'),
@@ -1538,7 +1564,7 @@ const styles = StyleSheet.create({
     marginTop: hp('0.6%'),
   },
   dietLabel: {
-    backgroundColor: '#e8f5e8',
+    backgroundColor: '#80a9694b',
     paddingHorizontal: wp('2%'),
     paddingVertical: hp('0.5%'),
     borderRadius: wp('3%'),
@@ -1546,7 +1572,7 @@ const styles = StyleSheet.create({
     marginBottom: hp('0.6%'),
   },
   healthLabel: {
-    backgroundColor: '#e3f2fd',
+    backgroundColor: '#80a969a1',
     paddingHorizontal: wp('2%'),
     paddingVertical: hp('0.5%'),
     borderRadius: wp('3%'),
@@ -1555,7 +1581,7 @@ const styles = StyleSheet.create({
   },
   labelText: {
     fontSize: wp('2.5%'),
-    color: '#2c3e50',
+    color: '#000000ff',
     fontWeight: '500',
   },
   emptyContainer: {
