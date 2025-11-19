@@ -72,7 +72,7 @@ export default {
         origin: false
       },
       eas: {
-        projectId: "15d13bed-3dac-4666-b27b-2f018708a819"
+        projectId: "5f5dd904-b1b3-436d-8cc7-3cfd6566fa95"
       },
       supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,
       supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
@@ -82,7 +82,6 @@ export default {
       appEnv: process.env.EXPO_PUBLIC_APP_ENV,
       fatsecretClientId: process.env.EXPO_PUBLIC_FATSECRET_CLIENT_ID,
       fatsecretClientSecret: process.env.EXPO_PUBLIC_FATSECRET_CLIENT_SECRET,
-    },
-    owner: "rewindzxc"
+    }
   }
 };

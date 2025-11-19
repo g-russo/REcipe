@@ -213,7 +213,7 @@ const SignIn = () => {
       setLoading(true);
 
       // Attempt sign-in first (validates both email AND password)
-      const { data, error } = await signIn(email, password);
+      const { data, error } = await signIn(email, password, rememberMe);
 
       if (error) {
         // On auth error, we need to check if this is an unverified account
@@ -412,7 +412,7 @@ const SignIn = () => {
               ]}>
                 {rememberMe && <Text style={[signinStyles.checkmark, { fontSize: wp('3.5%') }]}>✓</Text>}
               </View>
-              <Text style={[globalStyles.checkboxText, { fontSize: wp('3.5%'), marginLeft: wp('2%') }]}>Remember Me</Text>
+              <Text style={[globalStyles.checkboxText, { fontSize: wp('3.5%'), marginLeft: wp('2%') }]}>Keep me logged in</Text>
             </TouchableOpacity>
 
             <TouchableOpacity onPress={goToForgotPassword}>
