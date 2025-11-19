@@ -205,71 +205,8 @@ const RecipeSearch = () => {
     }
   };
 
-  const handleRefreshPopularRecipes = async () => {
-    setLoadingPopular(true);
-
-    // Clear any existing popular timeout
-    if (popularTimeoutRef.current) {
-      clearTimeout(popularTimeoutRef.current);
-    }
-
-    // Set 7-second timeout to force stop loading
-    popularTimeoutRef.current = setTimeout(() => {
-      console.log('⏱️ Popular recipes refresh timeout reached (7 seconds) - stopping loading state');
-      setLoadingPopular(false);
-    }, 7000);
-
-    try {
-      console.log('🔄 Refreshing popular recipes from API...');
-
-      // Force refresh the cache (bypasses cache, fetches fresh from API)
-      const freshRecipes = await cacheService.getPopularRecipes(true); // true = forceRefresh
-
-      // Clear timeout since we got results
-      if (popularTimeoutRef.current) {
-        clearTimeout(popularTimeoutRef.current);
-        popularTimeoutRef.current = null;
-      }
-
-      if (freshRecipes && freshRecipes.length > 0) {
-        console.log(`✅ Refreshed with ${freshRecipes.length} recipes from API`);
-
-        // Shuffle for variety and take first 8
-        const shuffled = [...freshRecipes].sort(() => Math.random() - 0.5);
-        const displayRecipes = shuffled.slice(0, 8).map((recipe, index) => ({
-          id: recipe.uri || `recipe-${index}`,
-          title: recipe.label || recipe.title,
-          image: recipe.image,
-          fullData: recipe,
-          category: recipe.cuisineType?.[0] || recipe.category || 'General',
-          calories: Math.round(recipe.calories / recipe.yield) || recipe.calories || 0,
-          time: recipe.totalTime || recipe.time || 30,
-          difficulty: recipe.difficulty || 'Medium',
-          rating: recipe.rating || 4.5
-        }));
-
-        setPopularRecipes(displayRecipes);
-        console.log('✅ Popular recipes updated and cached in Supabase (expires in 6h)');
-      } else {
-        throw new Error('No recipes received from API');
-      }
-    } catch (error) {
-      // Clear timeout on error
-      if (popularTimeoutRef.current) {
-        clearTimeout(popularTimeoutRef.current);
-        popularTimeoutRef.current = null;
-      }
-
-      console.error('❌ Error refreshing popular recipes:', error);
-
-      Alert.alert(
-        'Refresh Error',
-        'Failed to refresh popular recipes. Please try again later.',
-        [{ text: 'OK' }]
-      );
-    } finally {
-      setLoadingPopular(false);
-    }
+  const handleViewAllPopularRecipes = () => {
+    router.push('/popular-recipes');
   };
 
   const loadRecentSearches = async () => {
@@ -1264,11 +1201,10 @@ const RecipeSearch = () => {
               <View style={styles.sectionHeader}>
                 <Text style={styles.sectionTitle}>Popular Recipes</Text>
                 <TouchableOpacity
-                  onPress={handleRefreshPopularRecipes}
-                  disabled={loadingPopular}
+                  onPress={handleViewAllPopularRecipes}
                 >
-                  <Text style={[styles.viewAllText, loadingPopular && styles.disabledText]}>
-                    {loadingPopular ? 'Refreshing...' : 'Refresh'}
+                  <Text style={styles.viewAllText}>
+                    View All
                   </Text>
                 </TouchableOpacity>
               </View>
