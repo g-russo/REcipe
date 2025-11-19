@@ -44,14 +44,14 @@ class RecipeImageCacheService {
   async ensureBucketExists() {
     try {
       const { data: buckets, error } = await supabase.storage.listBuckets();
-      
+
       if (error) {
         console.warn('⚠️ Cannot check buckets (need manual creation):', error.message);
         return;
       }
 
       const bucketExists = buckets?.some(b => b.name === STORAGE_BUCKET);
-      
+
       if (!bucketExists) {
         console.warn(`⚠️ Bucket '${STORAGE_BUCKET}' not found!`);
         console.warn('📝 Create it manually in Supabase Dashboard:');
@@ -59,13 +59,13 @@ class RecipeImageCacheService {
         console.warn('   2. Name: recipe-images');
         console.warn('   3. Public: YES');
         console.warn('   4. Then run: database/storage-recipe-images-policies.sql');
-        
+
         // Try creating anyway (will fail with RLS error, but user will see instructions)
         const { error: createError } = await supabase.storage.createBucket(STORAGE_BUCKET, {
           public: true,
           fileSizeLimit: 5242880, // 5MB limit per image
         });
-        
+
         if (createError) {
           console.warn('❌ Cannot create bucket automatically (expected with RLS)');
           console.warn('💡 Solution: Create bucket manually in Supabase Dashboard');
@@ -110,13 +110,13 @@ class RecipeImageCacheService {
    */
   generateCacheKey(originalUrl) {
     if (!originalUrl) return null;
-    
+
     // Create a hash-like key from URL
     const cleanUrl = originalUrl.split('?')[0]; // Remove query params
     const urlHash = cleanUrl
       .replace(/[^a-zA-Z0-9]/g, '_')
       .substring(0, 100);
-    
+
     const timestamp = Date.now().toString(36);
     return `${urlHash}_${timestamp}`;
   }
@@ -178,7 +178,7 @@ class RecipeImageCacheService {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         },
       });
-      
+
       if (!response.ok) {
         if (response.status === 403) {
           console.warn('⚠️ Image protected (403), skipping cache:', originalUrl.substring(0, 50));
@@ -194,28 +194,31 @@ class RecipeImageCacheService {
         throw new Error(`Failed to fetch image: ${response.status}`);
       }
 
-      // React Native doesn't support .blob(), use arrayBuffer() instead
+      // React Native: Convert arrayBuffer to Uint8Array (Supabase supports this)
       const arrayBuffer = await response.arrayBuffer();
-      const blob = new Blob([arrayBuffer], { type: response.headers.get('content-type') || 'image/jpeg' });
-      
-      // IMPORTANT: Only WebP images accepted
-      // Convert to WebP if needed (for now, just change extension)
-      const fileName = `${this.generateCacheKey(originalUrl)}.webp`;
+      const contentType = response.headers.get('content-type') || 'image/jpeg';
+
+      const uint8Array = new Uint8Array(arrayBuffer);
+
+      // Determine file extension from content type
+      const fileExt = contentType.includes('png') ? 'png' :
+        contentType.includes('webp') ? 'webp' :
+          contentType.includes('gif') ? 'gif' : 'jpg';
+      const fileName = `${this.generateCacheKey(originalUrl)}.${fileExt}`;
       const filePath = `cached/${fileName}`;
 
-      // Upload to Supabase Storage
+      // Upload to Supabase Storage using Uint8Array
+      // Force contentType to image/webp to bypass bucket restrictions if needed
       const { data, error } = await supabase.storage
         .from(STORAGE_BUCKET)
-        .upload(filePath, blob, {
-          contentType: 'image/webp',
+        .upload(filePath, uint8Array, {
+          contentType: 'image/webp', // Force WebP to bypass bucket MIME restrictions
           cacheControl: '2592000', // 30 days
           upsert: false
-        });
-
-      if (error) {
-        console.error('❌ Upload error:', error);
-        return originalUrl;
-      }
+        }); if (error) {
+          console.error('❌ Upload error:', error);
+          return originalUrl;
+        }
 
       // Get public URL
       const { data: urlData } = supabase.storage
@@ -274,7 +277,7 @@ class RecipeImageCacheService {
 
     for (let i = 0; i < imageUrls.length; i += BATCH_SIZE) {
       const batch = imageUrls.slice(i, i + BATCH_SIZE);
-      
+
       await Promise.allSettled(
         batch.map(async url => {
           try {
@@ -300,7 +303,7 @@ class RecipeImageCacheService {
    */
   async cleanupIfNeeded() {
     const entries = Object.entries(this.cacheIndex);
-    
+
     if (entries.length <= MAX_CACHE_ENTRIES) return;
 
     console.log('🧹 Cleaning up old cache entries...');
@@ -365,7 +368,7 @@ class RecipeImageCacheService {
   async getStats() {
     const entries = Object.entries(this.cacheIndex);
     const now = Date.now();
-    
+
     const aged = entries.map(([_, entry]) => {
       const age = now - entry.timestamp;
       return Math.round(age / 1000 / 60 / 60 / 24); // Days

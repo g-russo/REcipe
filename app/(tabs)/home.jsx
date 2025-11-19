@@ -1005,11 +1005,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     width: '100%',
     alignSelf: 'center',
-    overflow: 'hidden'
   },
   tryNewImageContainer: {
     overflow: 'hidden',
     position: 'relative',
+    width: '100%',
   },
   tryNewImage: {
     width: '100%',
