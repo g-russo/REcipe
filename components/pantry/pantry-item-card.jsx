@@ -1,6 +1,7 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, Image, StyleSheet, Dimensions } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, Text, TouchableOpacity, Image, StyleSheet, Dimensions, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_WIDTH = (SCREEN_WIDTH - 60) / 2; // 20px padding on each side + 20px gap
@@ -18,6 +19,95 @@ const PantryItemCard = ({
   isSelected = false,
   isHighlighted = false,
 }) => {
+  // Animation values
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const shakeAnim = useRef(new Animated.Value(0)).current;
+  const wasSelected = useRef(false);
+
+  // Animate when selection changes
+  useEffect(() => {
+    if (selectionMode && isSelected) {
+      wasSelected.current = true;
+      // Trigger haptic feedback for selection
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+      
+      // Selection animation: shrink and shake
+      Animated.parallel([
+        Animated.spring(scaleAnim, {
+          toValue: 0.92,
+          useNativeDriver: true,
+          tension: 100,
+          friction: 8,
+        }),
+        Animated.sequence([
+          Animated.timing(shakeAnim, {
+            toValue: -8,
+            duration: 50,
+            useNativeDriver: true,
+          }),
+          Animated.timing(shakeAnim, {
+            toValue: 8,
+            duration: 50,
+            useNativeDriver: true,
+          }),
+          Animated.timing(shakeAnim, {
+            toValue: -8,
+            duration: 50,
+            useNativeDriver: true,
+          }),
+          Animated.timing(shakeAnim, {
+            toValue: 0,
+            duration: 50,
+            useNativeDriver: true,
+          }),
+        ]),
+      ]).start();
+    } else if (!isSelected && wasSelected.current) {
+      // Deselection - works both in selection mode and when exiting
+      // Trigger haptic feedback for deselection
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      
+      // Deselection animation: return to normal with shake
+      Animated.parallel([
+        Animated.spring(scaleAnim, {
+          toValue: 1,
+          useNativeDriver: true,
+          tension: 100,
+          friction: 8,
+        }),
+        Animated.sequence([
+          Animated.timing(shakeAnim, {
+            toValue: 8,
+            duration: 50,
+            useNativeDriver: true,
+          }),
+          Animated.timing(shakeAnim, {
+            toValue: -8,
+            duration: 50,
+            useNativeDriver: true,
+          }),
+          Animated.timing(shakeAnim, {
+            toValue: 8,
+            duration: 50,
+            useNativeDriver: true,
+          }),
+          Animated.timing(shakeAnim, {
+            toValue: 0,
+            duration: 50,
+            useNativeDriver: true,
+          }),
+        ]),
+      ]).start(() => {
+        wasSelected.current = false;
+      });
+    } else if (!selectionMode) {
+      // Exit selection mode without being selected: just reset
+      wasSelected.current = false;
+      scaleAnim.setValue(1);
+      shakeAnim.setValue(0);
+    }
+  }, [isSelected, selectionMode]);
+
   // Format expiration date
   const formatDate = (date) => {
     if (!date) return 'No expiry';
@@ -44,15 +134,23 @@ const PantryItemCard = ({
   };
 
   return (
-    <TouchableOpacity
-      style={[
-        styles.itemCard,
-        isHighlighted && styles.highlightedCard
-      ]}
-      onPress={onPress}
-      onLongPress={onLongPress}
-      delayLongPress={300}
+    <Animated.View
+      style={{
+        transform: [
+          { scale: scaleAnim },
+          { translateX: shakeAnim }
+        ],
+      }}
     >
+      <TouchableOpacity
+        style={[
+          styles.itemCard,
+          isHighlighted && styles.highlightedCard
+        ]}
+        onPress={onPress}
+        onLongPress={onLongPress}
+        delayLongPress={300}
+      >
       {/* Selection Checkbox */}
       {selectionMode && (
         <View style={styles.checkboxContainer}>
@@ -114,6 +212,7 @@ const PantryItemCard = ({
         </View>
       </View>
     </TouchableOpacity>
+    </Animated.View>
   );
 };
 
