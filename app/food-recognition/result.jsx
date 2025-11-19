@@ -1,10 +1,28 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, Image, ActivityIndicator, ScrollView, StyleSheet, TouchableOpacity, Alert, Modal, TextInput } from 'react-native';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
+import { 
+  View, 
+  Text, 
+  Image, 
+  ActivityIndicator, 
+  ScrollView, 
+  StyleSheet, 
+  TouchableOpacity, 
+  Alert, 
+  Modal, 
+  TextInput,
+  Animated,
+  StatusBar,
+  Platform
+} from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { recognizeFood } from '../../services/food-recog-api';
 import { supabase } from '../../lib/supabase';
 import PantryService from '../../services/pantry-service';
+import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
+import AuthGuard from '../../components/auth-guard';
 
 const CONFIDENCE_THRESHOLD = 0.03; // 3% minimum confidence
 
@@ -23,6 +41,8 @@ const CATEGORIES = [
 export default function ResultScreen() {
   const params = useLocalSearchParams();
   const uri = params.uri;
+  const insets = useSafeAreaInsets();
+  // router is imported from expo-router
 
   const [loading, setLoading] = useState(true);
   const [result, setResult] = useState(null);
@@ -35,6 +55,52 @@ export default function ResultScreen() {
   const [manualQuantity, setManualQuantity] = useState('1');
   const [manualExpiryDays, setManualExpiryDays] = useState('7');
   const [addingToInventory, setAddingToInventory] = useState(false);
+
+  // Detailed Results Modal State
+  const [detailsModalVisible, setDetailsModalVisible] = useState(false);
+  
+  // Success Modal State
+  const [successModalVisible, setSuccessModalVisible] = useState(false);
+  const [addedItemName, setAddedItemName] = useState('');
+
+  // Animation Values
+  const scrollY = useRef(new Animated.Value(0)).current;
+
+  // Parallax animations
+  const imageTranslateY = scrollY.interpolate({
+    inputRange: [-hp('35%'), 0, hp('35%')],
+    outputRange: [-hp('35%') / 2, 0, -hp('35%') * 0.5],
+    extrapolate: 'clamp'
+  });
+
+  const imageScale = scrollY.interpolate({
+    inputRange: [-hp('35%'), 0],
+    outputRange: [2, 1],
+    extrapolateRight: 'clamp'
+  });
+
+  // Sticky Header Animations
+  const headerProgress = scrollY.interpolate({
+    inputRange: [hp('25%'), hp('32%')],
+    outputRange: [0, 1],
+    extrapolate: 'clamp'
+  });
+
+  const headerOpacity = headerProgress;
+  const headerTranslateY = headerProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-20, 0],
+  });
+
+  const titleOpacity = headerProgress.interpolate({
+    inputRange: [0.6, 1],
+    outputRange: [0, 1],
+  });
+
+  const titleTranslateY = headerProgress.interpolate({
+    inputRange: [0.6, 1],
+    outputRange: [10, 0],
+  });
 
   useEffect(() => {
     if (!result && uri) {
@@ -55,7 +121,7 @@ export default function ResultScreen() {
     }
   }, [result, uri]);
 
-  // ✅ NEW: Get ALL predictions with ≥3% confidence for selection
+  // Get ALL predictions with ≥3% confidence for selection
   const getSelectableOptions = (data) => {
     if (!data || !data.success) return [];
 
@@ -126,7 +192,7 @@ export default function ResultScreen() {
       .sort((a, b) => b.confidence - a.confidence);
   };
 
-  // ✅ NEW: Get top 5 results per model for display
+  // Get top 5 results per model for display
   const getModelResults = (data) => {
     if (!data || !data.success) return { detector: [], food101: [], filipino: [] };
 
@@ -202,7 +268,6 @@ export default function ResultScreen() {
     return now.toISOString();
   };
 
-  // ✅ FIXED: Add to inventory with proper UUID to numeric userID conversion
   const handleAddToInventory = async () => {
     if (!selectedFood) {
       Alert.alert('No Selection', 'Please select a food item first');
@@ -212,18 +277,13 @@ export default function ResultScreen() {
     setAddingToInventory(true);
     
     try {
-      console.log('🍽️ Adding to inventory:', selectedFood.label);
-
-      // ✅ Step 1: Get Auth user (UUID)
+      // Step 1: Get Auth user (UUID)
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) {
         throw new Error('You must be logged in to add items');
       }
 
-      console.log('👤 Auth UUID:', user.id);
-      console.log('📧 User email:', user.email);
-
-      // ✅ Step 2: Convert Auth UUID to numeric userID
+      // Step 2: Convert Auth UUID to numeric userID
       const { data: userData, error: userLookupError } = await supabase
         .from('tbl_users')
         .select('userID')
@@ -231,14 +291,12 @@ export default function ResultScreen() {
         .single();
 
       if (userLookupError || !userData) {
-        console.error('❌ User lookup error:', userLookupError);
         throw new Error('Failed to find user in database. Please try logging out and back in.');
       }
 
       const numericUserID = userData.userID;
-      console.log('✅ Numeric userID:', numericUserID);
 
-      // ✅ Step 3: Get or create inventory using NUMERIC userID
+      // Step 3: Get or create inventory using NUMERIC userID
       const { data: inventories, error: invError } = await supabase
         .from('tbl_inventories')
         .select('*')
@@ -247,34 +305,22 @@ export default function ResultScreen() {
         .limit(1);
 
       if (invError) {
-        console.error('❌ Inventory fetch error:', invError);
         throw new Error(`Failed to fetch inventory: ${invError.message}`);
       }
 
       let inventoryID = inventories?.[0]?.inventoryID;
 
       if (!inventoryID) {
-        console.log('📦 Creating new inventory for user...');
         const newInventory = await PantryService.createInventory(numericUserID, {
           inventoryColor: '#8BC34A',
           maxItems: 100,
           inventoryTags: { name: 'My Pantry' },
         });
         inventoryID = newInventory.inventoryID;
-        console.log('✅ Created inventory:', inventoryID);
-      } else {
-        console.log('✅ Using existing inventory:', inventoryID);
       }
 
       const category = determineFoodCategory(selectedFood.label);
       const expiryDate = estimateExpiryDate(category);
-
-      console.log('📝 Item details:', {
-        name: selectedFood.label,
-        category,
-        expiryDate,
-        inventoryID
-      });
 
       const itemData = {
         inventoryID: inventoryID,
@@ -288,30 +334,13 @@ export default function ResultScreen() {
         userID: numericUserID,
       };
 
-      console.log('💾 Saving item with data:', itemData);
+      await PantryService.createItem(itemData);
 
-      const createdItem = await PantryService.createItem(itemData);
-
-      console.log('✅ Item created successfully:', createdItem);
-
-      Alert.alert(
-        'Added! ✅',
-        `${selectedFood.label} has been added to your pantry.`,
-        [
-          { 
-            text: 'View Pantry', 
-            onPress: () => router.push('/(tabs)/pantry') 
-          },
-          { 
-            text: 'Scan Another', 
-            onPress: () => router.replace('/food-recognition/upload') 
-          }
-        ]
-      );
+      setAddedItemName(selectedFood.label);
+      setSuccessModalVisible(true);
 
     } catch (error) {
       console.error('❌ Add to inventory error:', error);
-      console.error('❌ Full error:', JSON.stringify(error, null, 2));
       Alert.alert(
         'Error Adding Item',
         error.message || 'Failed to add item to pantry. Please try again.',
@@ -322,7 +351,6 @@ export default function ResultScreen() {
     }
   };
 
-  // ✅ FIXED: Manual entry with proper UUID to numeric userID conversion
   const handleManualEntry = async () => {
     if (!manualItemName.trim()) {
       Alert.alert('Missing Information', 'Please enter an item name');
@@ -332,15 +360,10 @@ export default function ResultScreen() {
     setAddingToInventory(true);
 
     try {
-      console.log('📝 Manual entry:', manualItemName);
-
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) {
         throw new Error('You must be logged in');
       }
-
-      console.log('👤 Auth UUID:', user.id);
-      console.log('📧 User email:', user.email);
 
       const { data: userData, error: userLookupError } = await supabase
         .from('tbl_users')
@@ -349,12 +372,10 @@ export default function ResultScreen() {
         .single();
 
       if (userLookupError || !userData) {
-        console.error('❌ User lookup error:', userLookupError);
         throw new Error('Failed to find user in database');
       }
 
       const numericUserID = userData.userID;
-      console.log('✅ Numeric userID:', numericUserID);
 
       const { data: inventories, error: invError } = await supabase
         .from('tbl_inventories')
@@ -369,14 +390,12 @@ export default function ResultScreen() {
       let inventoryID = inventories?.[0]?.inventoryID;
 
       if (!inventoryID) {
-        console.log('📦 Creating new inventory...');
         const newInventory = await PantryService.createInventory(numericUserID, {
           inventoryColor: '#8BC34A',
           maxItems: 100,
           inventoryTags: { name: 'My Pantry' },
         });
         inventoryID = newInventory.inventoryID;
-        console.log('✅ Created inventory:', inventoryID);
       }
 
       const expiryDate = new Date();
@@ -394,9 +413,10 @@ export default function ResultScreen() {
         userID: numericUserID,
       };
 
-      console.log('💾 Creating manual item:', itemData);
-
       await PantryService.createItem(itemData);
+
+      setAddedItemName(manualItemName);
+      setSuccessModalVisible(true);
 
       setManualItemName('');
       setManualCategory('Other');
@@ -404,18 +424,7 @@ export default function ResultScreen() {
       setManualExpiryDays('7');
       setManualEntryVisible(false);
 
-      Alert.alert(
-        'Added! ✅',
-        `${manualItemName} has been added to your pantry.`,
-        [
-          { text: 'View Pantry', onPress: () => router.push('/(tabs)/pantry') },
-          { text: 'Add Another', onPress: () => setManualEntryVisible(true) }
-        ]
-      );
-
     } catch (error) {
-      console.error('❌ Manual entry error:', error);
-      console.error('❌ Full error:', JSON.stringify(error, null, 2));
       Alert.alert('Error', error.message || 'Failed to add item');
     } finally {
       setAddingToInventory(false);
@@ -425,12 +434,11 @@ export default function ResultScreen() {
   const handleSearchRecipes = () => {
     if (!selectedFood) return;
     
-    // ✅ FIX: Add autoSearch parameter to trigger automatic search
     router.push({
       pathname: '/(tabs)/recipe-search',
       params: { 
-        searchQuery: selectedFood.label,  // Changed from 'query' to 'searchQuery'
-        autoSearch: 'true'  // Add this flag to trigger auto-search
+        searchQuery: selectedFood.label,
+        autoSearch: 'true'
       }
     });
   };
@@ -438,7 +446,7 @@ export default function ResultScreen() {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#4CAF50" />
+        <ActivityIndicator size="large" color="#81A969" />
         <Text style={styles.loadingText}>Analyzing food...</Text>
       </View>
     );
@@ -470,250 +478,410 @@ export default function ResultScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <ScrollView>
-        {/* Image Preview */}
-        <View style={styles.imageContainer}>
-          <Image source={{ uri }} style={styles.image} />
-        </View>
+    <AuthGuard>
+      <View style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
-        {/* Results Header */}
-        <View style={styles.resultsContainer}>
-          <Text style={styles.resultsTitle}>🍽️ Food Recognition Results</Text>
-          <Text style={styles.resultsSubtitle}>
-            {selectableOptions.length} items detected with ≥3% confidence
-          </Text>
-        </View>
+        {/* Sticky Header */}
+        <Animated.View
+          style={[
+            styles.stickyHeader,
+            { 
+              opacity: headerOpacity,
+              transform: [{ translateY: headerTranslateY }],
+              height: insets.top + hp('2%') + wp('12%') + hp('1.5%'),
+              paddingTop: insets.top + hp('2%'),
+            }
+          ]}
+        >
+          <View style={styles.stickyHeaderContent}>
+            <TouchableOpacity 
+              style={styles.stickyBackButton} 
+              onPress={() => router.back()}
+            >
+              <Ionicons name="arrow-back" size={24} color="#fff" />
+            </TouchableOpacity>
+            <Animated.Text 
+              style={[
+                styles.stickyHeaderTitle,
+                {
+                  opacity: titleOpacity,
+                  transform: [{ translateY: titleTranslateY }]
+                }
+              ]}
+              numberOfLines={1}
+            >
+              Recognition Results
+            </Animated.Text>
+            <View style={{ width: 24 }} />
+          </View>
+        </Animated.View>
 
-        {/* ✅ NEW: Selectable Options Section (≥3% confidence) */}
-        {selectableOptions.length > 0 ? (
-          <View style={styles.optionsContainer}>
-            <View style={styles.sectionHeader}>
-              <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />
-              <Text style={styles.sectionHeaderText}>
-                Select Food to Add ({selectableOptions.length} options)
+        {/* Parallax Image Background */}
+        <Animated.View
+          style={[
+            styles.parallaxHeader,
+            {
+              transform: [
+                { translateY: imageTranslateY },
+                { scale: imageScale }
+              ]
+            }
+          ]}
+        >
+          <Image source={{ uri }} style={styles.heroImage} />
+          <View style={styles.imageOverlay} />
+        </Animated.View>
+
+        {/* Main Content */}
+        <Animated.ScrollView
+          style={styles.scrollView}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollViewContent}
+          onScroll={Animated.event(
+            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+            { useNativeDriver: true }
+          )}
+          scrollEventThrottle={16}
+        >
+          <View style={styles.parallaxSpacer} />
+
+          <View style={styles.contentCard}>
+            {/* Header Section */}
+            <View style={styles.headerSection}>
+              <Text style={styles.resultsTitle}>Food Recognition Results</Text>
+              <Text style={styles.resultsSubtitle}>
+                {selectableOptions.length} items detected with ≥3% confidence
               </Text>
             </View>
 
-            {selectableOptions.map((item, index) => (
+            {/* Selectable Options Section */}
+            {selectableOptions.length > 0 ? (
+              <View style={styles.optionsContainer}>
+                <View style={styles.sectionHeader}>
+                  <Ionicons name="checkmark-circle-outline" size={20} color="#81A969" />
+                  <Text style={styles.sectionHeaderText}>
+                    Select Food to Add ({selectableOptions.length} options)
+                  </Text>
+                </View>
+
+                {selectableOptions.map((item, index) => (
+                  <TouchableOpacity
+                    key={`${item.label}-${index}`}
+                    style={[
+                      styles.optionCard,
+                      selectedFood?.label === item.label && styles.optionCardSelected,
+                    ]}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setSelectedFood(item);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.optionContent}>
+                      <View style={styles.optionTextContainer}>
+                        <Text style={styles.optionLabel}>{item.label}</Text>
+                        <View style={styles.optionMeta}>
+                          <View style={styles.confidenceBadge}>
+                            <Ionicons name="analytics-outline" size={14} color="#81A969" />
+                            <Text style={styles.optionConfidence}>
+                              {(item.confidence * 100).toFixed(1)}%
+                            </Text>
+                          </View>
+                          <View style={styles.sourceBadge}>
+                            <Ionicons name="flask-outline" size={12} color="#666" />
+                            <Text style={styles.optionSource}>{item.source}</Text>
+                          </View>
+                        </View>
+                      </View>
+                      <View style={[
+                        styles.radioButton,
+                        selectedFood?.label === item.label && styles.radioButtonSelected
+                      ]}>
+                        {selectedFood?.label === item.label && (
+                          <Ionicons name="checkmark" size={16} color="#fff" />
+                        )}
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ) : (
+              <View style={styles.noResultsContainer}>
+                <Ionicons name="restaurant-outline" size={48} color="#999" />
+                <Text style={styles.noResultsText}>
+                  No foods detected with sufficient confidence
+                </Text>
+                <Text style={styles.noResultsSubtext}>
+                  Try taking a clearer photo or add the item manually
+                </Text>
+              </View>
+            )}
+
+            {/* Action Buttons */}
+            <View style={styles.actionButtonsContainer}>
               <TouchableOpacity
-                key={`${item.label}-${index}`}
-                style={[
-                  styles.optionCard,
-                  selectedFood?.label === item.label && styles.optionCardSelected,
-                ]}
-                onPress={() => setSelectedFood(item)}
+                style={styles.manualButton}
+                onPress={() => setManualEntryVisible(true)}
               >
-                <View style={styles.optionContent}>
-                  <View style={styles.optionTextContainer}>
-                    <Text style={styles.optionLabel}>{item.label}</Text>
-                    <View style={styles.optionMeta}>
-                      <View style={styles.confidenceBadge}>
-                        <Ionicons name="analytics" size={14} color="#4CAF50" />
-                        <Text style={styles.optionConfidence}>
+                <Ionicons name="create-outline" size={20} color="#FF6B6B" />
+                <Text style={styles.manualButtonText}>Manual Entry</Text>
+              </TouchableOpacity>
+
+              {selectableOptions.length > 0 && (
+                <TouchableOpacity
+                  style={[
+                    styles.addButton,
+                    (!selectedFood || addingToInventory) && styles.addButtonDisabled,
+                  ]}
+                  onPress={handleAddToInventory}
+                  disabled={!selectedFood || addingToInventory}
+                >
+                  {addingToInventory ? (
+                    <ActivityIndicator size="small" color="#FFF" />
+                  ) : (
+                    <>
+                      <Ionicons name="add-circle-outline" size={20} color="#FFF" />
+                      <Text style={styles.addButtonText}>Add to Pantry</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Search Recipes Button */}
+            {selectableOptions.length > 0 && (
+              <TouchableOpacity
+                style={[
+                  styles.searchButton,
+                  !selectedFood && styles.searchButtonDisabled,
+                ]}
+                onPress={handleSearchRecipes}
+                disabled={!selectedFood}
+              >
+                <Ionicons name="search-outline" size={20} color="#FFF" />
+                <Text style={styles.searchButtonText}>
+                  Find Recipes for "{selectedFood?.label || 'Selected Food'}"
+                </Text>
+                <Ionicons name="arrow-forward-outline" size={20} color="#FFF" />
+              </TouchableOpacity>
+            )}
+
+            {/* View Detailed Results Button */}
+            {result && (
+              <TouchableOpacity 
+                style={styles.detailsButton}
+                onPress={() => setDetailsModalVisible(true)}
+              >
+                <Ionicons name="stats-chart-outline" size={20} color="#81A969" />
+                <Text style={styles.detailsButtonText}>View Detailed Model Results</Text>
+              </TouchableOpacity>
+            )}
+
+          </View>
+        </Animated.ScrollView>
+
+        {/* Fixed Back Button (Initial State) */}
+        <Animated.View style={[
+          styles.fixedBackButton, 
+          { 
+            top: insets.top + 10,
+            opacity: headerProgress.interpolate({
+              inputRange: [0, 0.5],
+              outputRange: [1, 0]
+            })
+          }
+        ]}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.roundButton}>
+            <Ionicons name="arrow-back" size={24} color="#333" />
+          </TouchableOpacity>
+        </Animated.View>
+
+        {/* Manual Entry Modal */}
+        <ManualEntryModal
+          visible={manualEntryVisible}
+          onClose={() => setManualEntryVisible(false)}
+          imageUri={uri}
+          itemName={manualItemName}
+          setItemName={setManualItemName}
+          category={manualCategory}
+          setCategory={setManualCategory}
+          quantity={manualQuantity}
+          setQuantity={setManualQuantity}
+          expiryDays={manualExpiryDays}
+          setExpiryDays={setManualExpiryDays}
+          onSubmit={handleManualEntry}
+          loading={addingToInventory}
+        />
+
+        {/* Detailed Results Modal */}
+        <Modal
+          visible={detailsModalVisible}
+          animationType="slide"
+          presentationStyle="pageSheet"
+          onRequestClose={() => setDetailsModalVisible(false)}
+        >
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Detailed Model Results</Text>
+              <TouchableOpacity onPress={() => setDetailsModalVisible(false)} style={styles.closeModalButton}>
+                <Ionicons name="close-circle" size={30} color="#ccc" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.modalContent}>
+               <Text style={styles.modelDetailsSubtitle}>
+                Top 5 predictions from each AI model
+              </Text>
+
+              {/* Detector Results */}
+              {modelResults.detector.length > 0 && (
+                <View style={styles.modelSection}>
+                  <View style={styles.modelSectionHeader}>
+                    <Ionicons name="scan-outline" size={18} color="#FF6B6B" />
+                    <Text style={styles.modelSectionTitle}>
+                      Object Detector (YOLOv8)
+                    </Text>
+                  </View>
+                  {modelResults.detector.map((item, i) => (
+                    <View key={i} style={styles.resultRow}>
+                      <View style={styles.resultRank}>
+                        <Text style={styles.resultRankText}>{i + 1}</Text>
+                      </View>
+                      <Text style={styles.resultLabel}>{item.label}</Text>
+                      <View style={styles.resultConfidenceBadge}>
+                        <Text style={styles.resultConfidence}>
                           {(item.confidence * 100).toFixed(1)}%
                         </Text>
                       </View>
-                      <View style={styles.sourceBadge}>
-                        <Ionicons name="flask" size={12} color="#666" />
-                        <Text style={styles.optionSource}>{item.source}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {/* Food101 Results */}
+              {modelResults.food101.length > 0 && (
+                <View style={styles.modelSection}>
+                  <View style={styles.modelSectionHeader}>
+                    <Ionicons name="pizza-outline" size={18} color="#FF9800" />
+                    <Text style={styles.modelSectionTitle}>
+                      Food101 Classifier
+                    </Text>
+                  </View>
+                  {modelResults.food101.map((item, i) => (
+                    <View key={i} style={styles.resultRow}>
+                      <View style={styles.resultRank}>
+                        <Text style={styles.resultRankText}>{i + 1}</Text>
+                      </View>
+                      <Text style={styles.resultLabel}>{item.label}</Text>
+                      <View style={styles.resultConfidenceBadge}>
+                        <Text style={styles.resultConfidence}>
+                          {(item.confidence * 100).toFixed(1)}%
+                        </Text>
                       </View>
                     </View>
-                  </View>
-                  {selectedFood?.label === item.label && (
-                    <Ionicons name="checkmark-circle" size={28} color="#4CAF50" />
-                  )}
+                  ))}
                 </View>
-              </TouchableOpacity>
-            ))}
-          </View>
-        ) : (
-          <View style={styles.noResultsContainer}>
-            <Ionicons name="restaurant-outline" size={48} color="#999" />
-            <Text style={styles.noResultsText}>
-              No foods detected with sufficient confidence (≥3%)
-            </Text>
-            <Text style={styles.noResultsSubtext}>
-              Try taking a clearer photo or add the item manually
-            </Text>
-          </View>
-        )}
-
-        {/* Action Buttons */}
-        <View style={styles.actionButtonsContainer}>
-          <TouchableOpacity
-            style={styles.manualButton}
-            onPress={() => setManualEntryVisible(true)}
-          >
-            <Ionicons name="create-outline" size={20} color="#FF6B6B" />
-            <Text style={styles.manualButtonText}>Manual Entry</Text>
-          </TouchableOpacity>
-
-          {selectableOptions.length > 0 && (
-            <TouchableOpacity
-              style={[
-                styles.addButton,
-                !selectedFood && styles.addButtonDisabled,
-                addingToInventory && styles.addButtonDisabled,
-              ]}
-              onPress={handleAddToInventory}
-              disabled={!selectedFood || addingToInventory}
-            >
-              {addingToInventory ? (
-                <ActivityIndicator size="small" color="#FFF" />
-              ) : (
-                <>
-                  <Ionicons name="add-circle" size={20} color="#FFF" />
-                  <Text style={styles.addButtonText}>Add to Pantry</Text>
-                </>
               )}
-            </TouchableOpacity>
-          )}
-        </View>
 
-        {/* Search Recipes Button */}
-        {selectableOptions.length > 0 && (
-          <TouchableOpacity
-            style={[
-              styles.searchButton,
-              !selectedFood && styles.searchButtonDisabled,
-            ]}
-            onPress={handleSearchRecipes}
-            disabled={!selectedFood}
-          >
-            <Ionicons name="search" size={20} color="#FFF" />
-            <Text style={styles.searchButtonText}>
-              Find Recipes for "{selectedFood?.label || 'Selected Food'}"
-            </Text>
-            <Ionicons name="arrow-forward" size={20} color="#FFF" />
-          </TouchableOpacity>
-        )}
-
-        {/* ✅ NEW: Model Results Details (Top 5 per model) */}
-        {result && (
-          <View style={styles.modelDetailsContainer}>
-            <Text style={styles.modelDetailsTitle}>📊 Detailed Results by Model</Text>
-            <Text style={styles.modelDetailsSubtitle}>
-              Top 5 predictions from each AI model
-            </Text>
-
-            {/* Detector Results */}
-            {modelResults.detector.length > 0 && (
-              <View style={styles.modelSection}>
-                <View style={styles.modelSectionHeader}>
-                  <Ionicons name="scan" size={18} color="#FF6B6B" />
-                  <Text style={styles.modelSectionTitle}>
-                    🎯 Object Detector (YOLOv8)
-                  </Text>
-                </View>
-                {modelResults.detector.map((item, i) => (
-                  <View key={i} style={styles.resultRow}>
-                    <View style={styles.resultRank}>
-                      <Text style={styles.resultRankText}>{i + 1}</Text>
-                    </View>
-                    <Text style={styles.resultLabel}>{item.label}</Text>
-                    <View style={styles.resultConfidenceBadge}>
-                      <Text style={styles.resultConfidence}>
-                        {(item.confidence * 100).toFixed(1)}%
-                      </Text>
-                    </View>
+              {/* Filipino Results */}
+              {modelResults.filipino.length > 0 && (
+                <View style={styles.modelSection}>
+                  <View style={styles.modelSectionHeader}>
+                    <Ionicons name="restaurant-outline" size={18} color="#4CAF50" />
+                    <Text style={styles.modelSectionTitle}>
+                      Filipino Food Classifier
+                    </Text>
                   </View>
-                ))}
-              </View>
-            )}
-
-            {/* Food101 Results */}
-            {modelResults.food101.length > 0 && (
-              <View style={styles.modelSection}>
-                <View style={styles.modelSectionHeader}>
-                  <Ionicons name="fast-food" size={18} color="#FF9800" />
-                  <Text style={styles.modelSectionTitle}>
-                    🍕 Food101 Classifier
-                  </Text>
+                  {modelResults.filipino.map((item, i) => (
+                    <View key={i} style={styles.resultRow}>
+                      <View style={styles.resultRank}>
+                        <Text style={styles.resultRankText}>{i + 1}</Text>
+                      </View>
+                      <Text style={styles.resultLabel}>{item.label}</Text>
+                      <View style={styles.resultConfidenceBadge}>
+                        <Text style={styles.resultConfidence}>
+                          {(item.confidence * 100).toFixed(1)}%
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
                 </View>
-                {modelResults.food101.map((item, i) => (
-                  <View key={i} style={styles.resultRow}>
-                    <View style={styles.resultRank}>
-                      <Text style={styles.resultRankText}>{i + 1}</Text>
-                    </View>
-                    <Text style={styles.resultLabel}>{item.label}</Text>
-                    <View style={styles.resultConfidenceBadge}>
-                      <Text style={styles.resultConfidence}>
-                        {(item.confidence * 100).toFixed(1)}%
-                      </Text>
-                    </View>
-                  </View>
-                ))}
-              </View>
-            )}
+              )}
 
-            {/* Filipino Results */}
-            {modelResults.filipino.length > 0 && (
-              <View style={styles.modelSection}>
-                <View style={styles.modelSectionHeader}>
-                  <Ionicons name="restaurant" size={18} color="#4CAF50" />
-                  <Text style={styles.modelSectionTitle}>
-                    🇵🇭 Filipino Food Classifier
-                  </Text>
-                </View>
-                {modelResults.filipino.map((item, i) => (
-                  <View key={i} style={styles.resultRow}>
-                    <View style={styles.resultRank}>
-                      <Text style={styles.resultRankText}>{i + 1}</Text>
-                    </View>
-                    <Text style={styles.resultLabel}>{item.label}</Text>
-                    <View style={styles.resultConfidenceBadge}>
-                      <Text style={styles.resultConfidence}>
-                        {(item.confidence * 100).toFixed(1)}%
-                      </Text>
-                    </View>
-                  </View>
-                ))}
+              {/* Technical Info */}
+              <View style={styles.techInfo}>
+                <Text style={styles.techInfoText}>
+                  Processing time: {result.elapsed_ms?.toFixed(0)}ms
+                </Text>
+                <Text style={styles.techInfoText}>
+                  Device: {result.device || 'CPU'}
+                </Text>
+                <Text style={styles.techInfoText}>
+                  Confidence threshold: {(CONFIDENCE_THRESHOLD * 100).toFixed(0)}%
+                </Text>
               </View>
-            )}
+              <View style={{ height: 40 }} />
+            </ScrollView>
+          </View>
+        </Modal>
 
-            {/* Technical Info */}
-            <View style={styles.techInfo}>
-              <Text style={styles.techInfoText}>
-                ⚡ Processing time: {result.elapsed_ms?.toFixed(0)}ms
+        {/* Success Modal */}
+        <Modal
+          visible={successModalVisible}
+          animationType="fade"
+          transparent={true}
+          onRequestClose={() => setSuccessModalVisible(false)}
+        >
+          <View style={successModalStyles.overlay}>
+            <View style={successModalStyles.container}>
+              <View style={successModalStyles.iconContainer}>
+                <Ionicons name="checkmark-circle" size={80} color="#81A969" />
+              </View>
+              
+              <Text style={successModalStyles.title}>Added Successfully!</Text>
+              <Text style={successModalStyles.message}>
+                {addedItemName} has been added to your pantry.
               </Text>
-              <Text style={styles.techInfoText}>
-                🖥️ Device: {result.device || 'CPU'}
-              </Text>
-              <Text style={styles.techInfoText}>
-                🎯 Confidence threshold: {(CONFIDENCE_THRESHOLD * 100).toFixed(0)}%
-              </Text>
+
+              <View style={successModalStyles.buttonContainer}>
+                <TouchableOpacity
+                  style={[successModalStyles.button, successModalStyles.primaryButton]}
+                  onPress={() => {
+                    setSuccessModalVisible(false);
+                    router.push('/(tabs)/pantry');
+                  }}
+                >
+                  <Ionicons name="basket-outline" size={20} color="#FFF" />
+                  <Text style={successModalStyles.primaryButtonText}>View Pantry</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[successModalStyles.button, successModalStyles.secondaryButton]}
+                  onPress={() => {
+                    setSuccessModalVisible(false);
+                    router.replace('/food-recognition/upload');
+                  }}
+                >
+                  <Ionicons name="camera-outline" size={20} color="#81A969" />
+                  <Text style={successModalStyles.secondaryButtonText}>Scan Another</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[successModalStyles.button, successModalStyles.cancelButton]}
+                  onPress={() => setSuccessModalVisible(false)}
+                >
+                  <Text style={successModalStyles.cancelButtonText}>Confirm</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
-        )}
-      </ScrollView>
-
-      {/* Back Button */}
-      <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-        <Ionicons name="arrow-back" size={24} color="#333" />
-      </TouchableOpacity>
-
-      {/* Manual Entry Modal */}
-      <ManualEntryModal
-        visible={manualEntryVisible}
-        onClose={() => setManualEntryVisible(false)}
-        imageUri={uri}
-        itemName={manualItemName}
-        setItemName={setManualItemName}
-        category={manualCategory}
-        setCategory={setManualCategory}
-        quantity={manualQuantity}
-        setQuantity={setManualQuantity}
-        expiryDays={manualExpiryDays}
-        setExpiryDays={setManualExpiryDays}
-        onSubmit={handleManualEntry}
-        loading={addingToInventory}
-      />
-    </View>
+        </Modal>
+      </View>
+    </AuthGuard>
   );
 }
 
-// ✅ Manual Entry Modal Component (unchanged)
+// Manual Entry Modal Component
 function ManualEntryModal({
   visible,
   onClose,
@@ -747,7 +915,7 @@ function ManualEntryModal({
           onPress={(e) => e.stopPropagation()}
         >
           <View style={modalStyles.header}>
-            <Text style={modalStyles.headerTitle}>✏️ Add Item Manually</Text>
+            <Text style={modalStyles.headerTitle}>Add Item Manually</Text>
             <TouchableOpacity onPress={onClose} style={modalStyles.closeButton}>
               <Ionicons name="close" size={24} color="#333" />
             </TouchableOpacity>
@@ -799,48 +967,41 @@ function ManualEntryModal({
               </ScrollView>
             </View>
 
-            <View style={modalStyles.field}>
-              <Text style={modalStyles.label}>Quantity</Text>
-              <TextInput
-                style={modalStyles.input}
-                value={quantity}
-                onChangeText={setQuantity}
-                placeholder="1"
-                keyboardType="numeric"
-                placeholderTextColor="#999"
-              />
+            <View style={modalStyles.row}>
+              <View style={[modalStyles.field, { flex: 1, marginRight: 10 }]}>
+                <Text style={modalStyles.label}>Quantity</Text>
+                <TextInput
+                  style={modalStyles.input}
+                  value={quantity}
+                  onChangeText={setQuantity}
+                  keyboardType="numeric"
+                  placeholder="1"
+                />
+              </View>
+              <View style={[modalStyles.field, { flex: 1 }]}>
+                <Text style={modalStyles.label}>Expires in (days)</Text>
+                <TextInput
+                  style={modalStyles.input}
+                  value={expiryDays}
+                  onChangeText={setExpiryDays}
+                  keyboardType="numeric"
+                  placeholder="7"
+                />
+              </View>
             </View>
 
-            <View style={modalStyles.field}>
-              <Text style={modalStyles.label}>Days Until Expiry</Text>
-              <TextInput
-                style={modalStyles.input}
-                value={expiryDays}
-                onChangeText={setExpiryDays}
-                placeholder="7"
-                keyboardType="numeric"
-                placeholderTextColor="#999"
-              />
-            </View>
-          </ScrollView>
-
-          <TouchableOpacity
-            style={[
-              modalStyles.submitButton,
-              (!itemName.trim() || loading) && modalStyles.submitButtonDisabled,
-            ]}
-            onPress={onSubmit}
-            disabled={!itemName.trim() || loading}
-          >
-            {loading ? (
-              <ActivityIndicator size="small" color="#FFF" />
-            ) : (
-              <>
-                <Ionicons name="checkmark-circle" size={20} color="#FFF" />
+            <TouchableOpacity
+              style={[modalStyles.submitButton, loading && modalStyles.submitButtonDisabled]}
+              onPress={onSubmit}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#FFF" />
+              ) : (
                 <Text style={modalStyles.submitButtonText}>Add to Pantry</Text>
-              </>
-            )}
-          </TouchableOpacity>
+              )}
+            </TouchableOpacity>
+          </ScrollView>
         </TouchableOpacity>
       </TouchableOpacity>
     </Modal>
@@ -850,139 +1011,253 @@ function ManualEntryModal({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#fff',
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#fff',
   },
   loadingText: {
-    marginTop: 16,
-    fontSize: 16,
+    marginTop: hp('2%'),
+    fontSize: wp('4.5%'),
     color: '#666',
+    fontFamily: 'System',
   },
-  imageContainer: {
-    width: '100%',
-    height: 300,
-    backgroundColor: '#000',
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    padding: wp('5%'),
   },
-  image: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'contain',
-  },
-  resultsContainer: {
-    padding: 20,
-    backgroundColor: '#FFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
-  },
-  resultsTitle: {
-    fontSize: 24,
+  errorTitle: {
+    fontSize: wp('6%'),
     fontWeight: 'bold',
     color: '#333',
+    marginTop: hp('2%'),
+    marginBottom: hp('1%'),
+  },
+  errorText: {
+    fontSize: wp('4%'),
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: hp('4%'),
+  },
+  stickyHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#81A969',
+    zIndex: 900,
+    justifyContent: 'flex-start',
+    borderBottomLeftRadius: wp('6%'),
+    borderBottomRightRadius: wp('6%'),
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  stickyHeaderContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: wp('5%'),
+    width: '100%',
+    justifyContent: 'space-between',
+    height: wp('12%'),
+  },
+  stickyHeaderTitle: {
+    color: '#fff',
+    fontSize: wp('4.5%'),
+    fontWeight: 'bold',
+    textAlign: 'center',
+    flex: 1,
+  },
+  stickyBackButton: {
+    padding: 8,
+  },
+  parallaxHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: hp('35%'),
+    zIndex: 0,
+  },
+  heroImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  imageOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.2)',
+  },
+  scrollView: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+  scrollViewContent: {
+    paddingBottom: hp('10%'),
+  },
+  parallaxSpacer: {
+    height: hp('35%'),
+    backgroundColor: 'transparent',
+  },
+  contentCard: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: wp('7%'),
+    borderTopRightRadius: wp('7%'),
+    marginTop: wp('-6%'),
+    paddingHorizontal: wp('5%'),
+    paddingTop: hp('3%'),
+    flex: 1,
+    minHeight: hp('70%'),
+  },
+  fixedBackButton: {
+    position: 'absolute',
+    left: wp('5%'),
+    zIndex: 1000,
+  },
+  roundButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  headerSection: {
+    marginBottom: hp('3%'),
+    alignItems: 'center',
+  },
+  resultsTitle: {
+    fontSize: wp('6%'),
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: hp('0.5%'),
+    textAlign: 'center',
   },
   resultsSubtitle: {
-    fontSize: 14,
+    fontSize: wp('3.8%'),
     color: '#666',
-    marginTop: 4,
-  },
-  optionsContainer: {
-    padding: 16,
+    textAlign: 'center',
   },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#E8F5E9',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 16,
-    gap: 8,
+    marginBottom: hp('2%'),
   },
   sectionHeaderText: {
-    fontSize: 14,
-    color: '#2E7D32',
+    fontSize: wp('4.5%'),
     fontWeight: '600',
-    flex: 1,
+    color: '#333',
+    marginLeft: wp('2%'),
+  },
+  optionsContainer: {
+    marginBottom: hp('3%'),
   },
   optionCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 2,
-    borderColor: '#E0E0E0',
+    backgroundColor: '#F9FAFB',
+    borderRadius: wp('4%'),
+    padding: wp('4%'),
+    marginBottom: hp('1.5%'),
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
   optionCardSelected: {
-    borderColor: '#4CAF50',
-    backgroundColor: '#F1F8F4',
+    backgroundColor: '#F0FDF4',
+    borderColor: '#81A969',
   },
   optionContent: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
   },
   optionTextContainer: {
     flex: 1,
   },
   optionLabel: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: wp('4.5%'),
+    fontWeight: 'bold',
     color: '#333',
-    marginBottom: 6,
+    marginBottom: hp('0.5%'),
   },
   optionMeta: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    flexWrap: 'wrap',
   },
   confidenceBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#E8F5E9',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    gap: 4,
+    paddingHorizontal: wp('2%'),
+    paddingVertical: hp('0.3%'),
+    borderRadius: wp('1%'),
+    marginRight: wp('2%'),
   },
   optionConfidence: {
-    fontSize: 12,
-    color: '#4CAF50',
+    fontSize: wp('3.2%'),
+    color: '#81A969',
     fontWeight: '600',
+    marginLeft: wp('1%'),
   },
   sourceBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
   },
   optionSource: {
-    fontSize: 11,
+    fontSize: wp('3.2%'),
     color: '#666',
+    marginLeft: wp('1%'),
+  },
+  radioButton: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#D1D5DB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: wp('3%'),
+  },
+  radioButtonSelected: {
+    backgroundColor: '#81A969',
+    borderColor: '#81A969',
   },
   noResultsContainer: {
-    padding: 40,
     alignItems: 'center',
+    padding: wp('8%'),
+    backgroundColor: '#F9FAFB',
+    borderRadius: wp('4%'),
+    marginBottom: hp('3%'),
   },
   noResultsText: {
-    marginTop: 16,
-    fontSize: 16,
+    fontSize: wp('4.5%'),
+    fontWeight: '600',
     color: '#666',
+    marginTop: hp('2%'),
     textAlign: 'center',
-    fontWeight: '500',
   },
   noResultsSubtext: {
-    marginTop: 8,
-    fontSize: 14,
+    fontSize: wp('3.5%'),
     color: '#999',
     textAlign: 'center',
+    marginTop: hp('1%'),
   },
   actionButtonsContainer: {
     flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    gap: 12,
+    justifyContent: 'space-between',
+    marginBottom: hp('2%'),
   },
   manualButton: {
     flex: 1,
@@ -990,203 +1265,201 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#FFF',
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: '#FF6B6B',
-    paddingVertical: 14,
-    borderRadius: 12,
-    gap: 8,
+    paddingVertical: hp('1.8%'),
+    borderRadius: wp('3%'),
+    marginRight: wp('2%'),
   },
   manualButtonText: {
     color: '#FF6B6B',
-    fontSize: 16,
-    fontWeight: '600',
+    fontWeight: 'bold',
+    fontSize: wp('4%'),
+    marginLeft: wp('2%'),
   },
   addButton: {
-    flex: 1,
+    flex: 1.5,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#4CAF50',
-    paddingVertical: 14,
-    borderRadius: 12,
-    gap: 8,
+    backgroundColor: '#81A969',
+    paddingVertical: hp('1.8%'),
+    borderRadius: wp('3%'),
+    marginLeft: wp('2%'),
+    shadowColor: '#81A969',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
   addButtonDisabled: {
-    backgroundColor: '#CCC',
+    backgroundColor: '#D1D5DB',
+    shadowOpacity: 0,
   },
   addButtonText: {
     color: '#FFF',
-    fontSize: 16,
-    fontWeight: '600',
+    fontWeight: 'bold',
+    fontSize: wp('4%'),
+    marginLeft: wp('2%'),
   },
   searchButton: {
     flexDirection: 'row',
-    backgroundColor: '#2196F3',
-    margin: 16,
-    padding: 16,
-    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    backgroundColor: '#FF9800',
+    paddingVertical: hp('1.8%'),
+    borderRadius: wp('3%'),
+    marginBottom: hp('3%'),
+    shadowColor: '#FF9800',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
   searchButtonDisabled: {
-    backgroundColor: '#CCC',
+    backgroundColor: '#D1D5DB',
+    shadowOpacity: 0,
   },
   searchButtonText: {
     color: '#FFF',
-    fontSize: 15,
-    fontWeight: '600',
-    flex: 1,
-    textAlign: 'center',
-  },
-  backButton: {
-    position: 'absolute',
-    top: 50,
-    left: 20,
-    backgroundColor: '#FFF',
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-    backgroundColor: '#F5F5F5',
-  },
-  errorTitle: {
-    fontSize: 24,
     fontWeight: 'bold',
-    color: '#333',
-    marginTop: 16,
+    fontSize: wp('4%'),
+    marginHorizontal: wp('2%'),
   },
-  errorText: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-    marginTop: 8,
-    marginBottom: 24,
+  detailsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: hp('1.5%'),
+    marginTop: hp('1%'),
+  },
+  detailsButtonText: {
+    color: '#81A969',
+    fontSize: wp('3.8%'),
+    fontWeight: '600',
+    marginLeft: wp('2%'),
+    textDecorationLine: 'underline',
+  },
+  retryButton: {
+    marginTop: hp('2%'),
+    paddingVertical: hp('1.5%'),
+    paddingHorizontal: wp('8%'),
+    backgroundColor: '#81A969',
+    borderRadius: wp('2%'),
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: wp('4%'),
   },
   manualEntryButton: {
+    marginTop: hp('2%'),
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FF6B6B',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-    marginBottom: 12,
-    gap: 8,
+    paddingVertical: hp('1.5%'),
+    paddingHorizontal: wp('6%'),
+    borderRadius: wp('2%'),
   },
   manualEntryButtonText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: '600',
+    color: '#fff',
+    fontWeight: 'bold',
+    marginLeft: wp('2%'),
   },
-  retryButton: {
-    backgroundColor: '#4CAF50',
-    paddingHorizontal: 32,
-    paddingVertical: 12,
-    borderRadius: 8,
+  
+  // Modal Styles
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#fff',
   },
-  retryButtonText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: '600',
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: wp('5%'),
+    paddingVertical: hp('2%'),
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
   },
-  // ✅ NEW: Model Details Styles
-  modelDetailsContainer: {
-    margin: 16,
-    padding: 16,
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-  },
-  modelDetailsTitle: {
-    fontSize: 18,
+  modalTitle: {
+    fontSize: wp('5%'),
     fontWeight: 'bold',
     color: '#333',
-    marginBottom: 4,
+  },
+  closeModalButton: {
+    padding: 5,
+  },
+  modalContent: {
+    padding: wp('5%'),
   },
   modelDetailsSubtitle: {
-    fontSize: 12,
-    color: '#999',
-    marginBottom: 16,
+    fontSize: wp('4%'),
+    color: '#666',
+    marginBottom: hp('3%'),
   },
   modelSection: {
-    marginBottom: 20,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    marginBottom: hp('4%'),
   },
   modelSectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
-    gap: 8,
+    marginBottom: hp('2%'),
+    paddingBottom: hp('1%'),
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
   },
   modelSectionTitle: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: wp('4.5%'),
+    fontWeight: 'bold',
     color: '#333',
+    marginLeft: wp('2%'),
   },
   resultRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    backgroundColor: '#F9F9F9',
-    borderRadius: 8,
-    marginBottom: 6,
+    marginBottom: hp('1.5%'),
   },
   resultRank: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#E0E0E0',
-    justifyContent: 'center',
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#F3F4F6',
     alignItems: 'center',
-    marginRight: 12,
+    justifyContent: 'center',
+    marginRight: wp('3%'),
   },
   resultRankText: {
-    fontSize: 12,
+    fontSize: wp('3.5%'),
     fontWeight: 'bold',
     color: '#666',
   },
   resultLabel: {
     flex: 1,
-    fontSize: 14,
+    fontSize: wp('4%'),
     color: '#333',
   },
   resultConfidenceBadge: {
-    backgroundColor: '#E8F5E9',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
+    backgroundColor: '#F0FDF4',
+    paddingHorizontal: wp('2%'),
+    paddingVertical: hp('0.5%'),
+    borderRadius: wp('1%'),
   },
   resultConfidence: {
-    fontSize: 12,
-    color: '#4CAF50',
+    fontSize: wp('3.5%'),
     fontWeight: '600',
+    color: '#81A969',
   },
   techInfo: {
-    marginTop: 8,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#F0F0F0',
+    backgroundColor: '#F9FAFB',
+    padding: wp('4%'),
+    borderRadius: wp('3%'),
+    marginTop: hp('2%'),
   },
   techInfoText: {
-    fontSize: 12,
-    color: '#999',
-    marginTop: 4,
+    fontSize: wp('3.5%'),
+    color: '#666',
+    marginBottom: hp('0.5%'),
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
   },
 });
 
@@ -1197,10 +1470,11 @@ const modalStyles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   container: {
-    backgroundColor: '#FFF',
+    backgroundColor: '#fff',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: '90%',
+    height: '80%',
+    width: '100%',
   },
   header: {
     flexDirection: 'row',
@@ -1208,15 +1482,15 @@ const modalStyles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
+    borderBottomColor: '#eee',
   },
   headerTitle: {
     fontSize: 20,
-    fontWeight: '700',
+    fontWeight: 'bold',
     color: '#333',
   },
   closeButton: {
-    padding: 4,
+    padding: 5,
   },
   content: {
     padding: 20,
@@ -1226,75 +1500,160 @@ const modalStyles = StyleSheet.create({
     marginBottom: 20,
   },
   previewImage: {
-    width: '100%',
-    height: 200,
-    borderRadius: 12,
-    resizeMode: 'cover',
+    width: 100,
+    height: 100,
+    borderRadius: 10,
+    marginBottom: 5,
   },
   imageNote: {
-    marginTop: 8,
     fontSize: 12,
-    color: '#666',
-    fontStyle: 'italic',
+    color: '#999',
   },
   field: {
     marginBottom: 20,
   },
   label: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
-    color: '#333',
+    color: '#666',
     marginBottom: 8,
   },
   input: {
+    backgroundColor: '#F9FAFB',
     borderWidth: 1,
-    borderColor: '#E0E0E0',
-    borderRadius: 8,
+    borderColor: '#E5E7EB',
+    borderRadius: 10,
     padding: 12,
     fontSize: 16,
     color: '#333',
-    backgroundColor: '#F9F9F9',
+  },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
   },
   categoryContainer: {
     flexDirection: 'row',
-    gap: 8,
   },
   categoryChip: {
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
+    backgroundColor: '#F3F4F6',
+    marginRight: 10,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
-    backgroundColor: '#FFF',
+    borderColor: 'transparent',
   },
   categoryChipSelected: {
-    backgroundColor: '#FF6B6B',
-    borderColor: '#FF6B6B',
+    backgroundColor: '#E8F5E9',
+    borderColor: '#81A969',
   },
   categoryChipText: {
-    fontSize: 14,
     color: '#666',
+    fontWeight: '500',
   },
   categoryChipTextSelected: {
-    color: '#FFF',
-    fontWeight: '600',
+    color: '#81A969',
+    fontWeight: 'bold',
   },
   submitButton: {
+    backgroundColor: '#81A969',
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 10,
+    marginBottom: 40,
+  },
+  submitButtonDisabled: {
+    backgroundColor: '#A5D6A7',
+  },
+  submitButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+});
+
+const successModalStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: wp('5%'),
+  },
+  container: {
+    backgroundColor: '#fff',
+    borderRadius: wp('6%'),
+    padding: wp('6%'),
+    width: '100%',
+    maxWidth: 400,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  iconContainer: {
+    marginBottom: hp('2%'),
+  },
+  title: {
+    fontSize: wp('6%'),
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: hp('1%'),
+    textAlign: 'center',
+  },
+  message: {
+    fontSize: wp('4%'),
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: hp('3%'),
+    lineHeight: wp('6%'),
+  },
+  buttonContainer: {
+    width: '100%',
+    gap: hp('1.5%'),
+  },
+  button: {
+    width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#4CAF50',
-    margin: 20,
-    padding: 16,
-    borderRadius: 12,
-    gap: 8,
+    paddingVertical: hp('1.8%'),
+    borderRadius: wp('3%'),
   },
-  submitButtonDisabled: {
-    backgroundColor: '#CCC',
+  primaryButton: {
+    backgroundColor: '#81A969',
+    shadowColor: '#81A969',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 4,
   },
-  submitButtonText: {
+  primaryButtonText: {
     color: '#FFF',
-    fontSize: 16,
+    fontSize: wp('4%'),
+    fontWeight: 'bold',
+    marginLeft: wp('2%'),
+  },
+  secondaryButton: {
+    backgroundColor: '#FFF',
+    borderWidth: 2,
+    borderColor: '#81A969',
+  },
+  secondaryButtonText: {
+    color: '#81A969',
+    fontSize: wp('4%'),
+    fontWeight: 'bold',
+    marginLeft: wp('2%'),
+  },
+  cancelButton: {
+    backgroundColor: 'transparent',
+  },
+  cancelButtonText: {
+    color: '#999',
+    fontSize: wp('4%'),
     fontWeight: '600',
   },
 });

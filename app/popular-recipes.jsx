@@ -90,7 +90,9 @@ const PopularRecipes = () => {
                         </Svg>
                     </TouchableOpacity>
                     <Text style={styles.headerTitle}>Popular Recipes</Text>
-                </View>                {loading && !refreshing ? (
+                </View>
+
+                {loading && !refreshing ? (
                     <View style={styles.loadingContainer}>
                         <ActivityIndicator size="large" color="#81A969" />
                         <Text style={styles.loadingText}>Loading popular recipes...</Text>
