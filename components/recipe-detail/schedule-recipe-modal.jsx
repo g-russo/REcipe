@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,8 +7,11 @@ import {
   TouchableOpacity,
   Platform,
   Alert,
+  Animated,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import RecipeSchedulingService from '../../services/recipe-scheduling-service';
 
@@ -16,6 +19,54 @@ const ScheduleRecipeModal = ({ visible, onClose, recipe, userID }) => {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(Platform.OS === 'ios');
   const [isScheduling, setIsScheduling] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [scheduledRecipeName, setScheduledRecipeName] = useState('');
+  const [scheduledDateStr, setScheduledDateStr] = useState('');
+  
+  // Animation refs
+  const modalScale = useRef(new Animated.Value(0)).current;
+  const modalOpacity = useRef(new Animated.Value(0)).current;
+  const successScale = useRef(new Animated.Value(0)).current;
+  const successOpacity = useRef(new Animated.Value(0)).current;
+
+  React.useEffect(() => {
+    if (visible) {
+      // Entrance animation
+      modalScale.setValue(0.7);
+      modalOpacity.setValue(0);
+      
+      Animated.parallel([
+        Animated.spring(modalScale, {
+          toValue: 1,
+          useNativeDriver: true,
+          tension: 100,
+          friction: 10,
+        }),
+        Animated.timing(modalOpacity, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [visible]);
+
+  const closeModal = () => {
+    Animated.parallel([
+      Animated.timing(modalScale, {
+        toValue: 0.7,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+      Animated.timing(modalOpacity, {
+        toValue: 0,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      onClose(false);
+    });
+  };
 
   const handleDateChange = (event, date) => {
     if (Platform.OS === 'android') {
@@ -50,16 +101,39 @@ const ScheduleRecipeModal = ({ visible, onClose, recipe, userID }) => {
       );
 
       if (result.success) {
-        Alert.alert(
-          'Recipe Scheduled! 📅',
-          `"${recipe.label || recipe.recipeName}" is scheduled for ${selectedDate.toLocaleDateString()}.\n\nYou'll receive daily reminders at 9:00 AM:\n• 1 week before\n• 3 days before\n• 2 days before\n• 1 day before\n• On cooking day`,
-          [
-            {
-              text: 'OK',
-              onPress: () => onClose(true) // Pass true to indicate success
-            }
-          ]
-        );
+        setScheduledRecipeName(recipe.label || recipe.recipeName);
+        setScheduledDateStr(selectedDate.toLocaleDateString('en-US', {
+          weekday: 'long',
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
+        }));
+        
+        // Close schedule modal first
+        closeModal();
+        
+        // Show success modal after a delay
+        setTimeout(() => {
+          setShowSuccessModal(true);
+          
+          // Animate success modal entrance
+          successScale.setValue(0.7);
+          successOpacity.setValue(0);
+          
+          Animated.parallel([
+            Animated.spring(successScale, {
+              toValue: 1,
+              useNativeDriver: true,
+              tension: 100,
+              friction: 10,
+            }),
+            Animated.timing(successOpacity, {
+              toValue: 1,
+              duration: 200,
+              useNativeDriver: true,
+            }),
+          ]).start();
+        }, 300);
       } else {
         Alert.alert('Error', result.error || 'Failed to schedule recipe');
       }
@@ -69,6 +143,24 @@ const ScheduleRecipeModal = ({ visible, onClose, recipe, userID }) => {
     } finally {
       setIsScheduling(false);
     }
+  };
+
+  const closeSuccessModal = () => {
+    Animated.parallel([
+      Animated.timing(successScale, {
+        toValue: 0.7,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+      Animated.timing(successOpacity, {
+        toValue: 0,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setShowSuccessModal(false);
+      onClose(true);
+    });
   };
 
   const formatDate = (date) => {
@@ -88,219 +180,429 @@ const ScheduleRecipeModal = ({ visible, onClose, recipe, userID }) => {
   };
 
   return (
+    <>
     <Modal
       visible={visible}
-      animationType="slide"
+      animationType="none"
       transparent={true}
-      onRequestClose={onClose}
+      onRequestClose={closeModal}
     >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          {/* Header */}
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Schedule Recipe</Text>
-            <TouchableOpacity onPress={() => onClose(false)} style={styles.closeButton}>
-              <Ionicons name="close" size={24} color="#333" />
-            </TouchableOpacity>
-          </View>
+      <TouchableWithoutFeedback onPress={closeModal}>
+        <View style={styles.modalOverlay}>
+          <TouchableWithoutFeedback>
+            <Animated.View style={[
+              styles.modalContent,
+              {
+                opacity: modalOpacity,
+                transform: [{ scale: modalScale }]
+              }
+            ]}>
+              {/* Header with Icon */}
+              <View style={styles.modalHeader}>
+                <View style={styles.headerIconCircle}>
+                  <Ionicons name="calendar" size={32} color="#81A969" />
+                </View>
+                <Text style={styles.modalTitle}>Schedule Recipe</Text>
+              </View>
 
-          {/* Recipe Info */}
-          <View style={styles.recipeInfo}>
-            <Ionicons name="restaurant" size={24} color="#6FA36D" />
-            <Text style={styles.recipeName} numberOfLines={2}>
-              {recipe?.label || recipe?.recipeName || 'Recipe'}
-            </Text>
-          </View>
+              {/* Recipe Info */}
+              <View style={styles.recipeInfoBox}>
+                <Ionicons name="restaurant" size={20} color="#81A969" />
+                <Text style={styles.recipeName} numberOfLines={2}>
+                  {recipe?.label || recipe?.recipeName || 'Recipe'}
+                </Text>
+              </View>
 
-          {/* Date Selection */}
-          <View style={styles.dateSection}>
-            <Text style={styles.sectionTitle}>When do you want to cook this?</Text>
-            
-            {Platform.OS === 'android' && (
-              <TouchableOpacity
-                style={styles.dateButton}
-                onPress={() => setShowDatePicker(true)}
-              >
-                <Ionicons name="calendar-outline" size={20} color="#6FA36D" />
-                <Text style={styles.dateButtonText}>{formatDate(selectedDate)}</Text>
-              </TouchableOpacity>
-            )}
+              {/* Date Selection */}
+              <View style={styles.dateSection}>
+                <Text style={styles.sectionTitle}>When do you want to cook this?</Text>
+                
+                {Platform.OS === 'android' && (
+                  <TouchableOpacity
+                    style={styles.dateButton}
+                    onPress={() => setShowDatePicker(true)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.dateIconCircle}>
+                      <Ionicons name="calendar-outline" size={20} color="#81A969" />
+                    </View>
+                    <Text style={styles.dateButtonText}>{formatDate(selectedDate)}</Text>
+                    <Ionicons name="chevron-down" size={20} color="#81A969" />
+                  </TouchableOpacity>
+                )}
 
-            {showDatePicker && (
-              <DateTimePicker
-                value={selectedDate}
-                mode="date"
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                onChange={handleDateChange}
-                minimumDate={getMinDate()}
-                style={styles.datePicker}
-              />
-            )}
-          </View>
+                {showDatePicker && (
+                  <View style={styles.datePickerContainer}>
+                    <DateTimePicker
+                      value={selectedDate}
+                      mode="date"
+                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                      onChange={handleDateChange}
+                      minimumDate={getMinDate()}
+                      style={styles.datePicker}
+                      themeVariant="light"
+                      accentColor="#81A969"
+                    />
+                  </View>
+                )}
+              </View>
 
-          {/* Notification Info */}
-          <View style={styles.notificationInfo}>
-            <Ionicons name="notifications-outline" size={20} color="#FF9800" />
-            <View style={styles.notificationText}>
-              <Text style={styles.notificationTitle}>You'll be notified:</Text>
-              <Text style={styles.notificationItem}>🟡 1 week before</Text>
-              <Text style={styles.notificationItem}>🟠 Daily from 3 days before</Text>
-              <Text style={styles.notificationItem}>🔔 On cooking day</Text>
-            </View>
-          </View>
+              {/* Notification Info */}
+              <View style={styles.notificationInfo}>
+                <View style={styles.notificationHeader}>
+                  <Ionicons name="notifications" size={20} color="#FF9800" />
+                  <Text style={styles.notificationTitle}>You'll receive reminders at 9:00 AM</Text>
+                </View>
+                <View style={styles.notificationItems}>
+                  <View style={styles.notificationItem}>
+                    <View style={[styles.notificationDot, { backgroundColor: '#FFB74D' }]} />
+                    <Text style={styles.notificationItemText}>1 week before</Text>
+                  </View>
+                  <View style={styles.notificationItem}>
+                    <View style={[styles.notificationDot, { backgroundColor: '#FF9800' }]} />
+                    <Text style={styles.notificationItemText}>Daily from 3 days before</Text>
+                  </View>
+                  <View style={styles.notificationItem}>
+                    <View style={[styles.notificationDot, { backgroundColor: '#81A969' }]} />
+                    <Text style={styles.notificationItemText}>On cooking day</Text>
+                  </View>
+                </View>
+              </View>
 
-          {/* Actions */}
-          <View style={styles.actions}>
-            <TouchableOpacity
-              style={styles.cancelButton}
-              onPress={() => onClose(false)}
-            >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
+              {/* Actions */}
+              <View style={styles.actions}>
+                <TouchableOpacity
+                  style={styles.cancelButton}
+                  onPress={closeModal}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.cancelButtonText}>Cancel</Text>
+                </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.scheduleButton, isScheduling && styles.scheduleButtonDisabled]}
-              onPress={handleSchedule}
-              disabled={isScheduling}
-            >
-              <Ionicons name="calendar" size={20} color="#fff" />
-              <Text style={styles.scheduleButtonText}>
-                {isScheduling ? 'Scheduling...' : 'Schedule'}
-              </Text>
-            </TouchableOpacity>
-          </View>
+                <TouchableOpacity
+                  style={[styles.scheduleButton, isScheduling && styles.scheduleButtonDisabled]}
+                  onPress={handleSchedule}
+                  disabled={isScheduling}
+                  activeOpacity={0.8}
+                >
+                  {isScheduling ? (
+                    <Text style={styles.scheduleButtonText}>Scheduling...</Text>
+                  ) : (
+                    <>
+                      <Ionicons name="calendar-sharp" size={20} color="#fff" />
+                      <Text style={styles.scheduleButtonText}>Schedule</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </Animated.View>
+          </TouchableWithoutFeedback>
         </View>
-      </View>
+      </TouchableWithoutFeedback>
     </Modal>
+
+    {/* Success Modal */}
+    <Modal
+      visible={showSuccessModal}
+      animationType="none"
+      transparent={true}
+      onRequestClose={closeSuccessModal}
+    >
+      <TouchableWithoutFeedback onPress={closeSuccessModal}>
+        <View style={styles.successOverlay}>
+          <TouchableWithoutFeedback>
+            <Animated.View style={[
+              styles.successContent,
+              {
+                opacity: successOpacity,
+                transform: [{ scale: successScale }]
+              }
+            ]}>
+              {/* Success Icon */}
+              <View style={styles.successIconContainer}>
+                <View style={styles.successIconCircle}>
+                  <Ionicons name="checkmark-circle" size={64} color="#81A969" />
+                </View>
+              </View>
+
+              <Text style={styles.successTitle}>Recipe Scheduled!</Text>
+              
+              <Text style={styles.successRecipeName}>{scheduledRecipeName}</Text>
+              
+              <View style={styles.successDateBox}>
+                <Ionicons name="calendar" size={20} color="#81A969" />
+                <Text style={styles.successDate}>{scheduledDateStr}</Text>
+              </View>
+
+              {/* OK Button */}
+              <TouchableOpacity
+                style={styles.successButton}
+                onPress={closeSuccessModal}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.successButtonText}>Got It!</Text>
+              </TouchableOpacity>
+            </Animated.View>
+          </TouchableWithoutFeedback>
+        </View>
+      </TouchableWithoutFeedback>
+    </Modal>
+    </>
   );
 };
 
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
+    backgroundColor: 'transparent',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: wp('5%'),
   },
   modalContent: {
     backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingTop: 20,
-    paddingHorizontal: 20,
-    paddingBottom: 40,
-    maxHeight: '80%',
+    borderRadius: 24,
+    padding: wp('6%'),
+    width: '100%',
+    maxWidth: 500,
+    maxHeight: hp('85%'),
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 15,
   },
   modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: hp('2.5%'),
+  },
+  headerIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#E8F5E9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: hp('1.5%'),
   },
   modalTitle: {
-    fontSize: 24,
-    fontWeight: '700',
+    fontSize: wp('5.5%'),
+    fontWeight: 'bold',
     color: '#333',
   },
-  closeButton: {
-    padding: 4,
-  },
-  recipeInfo: {
+  recipeInfoBox: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#F5F5F5',
-    padding: 16,
+    padding: wp('4%'),
     borderRadius: 12,
-    marginBottom: 24,
+    marginBottom: hp('2.5%'),
+    borderLeftWidth: 3,
+    borderLeftColor: '#81A969',
   },
   recipeName: {
-    fontSize: 16,
+    fontSize: wp('4%'),
     fontWeight: '600',
     color: '#333',
-    marginLeft: 12,
+    marginLeft: wp('3%'),
     flex: 1,
   },
   dateSection: {
-    marginBottom: 24,
+    marginBottom: hp('2.5%'),
   },
   sectionTitle: {
-    fontSize: 16,
+    fontSize: wp('4%'),
     fontWeight: '600',
     color: '#333',
-    marginBottom: 12,
+    marginBottom: hp('1.5%'),
   },
   dateButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#F5F5F5',
-    padding: 16,
+    padding: wp('4%'),
     borderRadius: 12,
     borderWidth: 2,
-    borderColor: '#6FA36D',
+    borderColor: '#81A969',
+  },
+  dateIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#E8F5E9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: wp('3%'),
   },
   dateButtonText: {
-    fontSize: 16,
+    flex: 1,
+    fontSize: wp('4%'),
     color: '#333',
-    marginLeft: 12,
     fontWeight: '500',
   },
+  datePickerContainer: {
+    marginTop: hp('1.5%'),
+    backgroundColor: '#F5F5F5',
+    borderRadius: 12,
+    padding: wp('2%'),
+  },
   datePicker: {
-    marginTop: 12,
+    width: '100%',
   },
   notificationInfo: {
-    flexDirection: 'row',
     backgroundColor: '#FFF3E0',
-    padding: 16,
+    padding: wp('4%'),
     borderRadius: 12,
-    marginBottom: 24,
+    marginBottom: hp('2.5%'),
+    borderLeftWidth: 3,
+    borderLeftColor: '#FF9800',
   },
-  notificationText: {
-    marginLeft: 12,
-    flex: 1,
+  notificationHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: hp('1.5%'),
   },
   notificationTitle: {
-    fontSize: 14,
+    fontSize: wp('3.8%'),
     fontWeight: '600',
     color: '#333',
-    marginBottom: 8,
+    marginLeft: wp('2%'),
+  },
+  notificationItems: {
+    gap: hp('1%'),
   },
   notificationItem: {
-    fontSize: 13,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  notificationDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: wp('2.5%'),
+  },
+  notificationItemText: {
+    fontSize: wp('3.5%'),
     color: '#666',
-    marginBottom: 4,
+    fontWeight: '500',
   },
   actions: {
     flexDirection: 'row',
-    gap: 12,
+    gap: wp('3%'),
   },
   cancelButton: {
     flex: 1,
-    padding: 16,
+    padding: hp('1.8%'),
     borderRadius: 12,
     borderWidth: 2,
     borderColor: '#E0E0E0',
     alignItems: 'center',
+    justifyContent: 'center',
   },
   cancelButtonText: {
-    fontSize: 16,
+    fontSize: wp('4%'),
     fontWeight: '600',
     color: '#666',
   },
   scheduleButton: {
     flex: 1,
     flexDirection: 'row',
-    padding: 16,
+    padding: hp('1.8%'),
     borderRadius: 12,
-    backgroundColor: '#6FA36D',
+    backgroundColor: '#81A969',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: wp('2%'),
+    shadowColor: '#81A969',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
   scheduleButtonDisabled: {
     opacity: 0.6,
   },
   scheduleButtonText: {
-    fontSize: 16,
+    fontSize: wp('4%'),
     fontWeight: '600',
+    color: '#fff',
+  },
+  // Success Modal Styles
+  successOverlay: {
+    flex: 1,
+    backgroundColor: 'transparent',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: wp('5%'),
+  },
+  successContent: {
+    backgroundColor: '#fff',
+    borderRadius: 24,
+    padding: wp('6%'),
+    width: '100%',
+    maxWidth: 450,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 15,
+  },
+  successIconContainer: {
+    marginBottom: hp('2%'),
+  },
+  successIconCircle: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: '#E8F5E9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  successTitle: {
+    fontSize: wp('6%'),
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: hp('1.5%'),
+  },
+  successRecipeName: {
+    fontSize: wp('4.5%'),
+    fontWeight: '600',
+    color: '#81A969',
+    textAlign: 'center',
+    marginBottom: hp('2%'),
+  },
+  successDateBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E8F5E9',
+    paddingVertical: hp('1.5%'),
+    paddingHorizontal: wp('5%'),
+    borderRadius: 12,
+    marginBottom: hp('3%'),
+  },
+  successDate: {
+    fontSize: wp('4%'),
+    fontWeight: '600',
+    color: '#81A969',
+    marginLeft: wp('2%'),
+  },
+  successButton: {
+    width: '100%',
+    backgroundColor: '#81A969',
+    paddingVertical: hp('2%'),
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#81A969',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  successButtonText: {
+    fontSize: wp('4.5%'),
+    fontWeight: 'bold',
     color: '#fff',
   },
 });

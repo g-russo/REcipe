@@ -6,6 +6,9 @@ import {
   Image,
   ActivityIndicator,
   StyleSheet,
+  Modal,
+  Animated,
+  TouchableWithoutFeedback
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -30,6 +33,58 @@ export default function FavoritesTab({
       });
     }
   }, [recipes]);
+
+  const [showRemoveModal, setShowRemoveModal] = React.useState(false);
+  const [selectedRecipe, setSelectedRecipe] = React.useState(null);
+  const [isProcessing, setIsProcessing] = React.useState(false);
+  const removeModalScale = React.useRef(new Animated.Value(0)).current;
+  const removeModalOpacity = React.useRef(new Animated.Value(0)).current;
+
+  const openRemoveModal = (item) => {
+    setSelectedRecipe(item);
+    setShowRemoveModal(true);
+    removeModalScale.setValue(0.7);
+    removeModalOpacity.setValue(0);
+    Animated.parallel([
+      Animated.spring(removeModalScale, {
+        toValue: 1,
+        useNativeDriver: true,
+        tension: 100,
+        friction: 10,
+      }),
+      Animated.timing(removeModalOpacity, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
+  const closeRemoveModal = () => {
+    Animated.parallel([
+      Animated.timing(removeModalScale, {
+        toValue: 0.7,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+      Animated.timing(removeModalOpacity, {
+        toValue: 0,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setShowRemoveModal(false);
+      setSelectedRecipe(null);
+    });
+  };
+
+  const confirmRemove = async () => {
+    if (!selectedRecipe) return;
+    setIsProcessing(true);
+    await onRemoveRecipe(selectedRecipe);
+    setIsProcessing(false);
+    closeRemoveModal();
+  };
 
   const renderRecipeCard = (item, index) => {
     // Debug: Log the actual item structure
@@ -74,44 +129,43 @@ export default function FavoritesTab({
     }
 
     return (
-      <View 
-        key={item.recipeSource === 'ai' 
-          ? `ai-${item.aiRecipeID}` 
-          : `edamam-${item.edamamRecipeURI || item.favoriteID}`}
-        style={[
-          styles.recipeCard,
-          isLeftColumn ? styles.leftCard : styles.rightCard
-        ]}
+      <View key={item.recipeSource === 'ai' 
+        ? `ai-${item.aiRecipeID}` 
+        : `edamam-${item.edamamRecipeURI || item.favoriteID}`}
+        style={styles.recipeCard}
       >
         <TouchableOpacity
           style={styles.cardTouchable}
           onPress={() => onRecipePress(item)}
           activeOpacity={0.7}
         >
-          <Image
-            source={{ uri: imageUrl }}
-            style={styles.recipeImage}
-            resizeMode="cover"
-            onError={(error) => {
-              console.error('❌ Favorites: Image load error for:', {
-                recipeSource: item.recipeSource,
-                recipeName: recipe?.label || recipe?.recipeName,
-                imageUrl: imageUrl,
-                error: error.nativeEvent?.error
-              });
-            }}
-            onLoad={() => {
-              console.log('✅ Favorites: Image loaded successfully for:', recipe?.label || recipe?.recipeName);
-            }}
-          />
+          {/* Image Container with inset rounded rectangle */}
+          <View style={styles.imageContainer}>
+            <Image
+              source={{ uri: imageUrl }}
+              style={styles.recipeImage}
+              resizeMode="cover"
+              onError={(error) => {
+                console.error('❌ Favorites: Image load error for:', {
+                  recipeSource: item.recipeSource,
+                  recipeName: recipe?.label || recipe?.recipeName,
+                  imageUrl: imageUrl,
+                  error: error.nativeEvent?.error
+                });
+              }}
+              onLoad={() => {
+                console.log('✅ Favorites: Image loaded successfully for:', recipe?.label || recipe?.recipeName);
+              }}
+            />
 
-          {/* AI Badge */}
-          {isAI && (
-            <View style={styles.aiBadge}>
-              <Ionicons name="sparkles" size={10} color="#fff" />
-              <Text style={styles.aiBadgeText}>AI</Text>
-            </View>
-          )}
+            {/* AI Badge */}
+            {isAI && (
+              <View style={styles.aiBadge}>
+                <Ionicons name="sparkles" size={10} color="#fff" />
+                <Text style={styles.aiBadgeText}>AI</Text>
+              </View>
+            )}
+          </View>
 
           <View style={styles.recipeInfo}>
             <Text style={styles.recipeTitle} numberOfLines={2}>
@@ -128,10 +182,10 @@ export default function FavoritesTab({
 
           <TouchableOpacity
             style={styles.removeButton}
-            onPress={() => onRemoveRecipe(item)}
+            onPress={() => openRemoveModal(item)}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Ionicons name="heart" size={18} color="#FF6B6B" />
+            <Ionicons name="heart" size={20} color="#FF6B6B" />
           </TouchableOpacity>
         </TouchableOpacity>
       </View>
@@ -182,9 +236,65 @@ export default function FavoritesTab({
   };
 
   return (
-    <View style={styles.container}>
-      {renderRecipeGrid()}
-    </View>
+    <>
+      <View style={styles.container}>
+        {renderRecipeGrid()}
+      </View>
+
+      <Modal
+        visible={showRemoveModal}
+        animationType="none"
+        transparent={true}
+        onRequestClose={closeRemoveModal}
+      >
+        <TouchableWithoutFeedback onPress={closeRemoveModal}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback>
+              <Animated.View style={[
+                styles.modalContent,
+                {
+                  opacity: removeModalOpacity,
+                  transform: [{ scale: removeModalScale }]
+                }
+              ]}>
+                <View style={styles.modalIconContainer}>
+                  <View style={[styles.modalIconCircle, { backgroundColor: '#FFEBEE' }]}>
+                    <Ionicons name="heart-dislike" size={40} color="#FF6B6B" />
+                  </View>
+                </View>
+                <Text style={styles.modalTitle}>Remove Favorite?</Text>
+                <Text style={styles.modalMessage}>
+                  Are you sure you want to remove
+                  <Text style={styles.modalRecipeName}> "{selectedRecipe?.recipe?.label || selectedRecipe?.recipe?.recipeName}"</Text>
+                  from your favorites?
+                </Text>
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    style={styles.modalCancelButton}
+                    onPress={closeRemoveModal}
+                    activeOpacity={0.7}
+                    disabled={isProcessing}
+                  >
+                    <Text style={styles.modalCancelButtonText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalDeleteButton, isProcessing && styles.modalButtonDisabled]}
+                    onPress={confirmRemove}
+                    activeOpacity={0.8}
+                    disabled={isProcessing}
+                  >
+                    <Ionicons name="heart-dislike" size={20} color="#fff" />
+                    <Text style={styles.modalDeleteButtonText}>
+                      {isProcessing ? 'Removing...' : 'Remove'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </Animated.View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+    </>
   );
 }
 
@@ -240,6 +350,7 @@ const styles = StyleSheet.create({
   },
   recipeCard: {
     width: '48%',
+    height: 220, // Fixed height for consistency
   },
   leftCard: {
     marginRight: '2%',
@@ -248,27 +359,33 @@ const styles = StyleSheet.create({
     marginLeft: '2%',
   },
   cardTouchable: {
+    flex: 1,
     backgroundColor: '#fff',
-    borderRadius: 12,
-    overflow: 'hidden',
+    borderRadius: 16,
     elevation: 3,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
   },
-  recipeImage: {
-    width: '100%',
+  imageContainer: {
+    margin: 10,
+    borderRadius: 12,
+    overflow: 'hidden',
     height: 120,
     backgroundColor: '#f0f0f0',
   },
+  recipeImage: {
+    width: '100%',
+    height: '100%',
+  },
   aiBadge: {
     position: 'absolute',
-    top: 8,
-    right: 8,
+    top: 6,
+    right: 6,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(138, 43, 226, 0.9)',
+    backgroundColor: 'rgba(138, 43, 226, 0.95)',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
@@ -277,10 +394,12 @@ const styles = StyleSheet.create({
   aiBadgeText: {
     color: '#fff',
     fontSize: 9,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   recipeInfo: {
     padding: 12,
+    paddingTop: 8,
+    flex: 1,
   },
   recipeTitle: {
     fontSize: 14,
@@ -288,11 +407,13 @@ const styles = StyleSheet.create({
     color: '#333',
     marginBottom: 6,
     lineHeight: 18,
+    height: 36, // Fixed height for 2 lines
   },
   recipeMeta: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    marginTop: 'auto',
   },
   recipeMetaText: {
     fontSize: 11,
@@ -300,15 +421,97 @@ const styles = StyleSheet.create({
   },
   removeButton: {
     position: 'absolute',
-    top: 128,
-    right: 8,
-    backgroundColor: '#fff',
-    borderRadius: 15,
-    padding: 6,
-    elevation: 4,
+    bottom: 12,
+    right: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderRadius: 18,
+    padding: 8,
+    elevation: 2,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'transparent',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 24,
+    padding: 32,
+    width: '85%',
+    maxWidth: 400,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  modalIconContainer: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  modalIconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#333',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  modalMessage: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 24,
+  },
+  modalRecipeName: {
+    fontWeight: 'bold',
+    color: '#81A969',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  modalCancelButton: {
+    flex: 1,
+    paddingVertical: 16,
+    borderRadius: 12,
+    backgroundColor: '#f5f5f5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCancelButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#666',
+  },
+  modalDeleteButton: {
+    flex: 1,
+    flexDirection: 'row',
+    paddingVertical: 16,
+    borderRadius: 12,
+    backgroundColor: '#FF6B6B',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  modalDeleteButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  modalButtonDisabled: {
+    opacity: 0.6,
   },
 });

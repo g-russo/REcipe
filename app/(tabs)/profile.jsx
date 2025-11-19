@@ -6,7 +6,6 @@ import {
   ScrollView,
   SafeAreaView,
   StatusBar,
-  Alert,
   StyleSheet,
   RefreshControl,
   Platform,
@@ -55,6 +54,11 @@ const Profile = () => {
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [restartModalVisible, setRestartModalVisible] = useState(false);
   const [logoutAlertVisible, setLogoutAlertVisible] = useState(false);
+  const [tabsLoaded, setTabsLoaded] = useState({
+    favorites: false,
+    history: false,
+    scheduled: false,
+  });
 
   useEffect(() => {
     // Update profile data if user information is available
@@ -210,24 +214,27 @@ const Profile = () => {
     setActiveTab(tab);
 
     // Load recipes when favorites tab is selected
-    if (tab === 'favorites' && savedRecipes.length === 0 && !loadingRecipes) {
-      loadSavedRecipes();
+    if (tab === 'favorites') {
+      if (!tabsLoaded.favorites) {
+        loadSavedRecipes();
+        setTabsLoaded(prev => ({ ...prev, favorites: true }));
+      }
     }
 
     // Load history when history tab is selected
-    if (tab === 'history' && recipeHistory.length === 0 && !loadingHistory) {
-      loadRecipeHistory();
-    }
-
-    // TEMPORARY: Force reload history to apply formatting fix
-    if (tab === 'history' && recipeHistory.length > 0 && !recipeHistory[0].recipe) {
-      console.log('⚡ Forcing history reload to apply formatting');
-      loadRecipeHistory();
+    if (tab === 'history') {
+      if (!tabsLoaded.history) {
+        loadRecipeHistory();
+        setTabsLoaded(prev => ({ ...prev, history: true }));
+      }
     }
 
     // Load scheduled when scheduled tab is selected
-    if (tab === 'scheduled' && scheduledRecipes.length === 0 && !loadingScheduled) {
-      loadScheduledRecipes();
+    if (tab === 'scheduled') {
+      if (!tabsLoaded.scheduled) {
+        loadScheduledRecipes();
+        setTabsLoaded(prev => ({ ...prev, scheduled: true }));
+      }
     }
   };
 
@@ -274,8 +281,7 @@ const Profile = () => {
       setRestartModalVisible(true);
     } catch (error) {
       console.error('Error updating profile:', error);
-      const errorMessage = error?.message || 'Failed to update profile. Please try again.';
-      Alert.alert('Error', errorMessage);
+      // Optionally handle error silently or with a toast/snackbar
     } finally {
     }
   };
@@ -290,7 +296,7 @@ const Profile = () => {
       router.replace('/signin');
     } catch (error) {
       console.error('Logout error:', error);
-      Alert.alert('Error', 'Failed to log out. Please try again.');
+      // Optionally handle error silently or with a toast/snackbar
     } finally {
       setLogoutAlertVisible(false);
     }
@@ -324,43 +330,24 @@ const Profile = () => {
   };
 
   const handleRemoveRecipe = async (savedRecipe) => {
-    Alert.alert(
-      'Remove Recipe',
-      'Are you sure you want to remove this recipe from your favorites?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const recipe = {
-                ...savedRecipe.recipe,
-                isCustom: savedRecipe.recipeSource === 'ai',
-                recipeID: savedRecipe.aiRecipeID,
-                uri: savedRecipe.edamamRecipeURI
-              };
-
-              const result = await RecipeMatcherService.unsaveRecipe(user.email, recipe);
-
-              if (result.success) {
-                setSavedRecipes(prev => prev.filter(r =>
-                  savedRecipe.recipeSource === 'ai'
-                    ? r.aiRecipeID !== savedRecipe.aiRecipeID
-                    : r.edamamRecipeURI !== savedRecipe.edamamRecipeURI
-                ));
-                Alert.alert('Removed', 'Recipe removed from favorites');
-              } else {
-                Alert.alert('Error', 'Failed to remove recipe');
-              }
-            } catch (error) {
-              console.error('Error removing recipe:', error);
-              Alert.alert('Error', 'Something went wrong');
-            }
-          }
-        }
-      ]
-    );
+    try {
+      const recipe = {
+        ...savedRecipe.recipe,
+        isCustom: savedRecipe.recipeSource === 'ai',
+        recipeID: savedRecipe.aiRecipeID,
+        uri: savedRecipe.edamamRecipeURI
+      };
+      const result = await RecipeMatcherService.unsaveRecipe(user.email, recipe);
+      if (result.success) {
+        setSavedRecipes(prev => prev.filter(r =>
+          savedRecipe.recipeSource === 'ai'
+            ? r.aiRecipeID !== savedRecipe.aiRecipeID
+            : r.edamamRecipeURI !== savedRecipe.edamamRecipeURI
+        ));
+      }
+    } catch (error) {
+      console.error('Error removing recipe:', error);
+    }
   };
 
   const handleHistoryRecipePress = (historyItem) => {
@@ -373,32 +360,14 @@ const Profile = () => {
   };
 
   const handleRemoveHistory = async (historyItem) => {
-    Alert.alert(
-      'Remove from History',
-      'Are you sure you want to remove this from your cooking history?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const result = await RecipeHistoryService.deleteRecipeFromHistory(historyItem.historyID);
-
-              if (result.success) {
-                setRecipeHistory(prev => prev.filter(h => h.historyID !== historyItem.historyID));
-                Alert.alert('Removed', 'Recipe removed from history');
-              } else {
-                Alert.alert('Error', 'Failed to remove recipe from history');
-              }
-            } catch (error) {
-              console.error('Error removing history:', error);
-              Alert.alert('Error', 'Something went wrong');
-            }
-          }
-        }
-      ]
-    );
+    try {
+      const result = await RecipeHistoryService.deleteRecipeFromHistory(historyItem.historyID);
+      if (result.success) {
+        setRecipeHistory(prev => prev.filter(h => h.historyID !== historyItem.historyID));
+      }
+    } catch (error) {
+      console.error('Error removing history:', error);
+    }
   };
 
   const renderRecipeCard = ({ item }) => {
@@ -480,6 +449,7 @@ const Profile = () => {
               loading={loadingHistory}
               onRecipePress={handleHistoryRecipePress}
               onRemoveHistory={handleRemoveHistory}
+              onRefresh={loadRecipeHistory}
             />
           </View>
         );
