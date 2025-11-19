@@ -58,6 +58,10 @@ export default function ResultScreen() {
 
   // Detailed Results Modal State
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
+  
+  // Success Modal State
+  const [successModalVisible, setSuccessModalVisible] = useState(false);
+  const [addedItemName, setAddedItemName] = useState('');
 
   // Animation Values
   const scrollY = useRef(new Animated.Value(0)).current;
@@ -332,20 +336,8 @@ export default function ResultScreen() {
 
       await PantryService.createItem(itemData);
 
-      Alert.alert(
-        'Added! Success',
-        `${selectedFood.label} has been added to your pantry.`,
-        [
-          { 
-            text: 'View Pantry', 
-            onPress: () => router.push('/(tabs)/pantry') 
-          },
-          { 
-            text: 'Scan Another', 
-            onPress: () => router.replace('/food-recognition/upload') 
-          }
-        ]
-      );
+      setAddedItemName(selectedFood.label);
+      setSuccessModalVisible(true);
 
     } catch (error) {
       console.error('❌ Add to inventory error:', error);
@@ -423,20 +415,14 @@ export default function ResultScreen() {
 
       await PantryService.createItem(itemData);
 
+      setAddedItemName(manualItemName);
+      setSuccessModalVisible(true);
+
       setManualItemName('');
       setManualCategory('Other');
       setManualQuantity('1');
       setManualExpiryDays('7');
       setManualEntryVisible(false);
-
-      Alert.alert(
-        'Added! Success',
-        `${manualItemName} has been added to your pantry.`,
-        [
-          { text: 'View Pantry', onPress: () => router.push('/(tabs)/pantry') },
-          { text: 'Add Another', onPress: () => setManualEntryVisible(true) }
-        ]
-      );
 
     } catch (error) {
       Alert.alert('Error', error.message || 'Failed to add item');
@@ -836,6 +822,58 @@ export default function ResultScreen() {
               </View>
               <View style={{ height: 40 }} />
             </ScrollView>
+          </View>
+        </Modal>
+
+        {/* Success Modal */}
+        <Modal
+          visible={successModalVisible}
+          animationType="fade"
+          transparent={true}
+          onRequestClose={() => setSuccessModalVisible(false)}
+        >
+          <View style={successModalStyles.overlay}>
+            <View style={successModalStyles.container}>
+              <View style={successModalStyles.iconContainer}>
+                <Ionicons name="checkmark-circle" size={80} color="#81A969" />
+              </View>
+              
+              <Text style={successModalStyles.title}>Added Successfully!</Text>
+              <Text style={successModalStyles.message}>
+                {addedItemName} has been added to your pantry.
+              </Text>
+
+              <View style={successModalStyles.buttonContainer}>
+                <TouchableOpacity
+                  style={[successModalStyles.button, successModalStyles.primaryButton]}
+                  onPress={() => {
+                    setSuccessModalVisible(false);
+                    router.push('/(tabs)/pantry');
+                  }}
+                >
+                  <Ionicons name="basket-outline" size={20} color="#FFF" />
+                  <Text style={successModalStyles.primaryButtonText}>View Pantry</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[successModalStyles.button, successModalStyles.secondaryButton]}
+                  onPress={() => {
+                    setSuccessModalVisible(false);
+                    router.replace('/food-recognition/upload');
+                  }}
+                >
+                  <Ionicons name="camera-outline" size={20} color="#81A969" />
+                  <Text style={successModalStyles.secondaryButtonText}>Scan Another</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[successModalStyles.button, successModalStyles.cancelButton]}
+                  onPress={() => setSuccessModalVisible(false)}
+                >
+                  <Text style={successModalStyles.cancelButtonText}>Confirm</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
         </Modal>
       </View>
@@ -1532,5 +1570,90 @@ const modalStyles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+});
+
+const successModalStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: wp('5%'),
+  },
+  container: {
+    backgroundColor: '#fff',
+    borderRadius: wp('6%'),
+    padding: wp('6%'),
+    width: '100%',
+    maxWidth: 400,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  iconContainer: {
+    marginBottom: hp('2%'),
+  },
+  title: {
+    fontSize: wp('6%'),
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: hp('1%'),
+    textAlign: 'center',
+  },
+  message: {
+    fontSize: wp('4%'),
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: hp('3%'),
+    lineHeight: wp('6%'),
+  },
+  buttonContainer: {
+    width: '100%',
+    gap: hp('1.5%'),
+  },
+  button: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: hp('1.8%'),
+    borderRadius: wp('3%'),
+  },
+  primaryButton: {
+    backgroundColor: '#81A969',
+    shadowColor: '#81A969',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  primaryButtonText: {
+    color: '#FFF',
+    fontSize: wp('4%'),
+    fontWeight: 'bold',
+    marginLeft: wp('2%'),
+  },
+  secondaryButton: {
+    backgroundColor: '#FFF',
+    borderWidth: 2,
+    borderColor: '#81A969',
+  },
+  secondaryButtonText: {
+    color: '#81A969',
+    fontSize: wp('4%'),
+    fontWeight: 'bold',
+    marginLeft: wp('2%'),
+  },
+  cancelButton: {
+    backgroundColor: 'transparent',
+  },
+  cancelButtonText: {
+    color: '#999',
+    fontSize: wp('4%'),
+    fontWeight: '600',
   },
 });

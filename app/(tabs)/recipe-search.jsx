@@ -17,6 +17,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import cacheService from '../../services/supabase-cache-service';
@@ -939,6 +940,41 @@ const RecipeSearch = () => {
     }
   }, [params?.searchQuery, params?.autoSearch]);
 
+  // Handler for camera button - directly launch camera
+  const handleCameraCapture = async () => {
+    try {
+      // Request camera permission
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+
+      if (status !== 'granted') {
+        Alert.alert(
+          'Permission Required',
+          'Please allow camera access to use food recognition.'
+        );
+        return;
+      }
+
+      // Launch camera
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      // If photo was taken, navigate to result screen
+      if (!result.canceled && result.assets[0]) {
+        router.push({
+          pathname: '/food-recognition/result',
+          params: { uri: result.assets[0].uri },
+        });
+      }
+    } catch (error) {
+      console.error('Camera capture error:', error);
+      Alert.alert('Error', 'Failed to open camera. Please try again.');
+    }
+  };
+
   return (
     <AuthGuard>
       <SafeAreaView style={styles.container}>
@@ -975,7 +1011,10 @@ const RecipeSearch = () => {
                 </View>
               )}
             </TouchableOpacity>
-            <TouchableOpacity style={styles.cameraButton}>
+            <TouchableOpacity 
+              style={styles.cameraButton}
+              onPress={handleCameraCapture}
+            >
               <Ionicons name="camera-outline" size={wp('5%')} color="#666" />
             </TouchableOpacity>
           </View>
