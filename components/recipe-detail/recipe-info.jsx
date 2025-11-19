@@ -1,19 +1,23 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 
 export default function RecipeInfo({ recipe, onViewMore }) {
   return (
-    <View>
+    <View style={styles.container}>
       <Text style={styles.recipeTitle}>{recipe.label}</Text>
-      
+
       <View style={styles.metaInfo}>
         <View style={styles.metaItem}>
-          <Ionicons name="time-outline" size={16} color="#666" />
+          <Ionicons name="time-outline" size={wp('4.5%')} color="#81A969" />
           <Text style={styles.metaText}>{recipe.totalTime || 30} Min</Text>
         </View>
         <Text style={styles.metaDivider}>•</Text>
-        <Text style={styles.metaText}>Serving Size: {recipe.yield}</Text>
+        <View style={styles.metaItem}>
+          <Ionicons name="people-outline" size={wp('4.5%')} color="#81A969" />
+          <Text style={styles.metaText}>{recipe.yield} Servings</Text>
+        </View>
       </View>
 
       <Text style={styles.description}>
@@ -27,39 +31,43 @@ export default function RecipeInfo({ recipe, onViewMore }) {
 }
 
 const styles = StyleSheet.create({
+  container: {
+    marginBottom: hp('2%'),
+  },
   recipeTitle: {
-    fontSize: 24,
+    fontSize: wp('6.5%'),
     fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 8,
+    color: '#2c3e50',
+    marginBottom: hp('1.5%'),
+    lineHeight: wp('8%'),
   },
   metaInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 15,
+    marginBottom: hp('2%'),
   },
   metaItem: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   metaText: {
-    fontSize: 14,
-    color: '#666',
-    marginLeft: 4,
+    fontSize: wp('3.8%'),
+    color: '#7f8c8d',
+    marginLeft: wp('1.5%'),
+    fontWeight: '500',
   },
   metaDivider: {
-    fontSize: 14,
-    color: '#666',
-    marginHorizontal: 8,
+    fontSize: wp('4%'),
+    color: '#bdc3c7',
+    marginHorizontal: wp('3%'),
   },
   description: {
-    fontSize: 14,
-    color: '#666',
-    lineHeight: 20,
-    marginBottom: 20,
+    fontSize: wp('4%'),
+    color: '#7f8c8d',
+    lineHeight: wp('6%'),
   },
   viewMore: {
-    color: '#4CAF50',
-    fontWeight: '500',
+    color: '#81A969',
+    fontWeight: '600',
   },
 });
