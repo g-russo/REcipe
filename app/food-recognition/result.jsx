@@ -527,7 +527,7 @@ export default function ResultScreen() {
             >
               Recognition Results
             </Animated.Text>
-            <View style={{ width: 24 }} /> {/* Spacer for balance */}
+            <View style={{ width: 24 }} />
           </View>
         </Animated.View>
 
