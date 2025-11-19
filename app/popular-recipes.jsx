@@ -79,18 +79,18 @@ const PopularRecipes = () => {
             <SafeAreaView style={styles.container}>
                 <StatusBar barStyle="dark-content" backgroundColor="#fff" />
 
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => router.back()}
-          >
-            <Svg width={wp('6%')} height={wp('6%')} viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <Path d="m15 18-6-6 6-6" />
-            </Svg>
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Popular Recipes</Text>
-        </View>                {loading && !refreshing ? (
+                {/* Header */}
+                <View style={styles.header}>
+                    <TouchableOpacity
+                        style={styles.backButton}
+                        onPress={() => router.back()}
+                    >
+                        <Svg width={wp('6%')} height={wp('6%')} viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <Path d="m15 18-6-6 6-6" />
+                        </Svg>
+                    </TouchableOpacity>
+                    <Text style={styles.headerTitle}>Popular Recipes</Text>
+                </View>                {loading && !refreshing ? (
                     <View style={styles.loadingContainer}>
                         <ActivityIndicator size="large" color="#81A969" />
                         <Text style={styles.loadingText}>Loading popular recipes...</Text>
