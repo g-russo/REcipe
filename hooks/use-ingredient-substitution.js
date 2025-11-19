@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { Alert } from 'react-native';
 import IngredientSubstitutionService from '../services/ingredient-substitution-service';
 import RecipeHistoryService from '../services/recipe-history-service';
 
@@ -16,6 +15,10 @@ export const useIngredientSubstitution = (recipe, userID) => {
   const [modifiedRecipe, setModifiedRecipe] = useState(null);
   const [loading, setLoading] = useState(false);
   const [usingPantryIngredients, setUsingPantryIngredients] = useState(false); // Track if user wants to use pantry
+  
+  // Modal control states
+  const [showMissingModal, setShowMissingModal] = useState(false);
+  const [missingModalCallbacks, setMissingModalCallbacks] = useState({ onProceed: null, onSubstitute: null });
 
   // Check ingredient availability when recipe or userID changes
   useEffect(() => {
@@ -64,6 +67,9 @@ export const useIngredientSubstitution = (recipe, userID) => {
       return;
     }
 
+    // Note: Keeping this as Alert for now since it's a simple yes/no question
+    // Can be converted to modal later if needed
+    const { Alert } = require('react-native');
     const availableList = availableIngredients
       .map(ing => `• ${ing.text || ing}`)
       .join('\n');
@@ -92,7 +98,7 @@ export const useIngredientSubstitution = (recipe, userID) => {
   };
 
   /**
-   * Show alert for missing ingredients
+   * Show modal for missing ingredients (replaces Alert)
    * @param {Function} onProceed - Callback when user chooses to proceed
    * @param {Function} onSubstitute - Callback when user chooses to substitute
    */
@@ -107,43 +113,37 @@ export const useIngredientSubstitution = (recipe, userID) => {
       return;
     }
 
-    let message = '';
-    
-    // Add missing ingredients
-    if (allMissing.length > 0) {
-      const missingList = allMissing
-        .map(ing => `• ${ing.text || ing}`)
-        .join('\n');
-      message += `You are missing the following ingredients:\n\n${missingList}`;
-    }
-    
-    // Add insufficient ingredients
-    if (allInsufficient.length > 0) {
-      const insufficientList = allInsufficient
-        .map(ing => `• ${ing.text || ing} (need ${ing.required} ${ing.requiredUnit}, have ${ing.available} ${ing.availableUnit})`)
-        .join('\n');
-      
-      if (message) message += '\n\n';
-      message += `Insufficient quantities:\n\n${insufficientList}`;
-    }
-    
-    message += '\n\nWould you like to substitute them with ingredients from your pantry?';
+    // Show modal instead of alert
+    setMissingModalCallbacks({ onProceed, onSubstitute });
+    setShowMissingModal(true);
+  };
 
-    Alert.alert(
-      'Missing Ingredients',
-      message,
-      [
-        {
-          text: 'No, Proceed',
-          onPress: onProceed,
-          style: 'cancel'
-        },
-        {
-          text: 'Yes',
-          onPress: onSubstitute
-        }
-      ]
-    );
+  /**
+   * Handle closing the missing ingredients modal
+   */
+  const handleCloseMissingModal = () => {
+    setShowMissingModal(false);
+    setMissingModalCallbacks({ onProceed: null, onSubstitute: null });
+  };
+
+  /**
+   * Handle proceed action from missing modal
+   */
+  const handleMissingModalProceed = () => {
+    handleCloseMissingModal();
+    if (missingModalCallbacks.onProceed) {
+      missingModalCallbacks.onProceed();
+    }
+  };
+
+  /**
+   * Handle substitute action from missing modal
+   */
+  const handleMissingModalSubstitute = () => {
+    handleCloseMissingModal();
+    if (missingModalCallbacks.onSubstitute) {
+      missingModalCallbacks.onSubstitute();
+    }
   };
 
   /**
@@ -196,6 +196,7 @@ export const useIngredientSubstitution = (recipe, userID) => {
       return;
     }
 
+    const { Alert } = require('react-native');
     Alert.alert(
       'Cooking Complete! 🎉',
       `Did you use these ingredients from your pantry?\n\n${availableIngredientsList || 'No ingredients from pantry used'}`,
@@ -230,17 +231,20 @@ export const useIngredientSubstitution = (recipe, userID) => {
       );
 
       if (result.success) {
+        const { Alert } = require('react-native');
         Alert.alert(
           'Success',
           'Recipe saved to your cooking history!',
           [{ text: 'OK', onPress: onComplete }]
         );
       } else {
+        const { Alert } = require('react-native');
         Alert.alert('Note', 'Recipe completed but history was not saved.');
         if (onComplete) onComplete();
       }
     } catch (error) {
       console.error('Error saving to history:', error);
+      const { Alert } = require('react-native');
       Alert.alert('Note', 'Recipe completed but history was not saved.');
       if (onComplete) onComplete();
     }
@@ -333,10 +337,12 @@ export const useIngredientSubstitution = (recipe, userID) => {
         // Refresh pantry items
         checkIngredientAvailability();
       } else {
+        const { Alert } = require('react-native');
         Alert.alert('Error', 'Failed to update pantry. Please try again.');
       }
     } catch (error) {
       console.error('Error subtracting ingredients:', error);
+      const { Alert } = require('react-native');
       Alert.alert('Error', 'Failed to update pantry. Please try again.');
     }
   };
@@ -359,6 +365,12 @@ export const useIngredientSubstitution = (recipe, userID) => {
     modifiedRecipe,
     loading,
     usingPantryIngredients,
+
+    // Modal states
+    showMissingModal,
+    handleCloseMissingModal,
+    handleMissingModalProceed,
+    handleMissingModalSubstitute,
 
     // Methods
     checkIngredientAvailability,

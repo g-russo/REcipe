@@ -5,12 +5,12 @@ import {
   Modal,
   StyleSheet,
   SafeAreaView,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import IngredientSelector from './ingredient-selector';
 import SubstituteSelector from './substitute-selector';
 import ActionButtons from './action-buttons';
+import NoSubstitutesModal from './no-substitutes-modal';
 import IngredientSubstitutionService from '../../services/ingredient-substitution-service';
 
 /**
@@ -31,6 +31,8 @@ const IngredientSubstitutionModal = ({
   const [loading, setLoading] = useState(false);
   const [substitutionMap, setSubstitutionMap] = useState({});
   const [pantryItems, setPantryItems] = useState([]); // Store pantry items for parsing
+  const [showNoSubstitutesModal, setShowNoSubstitutesModal] = useState(false);
+  const [noSubstituteIngredientName, setNoSubstituteIngredientName] = useState('');
 
   useEffect(() => {
     if (visible) {
@@ -40,6 +42,8 @@ const IngredientSubstitutionModal = ({
       setSelectedSubstitute(null);
       setSubstitutes([]);
       setSubstitutionMap({});
+      setShowNoSubstitutesModal(false);
+      setNoSubstituteIngredientName('');
       
       // Fetch pantry items early for better parsing
       const fetchPantry = async () => {
@@ -101,23 +105,10 @@ const IngredientSubstitutionModal = ({
       );
 
       if (suggestions.length === 0) {
-        Alert.alert(
-          'No Substitutes Found',
-          'No suitable substitutes found in your pantry. Would you like to proceed without this ingredient?',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { 
-              text: 'Proceed', 
-              onPress: () => {
-                // Mark as substituted with null (omit ingredient)
-                const newMap = { ...substitutionMap };
-                newMap[selectedIngredient] = { name: 'Omit', category: 'none' };
-                onConfirm(newMap);
-                onClose();
-              }
-            }
-          ]
-        );
+        // Show custom modal instead of Alert
+        const ingredientDisplayName = IngredientSubstitutionService.normalizeIngredientName(selectedIngredient);
+        setNoSubstituteIngredientName(ingredientDisplayName);
+        setShowNoSubstitutesModal(true);
         setLoading(false);
         return;
       }
@@ -126,6 +117,7 @@ const IngredientSubstitutionModal = ({
       setStep(2);
     } catch (error) {
       console.error('Error fetching substitutes:', error);
+      const { Alert } = require('react-native');
       Alert.alert('Error', 'Failed to fetch substitutes. Please try again.');
     } finally {
       setLoading(false);
@@ -135,6 +127,7 @@ const IngredientSubstitutionModal = ({
   // Handle "Confirm" from substitute selection
   const handleConfirmSubstitution = () => {
     if (!selectedSubstitute) {
+      const { Alert } = require('react-native');
       Alert.alert('No Selection', 'Please select a substitute ingredient');
       return;
     }
@@ -248,6 +241,13 @@ const IngredientSubstitutionModal = ({
           </View>
         </View>
       )}
+
+      {/* No Substitutes Found Modal */}
+      <NoSubstitutesModal
+        visible={showNoSubstitutesModal}
+        onClose={() => setShowNoSubstitutesModal(false)}
+        ingredientName={noSubstituteIngredientName}
+      />
     </Modal>
   );
 };

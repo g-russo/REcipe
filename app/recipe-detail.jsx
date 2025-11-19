@@ -41,6 +41,7 @@ import FloatingPlayButton from '../components/recipe-detail/floating-play-button
 import ScheduleRecipeModal from '../components/recipe-detail/schedule-recipe-modal';
 import { useIngredientSubstitution } from '../hooks/use-ingredient-substitution';
 import IngredientSubstitutionModal from '../components/substitution/ingredient-substitution-modal';
+import MissingIngredientsModal from '../components/substitution/missing-ingredients-modal';
 
 const RecipeDetail = () => {
   const router = useRouter();
@@ -151,6 +152,10 @@ const RecipeDetail = () => {
     hasMissingIngredients,
     hasAvailableIngredients,
     hasSubstitutions,
+    showMissingModal,
+    handleCloseMissingModal,
+    handleMissingModalProceed,
+    handleMissingModalSubstitute,
   } = useIngredientSubstitution(displayRecipe || recipe, customUserData?.userID);
 
   // Update display recipe when modifications are applied
@@ -885,9 +890,11 @@ const RecipeDetail = () => {
 
               {/* White Icon (Fades in) */}
               <Animated.View style={[styles.iconContainer, { opacity: iconWhiteOpacity }]}>
-                <Svg width={wp('6%')} height={wp('6%')} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <Path d="m15 18-6-6 6-6" />
-                </Svg>
+                <View style={styles.iconWithShadow}>
+                  <Svg width={wp('6%')} height={wp('6%')} viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <Path d="m15 18-6-6 6-6" />
+                  </Svg>
+                </View>
               </Animated.View>
             </Animated.View>
           </TouchableOpacity>
@@ -923,11 +930,13 @@ const RecipeDetail = () => {
 
               {/* White/Red Icon (Fades in) */}
               <Animated.View style={[styles.iconContainer, { opacity: iconWhiteOpacity }]}>
-                <Ionicons
-                  name={isFavorite ? "heart" : "heart-outline"}
-                  size={wp('6%')}
-                  color={isFavorite ? "#fff" : "#fff"}
-                />
+                <View style={styles.iconWithShadow}>
+                  <Ionicons
+                    name={isFavorite ? "heart" : "heart-outline"}
+                    size={wp('6%')}
+                    color="#FFFFFF"
+                  />
+                </View>
               </Animated.View>
             </Animated.View>
           </TouchableOpacity>
@@ -1060,6 +1069,16 @@ const RecipeDetail = () => {
           userID={customUserData?.userID}
         />
 
+        {/* Missing Ingredients Modal */}
+        <MissingIngredientsModal
+          visible={showMissingModal}
+          onClose={handleCloseMissingModal}
+          onProceed={handleMissingModalProceed}
+          onSubstitute={handleMissingModalSubstitute}
+          missingIngredients={missingIngredients}
+          insufficientIngredients={insufficientIngredients}
+        />
+
         {/* Schedule Recipe Modal */}
         <ScheduleRecipeModal
           visible={showScheduleModal}
@@ -1169,7 +1188,7 @@ const RecipeDetail = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
   },
   fixedHeaderOverlay: {
     position: 'absolute',
@@ -1200,6 +1219,13 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+  iconWithShadow: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.5,
+    shadowRadius: 4,
+    elevation: 8,
+  },
   stickyHeader: {
     position: 'absolute',
     top: 0,
@@ -1229,7 +1255,7 @@ const styles = StyleSheet.create({
     height: wp('12%'), // Match button height for vertical alignment
   },
   stickyHeaderTitle: {
-    color: '#fff',
+    color: '#FFFFFF',
     fontSize: wp('4.5%'),
     fontWeight: 'bold',
     textAlign: 'center', // Center align
@@ -1256,7 +1282,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   recipeCard: {
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
     borderTopLeftRadius: wp('7%'),
     borderTopRightRadius: wp('7%'),
     marginTop: wp('-6%'), // Overlap the spacer/image
@@ -1357,7 +1383,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
   },
   loadingText: {
     marginTop: hp('2%'),
@@ -1368,7 +1394,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
     padding: wp('5%'),
   },
   errorText: {
@@ -1383,7 +1409,7 @@ const styles = StyleSheet.create({
     borderRadius: wp('2%'),
   },
   backButtonText: {
-    color: '#fff',
+    color: '#FFFFFF',
     fontSize: wp('4%'),
     fontWeight: 'bold',
   },
@@ -1398,7 +1424,7 @@ const styles = StyleSheet.create({
   toastContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
     paddingHorizontal: wp('4%'),
     paddingVertical: hp('1.5%'),
     borderRadius: wp('3%'),
@@ -1425,7 +1451,7 @@ const styles = StyleSheet.create({
     padding: wp('5%'),
   },
   alreadyScheduledContent: {
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
     borderRadius: 24,
     padding: wp('6%'),
     width: '100%',
@@ -1499,7 +1525,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: hp('1.8%'),
     borderRadius: 12,
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
     borderWidth: 2,
     borderColor: '#6FA36D',
     gap: wp('2%'),
@@ -1519,7 +1545,7 @@ const styles = StyleSheet.create({
   alreadyScheduledOkButtonText: {
     fontSize: wp('4%'),
     fontWeight: '600',
-    color: '#fff',
+    color: '#FFFFFF',
   },
 });
 
