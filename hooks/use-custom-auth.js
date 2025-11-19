@@ -309,9 +309,14 @@ export function useCustomAuth() {
   }
 
   // Sign in function
-  const signIn = async (email, password) => {
+  const signIn = async (email, password, rememberMe = true) => {
     try {
       setLoading(true)
+
+      // Configure session persistence based on rememberMe
+      // If rememberMe is true: persistent storage (stays logged in across app restarts)
+      // If rememberMe is false: session-only (logs out when app closes)
+      await supabase.auth.updateSession({ persistSession: rememberMe })
 
       // Try to sign in with Supabase auth first (this is the primary authentication)
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({

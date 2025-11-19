@@ -1,7 +1,8 @@
 import { supabase } from '../lib/supabase';
-import * as Notifications from 'expo-notifications';
-import NotificationDatabaseService from './notification-database-service';
 import ImageGenerationService from './image-generation-service';
+
+// Note: expo-notifications and NotificationDatabaseService imports removed
+// Notifications are now handled by the server-side daily cron job system
 
 /**
  * Recipe Scheduling Service
@@ -71,9 +72,11 @@ class RecipeSchedulingService {
       }
 
       console.log('✅ Recipe scheduled for:', scheduledDate.toLocaleDateString());
+      console.log('📅 Notifications will be created daily at 9am via cron job');
 
-      // Schedule notifications
-      await this.scheduleNotifications(userID, recipeName, scheduledDate, data.scheduleID);
+      // Note: Notifications are now handled by the daily cron job at 9am
+      // The cron job will check tbl_scheduled_recipes and create notifications as needed
+      // No need to schedule local notifications anymore
 
       return {
         success: true,
@@ -88,203 +91,13 @@ class RecipeSchedulingService {
     }
   }
 
-  /**
-   * Schedule notifications for a recipe - all reminders at 9:00 AM daily
-   * @param {number} userID - User's ID
-   * @param {string} recipeName - Name of the recipe
-   * @param {Date} scheduledDate - Cooking date
-   * @param {number} scheduleID - Schedule record ID
-   */
-  async scheduleNotifications(userID, recipeName, scheduledDate, scheduleID) {
-    try {
-      const now = new Date();
-      const cookingDate = new Date(scheduledDate);
-      
-      // Set time to 9:00 AM for all notifications
-      cookingDate.setHours(9, 0, 0, 0);
-
-      // Calculate notification dates - 1 week before, then daily from 3 days before
-      const oneWeekBefore = new Date(cookingDate);
-      oneWeekBefore.setDate(oneWeekBefore.getDate() - 7);
-      oneWeekBefore.setHours(9, 0, 0, 0); // 9 AM reminder
-
-      const threeDaysBefore = new Date(cookingDate);
-      threeDaysBefore.setDate(threeDaysBefore.getDate() - 3);
-      threeDaysBefore.setHours(9, 0, 0, 0); // 9 AM reminder
-
-      const twoDaysBefore = new Date(cookingDate);
-      twoDaysBefore.setDate(twoDaysBefore.getDate() - 2);
-      twoDaysBefore.setHours(9, 0, 0, 0); // 9 AM reminder
-
-      const oneDayBefore = new Date(cookingDate);
-      oneDayBefore.setDate(oneDayBefore.getDate() - 1);
-      oneDayBefore.setHours(9, 0, 0, 0); // 9 AM reminder
-
-      const onCookingDay = new Date(cookingDate);
-      onCookingDay.setHours(9, 0, 0, 0); // 9 AM reminder
-
-      // Schedule 1 week before notification
-      if (oneWeekBefore > now) {
-        const notificationId = await Notifications.scheduleNotificationAsync({
-          content: {
-            title: '🟡 Recipe Next Week',
-            body: `"${recipeName}" is scheduled in 1 week. Start thinking about ingredients!`,
-            data: {
-              type: 'scheduled_recipe',
-              scheduleID: scheduleID,
-              recipeName: recipeName,
-              daysUntil: 7
-            }
-          },
-          trigger: {
-            date: oneWeekBefore
-          }
-        });
-
-        // Save to database
-        await NotificationDatabaseService.saveNotification({
-          userID: userID,
-          title: '🟡 Recipe Next Week',
-          message: `"${recipeName}" is scheduled in 1 week. Start thinking about ingredients!`,
-          type: 'scheduled_recipe',
-          relatedID: scheduleID,
-          scheduledFor: oneWeekBefore.toISOString(),
-          notificationIdentifier: notificationId
-        });
-
-        console.log('📅 Scheduled 1-week notification for:', recipeName);
-      }
-
-      // Schedule 3 days before notification
-      if (threeDaysBefore > now) {
-        const notificationId = await Notifications.scheduleNotificationAsync({
-          content: {
-            title: '🍳 Upcoming Recipe',
-            body: `"${recipeName}" is scheduled in 3 days! Check your pantry.`,
-            data: {
-              type: 'scheduled_recipe',
-              scheduleID: scheduleID,
-              recipeName: recipeName,
-              daysUntil: 3
-            }
-          },
-          trigger: {
-            date: threeDaysBefore
-          }
-        });
-
-        // Save to database
-        await NotificationDatabaseService.saveNotification({
-          userID: userID,
-          title: '🍳 Upcoming Recipe',
-          message: `"${recipeName}" is scheduled in 3 days! Check your pantry.`,
-          type: 'scheduled_recipe',
-          relatedID: scheduleID,
-          scheduledFor: threeDaysBefore.toISOString(),
-          notificationIdentifier: notificationId
-        });
-
-        console.log('📅 Scheduled 3-day notification for:', recipeName);
-      }
-
-      // Schedule 2 days before notification
-      if (twoDaysBefore > now) {
-        const notificationId = await Notifications.scheduleNotificationAsync({
-          content: {
-            title: '🍳 Recipe in 2 Days',
-            body: `"${recipeName}" is scheduled in 2 days! Start planning.`,
-            data: {
-              type: 'scheduled_recipe',
-              scheduleID: scheduleID,
-              recipeName: recipeName,
-              daysUntil: 2
-            }
-          },
-          trigger: {
-            date: twoDaysBefore
-          }
-        });
-
-        await NotificationDatabaseService.saveNotification({
-          userID: userID,
-          title: '🍳 Recipe in 2 Days',
-          message: `"${recipeName}" is scheduled in 2 days! Start planning.`,
-          type: 'scheduled_recipe',
-          relatedID: scheduleID,
-          scheduledFor: twoDaysBefore.toISOString(),
-          notificationIdentifier: notificationId
-        });
-
-        console.log('📅 Scheduled 2-day notification for:', recipeName);
-      }
-
-      // Schedule 1 day before notification
-      if (oneDayBefore > now) {
-        const notificationId = await Notifications.scheduleNotificationAsync({
-          content: {
-            title: '👨‍🍳 Recipe Tomorrow',
-            body: `"${recipeName}" is scheduled for tomorrow! Time to prep.`,
-            data: {
-              type: 'scheduled_recipe',
-              scheduleID: scheduleID,
-              recipeName: recipeName,
-              daysUntil: 1
-            }
-          },
-          trigger: {
-            date: oneDayBefore
-          }
-        });
-
-        await NotificationDatabaseService.saveNotification({
-          userID: userID,
-          title: '👨‍🍳 Recipe Tomorrow',
-          message: `"${recipeName}" is scheduled for tomorrow! Time to prep.`,
-          type: 'scheduled_recipe',
-          relatedID: scheduleID,
-          scheduledFor: oneDayBefore.toISOString(),
-          notificationIdentifier: notificationId
-        });
-
-        console.log('📅 Scheduled 1-day notification for:', recipeName);
-      }
-
-      // Schedule cooking day notification
-      if (onCookingDay > now) {
-        const notificationId = await Notifications.scheduleNotificationAsync({
-          content: {
-            title: '🔔 Time to Cook!',
-            body: `Today is the day to cook "${recipeName}"! Let's get started.`,
-            data: {
-              type: 'scheduled_recipe',
-              scheduleID: scheduleID,
-              recipeName: recipeName,
-              daysUntil: 0
-            }
-          },
-          trigger: {
-            date: onCookingDay
-          }
-        });
-
-        await NotificationDatabaseService.saveNotification({
-          userID: userID,
-          title: '🔔 Time to Cook!',
-          message: `Today is the day to cook "${recipeName}"! Let's get started.`,
-          type: 'scheduled_recipe',
-          relatedID: scheduleID,
-          scheduledFor: onCookingDay.toISOString(),
-          notificationIdentifier: notificationId
-        });
-
-        console.log('📅 Scheduled cooking-day notification for:', recipeName);
-      }
-
-      console.log('✅ All notifications scheduled for:', recipeName);
-    } catch (error) {
-      console.error('Error scheduling notifications:', error);
-    }
-  }
+  // ============================================
+  // NOTE: Notification Scheduling Removed
+  // ============================================
+  // Notifications are now handled by the daily cron job system at 9am
+  // The cron job checks tbl_scheduled_recipes and creates notifications in tbl_notifications
+  // This ensures all users get notifications at exactly 9am regardless of their device state
+  // Old local notification scheduling code has been removed
 
   /**
    * Get user's scheduled recipes
@@ -395,8 +208,9 @@ class RecipeSchedulingService {
         throw new Error('Schedule ID is required');
       }
 
-      // Cancel associated notifications
-      await this.cancelNotificationsForSchedule(scheduleID);
+      // Note: Notifications are handled by the daily cron job
+      // When recipe is deleted, the cron job will stop creating new notifications automatically
+      // No need to manually cancel notifications
 
       // Delete from database
       const { error } = await supabase
@@ -422,40 +236,7 @@ class RecipeSchedulingService {
     }
   }
 
-  /**
-   * Cancel all notifications for a scheduled recipe
-   * @param {number} scheduleID - Schedule record ID
-   */
-  async cancelNotificationsForSchedule(scheduleID) {
-    try {
-      // Get all notifications for this schedule
-      const { data: notifications } = await supabase
-        .from('tbl_notifications')
-        .select('*')
-        .eq('relatedID', scheduleID)
-        .eq('type', 'scheduled_recipe');
 
-      if (notifications && notifications.length > 0) {
-        // Cancel each notification
-        for (const notification of notifications) {
-          if (notification.notificationIdentifier) {
-            await Notifications.cancelScheduledNotificationAsync(notification.notificationIdentifier);
-          }
-        }
-
-        // Delete from database
-        await supabase
-          .from('tbl_notifications')
-          .delete()
-          .eq('relatedID', scheduleID)
-          .eq('type', 'scheduled_recipe');
-
-        console.log(`🔕 Cancelled ${notifications.length} notifications for schedule ${scheduleID}`);
-      }
-    } catch (error) {
-      console.error('Error cancelling notifications:', error);
-    }
-  }
 
   /**
    * Update scheduled recipe date
@@ -473,19 +254,9 @@ class RecipeSchedulingService {
         throw new Error('Valid new date is required');
       }
 
-      // Get the scheduled recipe
-      const { data: recipe } = await supabase
-        .from('tbl_scheduled_recipes')
-        .select('*')
-        .eq('scheduleID', scheduleID)
-        .single();
-
-      if (!recipe) {
-        throw new Error('Scheduled recipe not found');
-      }
-
-      // Cancel existing notifications
-      await this.cancelNotificationsForSchedule(scheduleID);
+      // Note: Notifications are handled by the daily cron job
+      // When the date is updated, the cron job will automatically adjust notifications
+      // based on the new scheduledDate in tbl_scheduled_recipes
 
       // Update date
       const { error } = await supabase
@@ -500,10 +271,7 @@ class RecipeSchedulingService {
         throw error;
       }
 
-      // Reschedule notifications with new date
-      await this.scheduleNotifications(recipe.userID, recipe.recipeName, newDate, scheduleID);
-
-      console.log('✅ Scheduled date updated and notifications rescheduled');
+      console.log('✅ Scheduled date updated - cron job will handle notifications at 9am');
       return {
         success: true
       };
