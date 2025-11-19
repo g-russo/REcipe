@@ -42,6 +42,7 @@ import ScheduleRecipeModal from '../components/recipe-detail/schedule-recipe-mod
 import { useIngredientSubstitution } from '../hooks/use-ingredient-substitution';
 import IngredientSubstitutionModal from '../components/substitution/ingredient-substitution-modal';
 import MissingIngredientsModal from '../components/substitution/missing-ingredients-modal';
+import AvailableIngredientsModal from '../components/substitution/available-ingredients-modal';
 
 const RecipeDetail = () => {
   const router = useRouter();
@@ -156,6 +157,9 @@ const RecipeDetail = () => {
     handleCloseMissingModal,
     handleMissingModalProceed,
     handleMissingModalSubstitute,
+    showAvailableModal,
+    handleAvailableModalYes,
+    handleAvailableModalNo,
   } = useIngredientSubstitution(displayRecipe || recipe, customUserData?.userID);
 
   // Update display recipe when modifications are applied
@@ -1077,6 +1081,14 @@ const RecipeDetail = () => {
           onSubstitute={handleMissingModalSubstitute}
           missingIngredients={missingIngredients}
           insufficientIngredients={insufficientIngredients}
+        />
+
+        {/* Available Ingredients Modal */}
+        <AvailableIngredientsModal
+          visible={showAvailableModal}
+          availableIngredients={availableIngredients}
+          onYes={handleAvailableModalYes}
+          onNo={handleAvailableModalNo}
         />
 
         {/* Schedule Recipe Modal */}

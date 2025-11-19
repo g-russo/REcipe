@@ -1,18 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   TouchableOpacity,
   ScrollView,
   Alert,
   Linking,
+  Animated,
+  Dimensions,
+  Modal,
+  TouchableWithoutFeedback,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useCustomAuth } from '../hooks/use-custom-auth';
 import RecipeHistoryService from '../services/recipe-history-service';
 import PantryService from '../services/pantry-service';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 /**
  * Convert quantity from one unit to another
@@ -92,6 +100,18 @@ const CookingSteps = () => {
   const [recipe, setRecipe] = useState(null);
   const [currentStep, setCurrentStep] = useState(0);
   const [completedSteps, setCompletedSteps] = useState([]);
+  const [showCompleteModal, setShowCompleteModal] = useState(false);
+  const [completionMessage, setCompletionMessage] = useState('');
+  const [isCompletingRecipe, setIsCompletingRecipe] = useState(false);
+  const [hasSavedHistory, setHasSavedHistory] = useState(false);
+  
+  // Animation values
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const slideAnim = useRef(new Animated.Value(0)).current;
+  const progressAnim = useRef(new Animated.Value(0)).current;
+  const checkmarkScale = useRef(new Animated.Value(0)).current;
+  const modalScale = useRef(new Animated.Value(0)).current;
+  const confettiAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (recipeData) {
@@ -109,8 +129,41 @@ const CookingSteps = () => {
   const instructions = recipe?.instructions || [];
   const totalSteps = instructions.length;
 
+  // Animate progress bar whenever current step changes
+  useEffect(() => {
+    const progress = ((currentStep + 1) / totalSteps) * 100;
+    Animated.spring(progressAnim, {
+      toValue: progress,
+      useNativeDriver: false,
+      tension: 65,
+      friction: 8,
+      velocity: 2,
+    }).start();
+  }, [currentStep, totalSteps]);
+
+  // Animate step transitions with callback support
+  const animateStepTransition = (direction = 'next', callback) => {
+    // Quick fade out
+    Animated.timing(fadeAnim, {
+      toValue: 0,
+      duration: 100,
+      useNativeDriver: true,
+    }).start(() => {
+      // Execute callback (step change) immediately
+      if (callback) callback();
+      
+      // Quick fade back in
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 150,
+        useNativeDriver: true,
+      }).start();
+    });
+  };
+
   const handleNextStep = () => {
     if (currentStep < totalSteps - 1) {
+      // Mark step as completed and move to next step instantly
       setCompletedSteps([...completedSteps, currentStep]);
       setCurrentStep(currentStep + 1);
     } else {
@@ -121,18 +174,24 @@ const CookingSteps = () => {
 
   const handlePreviousStep = () => {
     if (currentStep > 0) {
+      // Move to previous step instantly
       setCurrentStep(currentStep - 1);
       setCompletedSteps(completedSteps.filter(s => s !== currentStep - 1));
     }
   };
 
   const handleCookingComplete = async () => {
+    if (isCompletingRecipe || hasSavedHistory) {
+      return;
+    }
+    setIsCompletingRecipe(true);
+
     // Mark last step as completed
     setCompletedSteps([...completedSteps, currentStep]);
 
     // Subtract ingredients from pantry AFTER cooking completion
-    if (customUserData?.userID) {
-      try {
+    try {
+      if (customUserData?.userID) {
         console.log('🛒 Subtracting used ingredients from pantry...');
         let subtractedCount = 0;
         
@@ -218,9 +277,9 @@ const CookingSteps = () => {
         } else {
           console.log('  No substituted ingredients to subtract from pantry');
         }
-      } catch (error) {
-        console.error('❌ Error subtracting from pantry:', error);
       }
+    } catch (error) {
+      console.error('❌ Error subtracting from pantry:', error);
     }
 
     // Save recipe to history
@@ -237,79 +296,50 @@ const CookingSteps = () => {
         );
 
         if (result.success) {
-          Alert.alert(
-            'Cooking Complete! 🎉',
-            'Recipe saved to your cooking history and ingredients removed from pantry!',
-            [
-              { 
-                text: 'OK', 
-                onPress: () => {
-                  // Redirect to recipe website for traffic attribution
-                  if (recipe?.url) {
-                    Linking.openURL(recipe.url).catch(err => 
-                      console.error('❌ Failed to open recipe URL:', err)
-                    );
-                  }
-                  router.back();
-                }
-              }
-            ]
-          );
+          setCompletionMessage('Recipe saved to your cooking history and ingredients removed from pantry!');
+          setHasSavedHistory(true);
+          showCompletionModal();
         } else {
-          Alert.alert(
-            'Cooking Complete! 🎉',
-            'Recipe completed but history was not saved.',
-            [{ 
-              text: 'OK', 
-              onPress: () => {
-                // Redirect to recipe website for traffic attribution
-                if (recipe?.url) {
-                  Linking.openURL(recipe.url).catch(err => 
-                    console.error('❌ Failed to open recipe URL:', err)
-                  );
-                }
-                router.back();
-              }
-            }]
-          );
+          setCompletionMessage('Recipe completed but history was not saved.');
+          showCompletionModal();
         }
       } else {
-        Alert.alert(
-          'Cooking Complete! 🎉',
-          'Great job!',
-          [{ 
-            text: 'OK', 
-            onPress: () => {
-              // Redirect to recipe website for traffic attribution
-              if (recipe?.url) {
-                Linking.openURL(recipe.url).catch(err => 
-                  console.error('❌ Failed to open recipe URL:', err)
-                );
-              }
-              router.back();
-            }
-          }]
-        );
+        setCompletionMessage('Great job completing this recipe!');
+        setHasSavedHistory(true);
+        showCompletionModal();
       }
     } catch (error) {
       console.error('❌ Error saving to history:', error);
-      Alert.alert(
-        'Cooking Complete! 🎉',
-        'Recipe completed but history was not saved.',
-        [{ 
-          text: 'OK', 
-          onPress: () => {
-            // Redirect to recipe website for traffic attribution
-            if (recipe?.url) {
-              Linking.openURL(recipe.url).catch(err => 
-                console.error('❌ Failed to open recipe URL:', err)
-              );
-            }
-            router.back();
-          }
-        }]
-      );
+      setCompletionMessage('Recipe completed but history was not saved.');
+      showCompletionModal();
+    } finally {
+      setIsCompletingRecipe(false);
     }
+  };
+
+  const showCompletionModal = () => {
+    setShowCompleteModal(true);
+    modalScale.setValue(0);
+    
+    // Animate modal entrance with smoother spring
+    Animated.spring(modalScale, {
+      toValue: 1,
+      useNativeDriver: true,
+      tension: 60,
+      friction: 8,
+      velocity: 1,
+    }).start();
+  };
+
+  const handleCloseModal = () => {
+    Animated.timing(modalScale, {
+      toValue: 0,
+      duration: 180,
+      useNativeDriver: true,
+    }).start(() => {
+      setShowCompleteModal(false);
+      router.back();
+    });
   };
 
   const currentInstruction = instructions[currentStep];
@@ -319,7 +349,7 @@ const CookingSteps = () => {
 
   if (!recipe) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         <View style={styles.loadingContainer}>
           <Text>Loading...</Text>
         </View>
@@ -327,66 +357,117 @@ const CookingSteps = () => {
     );
   }
 
+  const isFinalStep = totalSteps > 0 && currentStep === totalSteps - 1;
+
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Header */}
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      {/* Header with gradient effect */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Text style={styles.backButtonText}>✕</Text>
+          <Ionicons name="close" size={wp('6%')} color="#333" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{recipe.label}</Text>
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitle} numberOfLines={1}>{recipe.label || recipe.recipeName}</Text>
+          {hasSubstitutions === 'true' && (
+            <View style={styles.substitutionBadge}>
+              <Ionicons name="swap-horizontal" size={wp('3.5%')} color="#81A969" />
+              <Text style={styles.substitutionBadgeText}>Substituted</Text>
+            </View>
+          )}
+        </View>
         <View style={styles.headerSpacer} />
       </View>
 
-      {/* Substitution Badge */}
-      {hasSubstitutions === 'true' && (
-        <View style={styles.substitutionBanner}>
-          <Text style={styles.substitutionBannerText}>
-            ✓ Using ingredient substitutions
+      {/* Animated Progress Bar */}
+      <View style={styles.progressBarContainer}>
+        <Animated.View 
+          style={[
+            styles.progressBarFill,
+            {
+              width: progressAnim.interpolate({
+                inputRange: [0, 100],
+                outputRange: ['0%', '100%'],
+              }),
+            }
+          ]} 
+        />
+      </View>
+
+      {/* Step Counter Circle */}
+      <View style={styles.stepCounterContainer}>
+        <View style={styles.stepCircle}>
+          <Text style={styles.stepNumber}>{currentStep + 1}</Text>
+          <Text style={styles.stepTotal}>of {totalSteps}</Text>
+        </View>
+        <View style={styles.stepInfo}>
+          <Text style={styles.stepLabel}>Current Step</Text>
+          <Text style={styles.stepsRemaining}>
+            {totalSteps - currentStep - 1} {totalSteps - currentStep - 1 === 1 ? 'step' : 'steps'} remaining
           </Text>
         </View>
-      )}
+      </View>
 
-      {/* Step Counter */}
-      <View style={styles.stepCounter}>
-        <Text style={styles.stepCounterText}>
+      {/* Instruction Card with Animation */}
+      <Animated.View 
+        style={[
+          styles.instructionCard,
+          {
+            opacity: fadeAnim,
+          }
+        ]}
+      >
+        <View style={styles.instructionHeader}>
+          <Ionicons name="restaurant" size={wp('6%')} color="#81A969" />
+          <Text style={styles.instructionHeaderText}>Instructions</Text>
+        </View>
+        <ScrollView 
+          style={styles.instructionScrollView}
+          contentContainerStyle={styles.instructionContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <Text style={styles.instructionText}>
+            {instructionText}
+          </Text>
+        </ScrollView>
+      </Animated.View>
+
+      {/* Step Progress Bar */}
+      <View style={styles.stepProgressContainer}>
+        <View style={styles.stepProgressBarWrapper}>
+          <View style={styles.stepProgressBarBackground}>
+            <View 
+              style={[
+                styles.stepProgressBarFill,
+                { width: `${((currentStep + 1) / totalSteps) * 100}%` }
+              ]} 
+            />
+          </View>
+        </View>
+        <Text style={styles.stepProgressText}>
           Step {currentStep + 1} of {totalSteps}
         </Text>
       </View>
 
-      {/* Instruction */}
-      <ScrollView 
-        style={styles.instructionContainer}
-        contentContainerStyle={styles.instructionContent}
-      >
-        <Text style={styles.instructionText}>
-          {instructionText}
-        </Text>
-      </ScrollView>
-
-      {/* Progress Dots */}
-      <View style={styles.progressDots}>
-        {instructions.map((_, index) => (
-          <View
-            key={index}
-            style={[
-              styles.dot,
-              index === currentStep && styles.dotActive,
-              completedSteps.includes(index) && styles.dotCompleted,
-            ]}
-          />
-        ))}
-      </View>
-
       {/* Navigation Buttons */}
-      <View style={styles.navigationButtons}>
+      <View style={styles.navigationContainer}>
         <TouchableOpacity
-          style={[styles.navButton, styles.previousButton]}
+          style={[
+            styles.navButton, 
+            styles.previousButton,
+            currentStep === 0 && styles.navButtonDisabled
+          ]}
           onPress={handlePreviousStep}
           disabled={currentStep === 0}
+          activeOpacity={0.7}
         >
+          <Ionicons 
+            name="chevron-back" 
+            size={wp('6%')} 
+            color={currentStep === 0 ? '#ccc' : '#81A969'} 
+          />
           <Text style={[
             styles.navButtonText,
+            styles.previousButtonText,
             currentStep === 0 && styles.navButtonTextDisabled
           ]}>
             Previous
@@ -394,14 +475,87 @@ const CookingSteps = () => {
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.navButton, styles.nextButton]}
+          style={[
+            styles.navButton, 
+            styles.nextButton,
+            isFinalStep && isCompletingRecipe && styles.navButtonDisabled
+          ]}
           onPress={handleNextStep}
+          activeOpacity={0.8}
+          disabled={isFinalStep && isCompletingRecipe}
         >
-          <Text style={styles.navButtonText}>
-            {currentStep === totalSteps - 1 ? 'Complete' : 'Next'}
+          <Text style={[styles.navButtonText, styles.nextButtonText]}>
+            {isFinalStep ? (isCompletingRecipe ? 'Saving…' : 'Complete Cooking') : 'Next Step'}
           </Text>
+          <Ionicons 
+            name={isFinalStep ? "checkmark-circle" : "chevron-forward"} 
+            size={wp('6%')} 
+            color="#fff" 
+          />
         </TouchableOpacity>
       </View>
+
+      {/* Completion Modal */}
+      <Modal
+        visible={showCompleteModal}
+        transparent={true}
+        animationType="none"
+        onRequestClose={handleCloseModal}
+      >
+        <TouchableWithoutFeedback onPress={handleCloseModal}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback>
+              <Animated.View
+                style={[
+                  styles.completeModalContent,
+                  {
+                    transform: [{ scale: modalScale }],
+                  },
+                ]}
+              >
+                {/* Success Icon */}
+                <View style={styles.successIconContainer}>
+                  <View style={styles.successIconCircle}>
+                    <Ionicons name="trophy" size={wp('15%')} color="#81A969" />
+                  </View>
+                </View>
+
+                {/* Title */}
+                <Text style={styles.completeTitle}>Cooking Complete!</Text>
+
+                {/* Message */}
+                <Text style={styles.completeMessage}>{completionMessage}</Text>
+
+                {/* Recipe Name */}
+                <View style={styles.recipeNameContainer}>
+                  <Ionicons name="restaurant" size={wp('4.5%')} color="#81A969" />
+                  <Text style={styles.recipeName} numberOfLines={2}>
+                    {recipe?.label || recipe?.recipeName}
+                  </Text>
+                </View>
+
+                {/* Stats */}
+                <View style={styles.statsContainer}>
+                  <View style={styles.statItem}>
+                    <Text style={styles.statNumber}>{recipe?.totalTime || 'N/A'}</Text>
+                    <Text style={styles.statLabel}>Minutes</Text>
+                  </View>
+                  <View style={styles.statItem}>
+                    <Text style={styles.statNumber}>{totalSteps}</Text>
+                    <Text style={styles.statLabel}>Steps</Text>
+                  </View>
+                </View>
+
+                {/* Done Button */}
+                <TouchableOpacity style={styles.doneButton} onPress={handleCloseModal}>
+                  <Text style={styles.doneButtonText}>Done</Text>
+                  <Ionicons name="checkmark-circle" size={wp('5.5%')} color="#fff" />
+                </TouchableOpacity>
+              </Animated.View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -409,7 +563,7 @@ const CookingSteps = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F8F9FA',
   },
   loadingContainer: {
     flex: 1,
@@ -420,116 +574,368 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
+    paddingHorizontal: wp('5%'),
+    paddingVertical: hp('2%'),
+    backgroundColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 3,
   },
   backButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: wp('10%'),
+    height: wp('10%'),
+    borderRadius: wp('5%'),
     backgroundColor: '#F5F5F5',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  backButtonText: {
-    fontSize: 20,
-    color: '#666',
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
+    marginHorizontal: wp('3%'),
   },
   headerTitle: {
-    flex: 1,
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1A1A1A',
+    fontSize: wp('4.5%'),
+    fontWeight: '700',
+    color: '#333',
     textAlign: 'center',
-    marginHorizontal: 12,
+  },
+  substitutionBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F0F7ED',
+    paddingHorizontal: wp('3%'),
+    paddingVertical: hp('0.5%'),
+    borderRadius: wp('3%'),
+    marginTop: hp('0.5%'),
+    gap: wp('1%'),
+  },
+  substitutionBadgeText: {
+    fontSize: wp('3%'),
+    color: '#81A969',
+    fontWeight: '600',
   },
   headerSpacer: {
-    width: 36,
+    width: wp('10%'),
   },
-  substitutionBanner: {
-    backgroundColor: '#E8F5E9',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#C8E6C9',
+  progressBarContainer: {
+    height: Math.max(hp('0.8%'), 6),
+    backgroundColor: '#E8F0E3',
+    width: '100%',
   },
-  substitutionBannerText: {
-    color: '#2E7D32',
-    fontSize: 14,
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: '#81A969',
+    borderRadius: hp('0.4%'),
+  },
+  stepCounterContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: wp('5%'),
+    paddingVertical: hp('2%'),
+    backgroundColor: '#fff',
+    marginTop: hp('1%'),
+    gap: wp('4%'),
+  },
+  stepCircle: {
+    width: wp('18%'),
+    height: wp('18%'),
+    borderRadius: wp('9%'),
+    backgroundColor: '#81A969',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#81A969',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  stepNumber: {
+    fontSize: wp('8%'),
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  stepTotal: {
+    fontSize: wp('3%'),
+    color: '#fff',
+    opacity: 0.9,
+    marginTop: hp('-0.5%'),
+  },
+  stepInfo: {
+    flex: 1,
+  },
+  stepLabel: {
+    fontSize: wp('3.5%'),
+    color: '#999',
+    fontWeight: '500',
+    marginBottom: hp('0.3%'),
+  },
+  stepsRemaining: {
+    fontSize: wp('4.2%'),
+    color: '#333',
     fontWeight: '600',
-    textAlign: 'center',
   },
-  stepCounter: {
-    paddingVertical: 16,
-    paddingHorizontal: 20,
+  instructionCard: {
+    flex: 1,
+    backgroundColor: '#fff',
+    marginHorizontal: wp('5%'),
+    marginTop: hp('1.5%'),
+    marginBottom: hp('1%'),
+    borderRadius: wp('4%'),
+    padding: wp('5%'),
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  stepCounterText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#6B9B6E',
-    textAlign: 'center',
+  instructionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: hp('2%'),
+    paddingBottom: hp('1.5%'),
+    borderBottomWidth: 2,
+    borderBottomColor: '#F0F7ED',
+    gap: wp('2%'),
   },
-  instructionContainer: {
+  instructionHeaderText: {
+    fontSize: wp('4.5%'),
+    fontWeight: '700',
+    color: '#333',
+  },
+  instructionScrollView: {
     flex: 1,
   },
   instructionContent: {
-    paddingHorizontal: 24,
-    paddingVertical: 20,
+    paddingBottom: hp('2%'),
   },
   instructionText: {
-    fontSize: 18,
-    lineHeight: 28,
-    color: '#1A1A1A',
-    textAlign: 'left',
+    fontSize: Math.min(wp('4.2%'), 18),
+    lineHeight: Math.min(wp('7%'), 28),
+    color: '#444',
+    letterSpacing: 0.2,
   },
-  progressDots: {
-    flexDirection: 'row',
+  stepProgressContainer: {
+    paddingHorizontal: wp('5%'),
+    paddingVertical: hp('1.5%'),
+    backgroundColor: '#fff',
+    gap: hp('1%'),
+  },
+  stepProgressBarWrapper: {
+    width: '100%',
+  },
+  stepProgressBarBackground: {
+    height: hp('1.2%'),
+    backgroundColor: '#E8F0E3',
+    borderRadius: hp('0.6%'),
+    overflow: 'hidden',
+  },
+  stepProgressBarFill: {
+    height: '100%',
+    backgroundColor: '#81A969',
+    borderRadius: hp('0.6%'),
+  },
+  stepProgressText: {
+    fontSize: wp('3.5%'),
+    color: '#666',
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  checkmarkOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     justifyContent: 'center',
-    paddingVertical: 20,
-    gap: 8,
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    zIndex: 1000,
   },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#E0E0E0',
+  checkmarkCircle: {
+    shadowColor: '#81A969',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 10,
   },
-  dotActive: {
-    width: 24,
-    backgroundColor: '#6B9B6E',
-  },
-  dotCompleted: {
-    backgroundColor: '#A5D6A7',
-  },
-  navigationButtons: {
+  navigationContainer: {
     flexDirection: 'row',
-    paddingHorizontal: 20,
-    paddingBottom: 24,
-    gap: 12,
+    paddingHorizontal: wp('5%'),
+    paddingTop: hp('1.5%'),
+    paddingBottom: hp('1.5%'),
+    gap: wp('3%'),
+    backgroundColor: '#fff',
   },
   navButton: {
-    flex: 1,
-    paddingVertical: 16,
-    borderRadius: 12,
+    flexDirection: 'row',
+    paddingVertical: Math.max(hp('1.8%'), 14),
+    paddingHorizontal: wp('5%'),
+    borderRadius: wp('3%'),
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: wp('2%'),
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    minHeight: 48,
   },
   previousButton: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: '#6B9B6E',
+    flex: 0.8,
+    backgroundColor: '#fff',
+    borderWidth: 2,
+    borderColor: '#81A969',
   },
   nextButton: {
-    backgroundColor: '#6B9B6E',
+    flex: 1.2,
+    backgroundColor: '#81A969',
+  },
+  navButtonDisabled: {
+    borderColor: '#E0E0E0',
+    opacity: 0.5,
   },
   navButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
+    fontSize: wp('4%'),
+    fontWeight: '700',
+  },
+  previousButtonText: {
+    color: '#81A969',
+  },
+  nextButtonText: {
+    color: '#fff',
   },
   navButtonTextDisabled: {
-    color: '#B0B0B0',
+    color: '#ccc',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: wp('5%'),
+  },
+  completeModalContent: {
+    backgroundColor: '#fff',
+    borderRadius: wp('6%'),
+    padding: wp('8%'),
+    width: '100%',
+    maxWidth: wp('90%'),
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 12,
+    overflow: 'hidden',
+  },
+  confettiContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: hp('60%'),
+    zIndex: 1,
+    pointerEvents: 'none',
+  },
+  confetti: {
+    position: 'absolute',
+    width: wp('3%'),
+    height: wp('3%'),
+    borderRadius: wp('1.5%'),
+  },
+  successIconContainer: {
+    marginBottom: hp('2%'),
+    zIndex: 2,
+  },
+  successIconCircle: {
+    width: wp('28%'),
+    height: wp('28%'),
+    borderRadius: wp('14%'),
+    backgroundColor: '#FFF9E6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 4,
+    borderColor: '#FFD700',
+    shadowColor: '#FFD700',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  completeTitle: {
+    fontSize: wp('7%'),
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: hp('1.5%'),
+    textAlign: 'center',
+  },
+  completeMessage: {
+    fontSize: wp('4%'),
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: wp('6%'),
+    marginBottom: hp('2.5%'),
+    paddingHorizontal: wp('2%'),
+  },
+  recipeNameContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F0F7ED',
+    paddingVertical: hp('1.5%'),
+    paddingHorizontal: wp('4%'),
+    borderRadius: wp('3%'),
+    marginBottom: hp('2.5%'),
+    gap: wp('2%'),
+    maxWidth: '100%',
+  },
+  recipeName: {
+    fontSize: wp('4.2%'),
+    fontWeight: '600',
+    color: '#333',
+    flex: 1,
+    textAlign: 'center',
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    gap: wp('6%'),
+    marginBottom: hp('3%'),
+  },
+  statItem: {
+    alignItems: 'center',
+    gap: hp('0.5%'),
+  },
+  statNumber: {
+    fontSize: wp('6%'),
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  statLabel: {
+    fontSize: wp('3.2%'),
+    color: '#999',
+    fontWeight: '500',
+  },
+  doneButton: {
+    flexDirection: 'row',
+    backgroundColor: '#81A969',
+    paddingVertical: hp('2%'),
+    paddingHorizontal: wp('12%'),
+    borderRadius: wp('4%'),
+    alignItems: 'center',
+    gap: wp('2%'),
+    shadowColor: '#81A969',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  doneButtonText: {
+    fontSize: wp('4.5%'),
+    fontWeight: 'bold',
+    color: '#fff',
   },
 });
 
