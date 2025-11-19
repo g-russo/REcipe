@@ -215,6 +215,9 @@ const SignIn = () => {
       // Attempt sign-in first (validates both email AND password)
       const { data, error } = await signIn(email, password, rememberMe);
 
+      // Always reset loading state immediately after sign-in attempt
+      setLoading(false);
+
       if (error) {
         // On auth error, we need to check if this is an unverified account
         // BUT we must verify the password is correct first to prevent email enumeration
@@ -287,9 +290,8 @@ const SignIn = () => {
         }, 2000);
       }
     } catch (err) {
-      Alert.alert('Error', 'Something went wrong. Please try again.');
-    } finally {
       setLoading(false);
+      Alert.alert('Error', 'Something went wrong. Please try again.');
     }
   };
 
@@ -487,7 +489,7 @@ const SignIn = () => {
             // allow AuthGuard to redirect again and navigate
             setSuppressRedirect(false);
             setAlert({ visible: false, type: 'info', message: '' });
-            router.push('/');
+            router.replace('/home');
           } else {
             // For errors, just close the modal and stay on signin page
             setAlert({ visible: false, type: 'info', message: '' });

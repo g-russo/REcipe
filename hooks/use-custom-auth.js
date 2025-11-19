@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { AppState } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { supabase } from '../lib/supabase'
 import * as Crypto from 'expo-crypto'
@@ -24,32 +25,44 @@ export function useCustomAuth() {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
   const [customUserData, setCustomUserData] = useState(null)
+  const appState = useRef(AppState.currentState)
+  const hasCheckedAutoLogout = useRef(false)
 
   useEffect(() => {
     // Get initial session and user data
     const getInitialSession = async () => {
       try {
-        // Check if user chose not to stay logged in
-        const autoLogout = await AsyncStorage.getItem('autoLogout')
-        if (autoLogout === 'true') {
-          console.log('🔒 Auto-logout enabled - signing out')
-          await supabase.auth.signOut()
-          await AsyncStorage.removeItem('autoLogout')
-          setLoading(false)
-          return
-        }
-
         const { data: { session } } = await supabase.auth.getSession()
 
-        if (session?.user) {
+        // Only check auto-logout on TRUE app restart (first time only)
+        // Don't check when user just signed in
+        if (session?.user && !hasCheckedAutoLogout.current) {
+          const autoLogout = await AsyncStorage.getItem('autoLogout')
+          if (autoLogout === 'true') {
+            console.log('🔒 Auto-logout enabled - signing out on app restart')
+            await supabase.auth.signOut()
+            await AsyncStorage.removeItem('autoLogout')
+            hasCheckedAutoLogout.current = true
+            setLoading(false)
+            return
+          }
+
           setUser(session.user)
           // Only fetch custom data if we don't already have it
           if (!customUserData) {
             await fetchCustomUserData(session.user.email)
           }
+        } else if (session?.user) {
+          setUser(session.user)
+          if (!customUserData) {
+            await fetchCustomUserData(session.user.email)
+          }
         }
+        
+        hasCheckedAutoLogout.current = true
       } catch (error) {
         console.error('Error getting session:', error)
+        hasCheckedAutoLogout.current = true
       } finally {
         setLoading(false)
       }
@@ -57,8 +70,28 @@ export function useCustomAuth() {
 
     getInitialSession()
 
+    // Listen for app coming back from background (true app restart in production)
+    const appStateSubscription = AppState.addEventListener('change', async (nextAppState) => {
+      // When app comes to foreground from background/inactive
+      if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
+        console.log('📱 App returned to foreground - checking auto-logout')
+        
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session?.user) {
+          const autoLogout = await AsyncStorage.getItem('autoLogout')
+          if (autoLogout === 'true') {
+            console.log('🔒 Auto-logout enabled - signing out on app resume')
+            await supabase.auth.signOut()
+            await AsyncStorage.removeItem('autoLogout')
+          }
+        }
+      }
+      
+      appState.current = nextAppState
+    })
+
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log('🔐 Auth state changed:', event)
         setUser(session?.user ?? null)
@@ -76,7 +109,10 @@ export function useCustomAuth() {
       }
     )
 
-    return () => subscription?.unsubscribe()
+    return () => {
+      appStateSubscription?.remove()
+      authSubscription?.unsubscribe()
+    }
   }, []) // Remove customUserData from dependencies to prevent infinite loops
 
   // Fetch custom user data from tbl_users by email
@@ -324,15 +360,6 @@ export function useCustomAuth() {
     try {
       setLoading(true)
 
-      // Note: Session persistence in React Native
-      // - Supabase automatically persists sessions in AsyncStorage by default
-      // - If rememberMe is false, we store a flag to auto-logout on next app launch
-      if (!rememberMe) {
-        await AsyncStorage.setItem('autoLogout', 'true')
-      } else {
-        await AsyncStorage.removeItem('autoLogout')
-      }
-
       // Try to sign in with Supabase auth first (this is the primary authentication)
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email,
@@ -409,6 +436,16 @@ export function useCustomAuth() {
             throw new Error('Please verify your email address before signing in.')
           }
         }
+      }
+
+      // Set auto-logout flag AFTER successful sign-in
+      // This ensures the flag is only set when login succeeds
+      if (!rememberMe) {
+        await AsyncStorage.setItem('autoLogout', 'true')
+        console.log('🔒 Auto-logout enabled for next app restart')
+      } else {
+        await AsyncStorage.removeItem('autoLogout')
+        console.log('✅ Keep me logged in - session will persist')
       }
 
       return { data: authData, error: authError }
