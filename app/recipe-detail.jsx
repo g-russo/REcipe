@@ -11,7 +11,9 @@ import {
   Alert,
   Linking,
   Platform,
-  Animated
+  Animated,
+  Modal,
+  TouchableWithoutFeedback
 } from 'react-native';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,6 +26,7 @@ import EdamamService from '../services/edamam-service';
 import RecipeMatcherService from '../services/recipe-matcher-service';
 import PantryService from '../services/pantry-service';
 import recipeImageCacheService from '../services/recipe-image-cache-service';
+import RecipeSchedulingService from '../services/recipe-scheduling-service';
 import { useCustomAuth } from '../hooks/use-custom-auth';
 import AuthGuard from '../components/auth-guard';
 
@@ -132,6 +135,8 @@ const RecipeDetail = () => {
   const [showSubstitutionModal, setShowSubstitutionModal] = useState(false);
   const [substitutionMode, setSubstitutionMode] = useState('manual'); // 'manual' or 'auto'
   const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [showAlreadyScheduledModal, setShowAlreadyScheduledModal] = useState(false);
+  const [existingScheduleInfo, setExistingScheduleInfo] = useState(null);
   const [toastQueue, setToastQueue] = useState([]);
 
   // Use the substitution hook
@@ -657,13 +662,41 @@ const RecipeDetail = () => {
     }
   };
 
-  const handleScheduleRecipe = () => {
+  const handleScheduleRecipe = async () => {
     if (!customUserData?.userID) {
       Alert.alert('Sign In Required', 'Please sign in to schedule recipes');
       return;
     }
 
-    setShowScheduleModal(true);
+    // Check for duplicate schedule before opening modal
+    try {
+      const currentRecipe = displayRecipe || recipe;
+      const { isDuplicate, existingSchedule } = await RecipeSchedulingService.checkForDuplicateSchedule(
+        customUserData.userID,
+        currentRecipe
+      );
+
+      if (isDuplicate) {
+        const recipeName = currentRecipe.label || currentRecipe.recipeName || 'This recipe';
+        const scheduledDateStr = new Date(existingSchedule.scheduledDate).toLocaleDateString('en-US', {
+          weekday: 'long',
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
+        });
+
+        setExistingScheduleInfo({ recipeName, scheduledDateStr });
+        setShowAlreadyScheduledModal(true);
+        return;
+      }
+
+      // No duplicate, open the modal
+      setShowScheduleModal(true);
+    } catch (error) {
+      console.error('Error checking for duplicate schedule:', error);
+      // Still allow opening the modal if check fails
+      setShowScheduleModal(true);
+    }
   };
 
   const handleScheduleModalClose = (wasSuccessful) => {
@@ -1035,6 +1068,74 @@ const RecipeDetail = () => {
           userID={customUserData?.userID}
         />
 
+        {/* Already Scheduled Modal */}
+        <Modal
+          visible={showAlreadyScheduledModal}
+          animationType="none"
+          transparent={true}
+          onRequestClose={() => setShowAlreadyScheduledModal(false)}
+        >
+          <TouchableWithoutFeedback onPress={() => setShowAlreadyScheduledModal(false)}>
+            <View style={styles.alreadyScheduledOverlay}>
+              <TouchableWithoutFeedback>
+                <Animated.View style={[
+                  styles.alreadyScheduledContent,
+                  {
+                    opacity: showAlreadyScheduledModal ? 1 : 0,
+                    transform: [{ scale: showAlreadyScheduledModal ? 1 : 0.9 }]
+                  }
+                ]}>
+                  <View style={styles.alreadyScheduledIcon}>
+                    <Ionicons name="calendar-sharp" size={48} color="#FF9800" />
+                  </View>
+                  
+                  <Text style={styles.alreadyScheduledTitle}>Already Scheduled</Text>
+                  
+                  {existingScheduleInfo && (
+                    <>
+                      <Text style={styles.alreadyScheduledRecipeName}>
+                        {existingScheduleInfo.recipeName}
+                      </Text>
+                      <Text style={styles.alreadyScheduledMessage}>
+                        is already scheduled for
+                      </Text>
+                      <View style={styles.alreadyScheduledDateBox}>
+                        <Ionicons name="calendar-outline" size={20} color="#6FA36D" />
+                        <Text style={styles.alreadyScheduledDate}>
+                          {existingScheduleInfo.scheduledDateStr}
+                        </Text>
+                      </View>
+                      <Text style={styles.alreadyScheduledHint}>
+                        Remove the existing schedule first if you want to reschedule it.
+                      </Text>
+                    </>
+                  )}
+
+                  <View style={styles.alreadyScheduledActions}>
+                    <TouchableOpacity
+                      style={styles.alreadyScheduledViewButton}
+                      onPress={() => {
+                        setShowAlreadyScheduledModal(false);
+                        router.push('/(tabs)/profile');
+                      }}
+                    >
+                      <Ionicons name="list-outline" size={20} color="#6FA36D" />
+                      <Text style={styles.alreadyScheduledViewButtonText}>View Schedule</Text>
+                    </TouchableOpacity>
+                    
+                    <TouchableOpacity
+                      style={styles.alreadyScheduledOkButton}
+                      onPress={() => setShowAlreadyScheduledModal(false)}
+                    >
+                      <Text style={styles.alreadyScheduledOkButtonText}>Got It</Text>
+                    </TouchableOpacity>
+                  </View>
+                </Animated.View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
+
         {/* Toast Notifications */}
         {toastQueue.map((toast) => (
           <Animated.View
@@ -1314,6 +1415,111 @@ const styles = StyleSheet.create({
     fontSize: wp('3.8%'),
     color: '#333',
     fontWeight: '500',
+  },
+  // Already Scheduled Modal Styles
+  alreadyScheduledOverlay: {
+    flex: 1,
+    backgroundColor: 'transparent',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: wp('5%'),
+  },
+  alreadyScheduledContent: {
+    backgroundColor: '#fff',
+    borderRadius: 24,
+    padding: wp('6%'),
+    width: '100%',
+    maxWidth: 400,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 15,
+  },
+  alreadyScheduledIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#FFF3E0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: hp('2%'),
+  },
+  alreadyScheduledTitle: {
+    fontSize: wp('6%'),
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: hp('1%'),
+  },
+  alreadyScheduledRecipeName: {
+    fontSize: wp('4.5%'),
+    fontWeight: '600',
+    color: '#6FA36D',
+    textAlign: 'center',
+    marginBottom: hp('1%'),
+  },
+  alreadyScheduledMessage: {
+    fontSize: wp('4%'),
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: hp('1.5%'),
+  },
+  alreadyScheduledDateBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F5F5F5',
+    paddingVertical: hp('1.5%'),
+    paddingHorizontal: wp('4%'),
+    borderRadius: 12,
+    marginBottom: hp('2%'),
+    borderWidth: 2,
+    borderColor: '#E8F5E9',
+  },
+  alreadyScheduledDate: {
+    fontSize: wp('4%'),
+    fontWeight: '600',
+    color: '#333',
+    marginLeft: wp('2%'),
+  },
+  alreadyScheduledHint: {
+    fontSize: wp('3.5%'),
+    color: '#999',
+    textAlign: 'center',
+    marginBottom: hp('3%'),
+    lineHeight: wp('5%'),
+  },
+  alreadyScheduledActions: {
+    width: '100%',
+    gap: hp('1.5%'),
+  },
+  alreadyScheduledViewButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: hp('1.8%'),
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    borderWidth: 2,
+    borderColor: '#6FA36D',
+    gap: wp('2%'),
+  },
+  alreadyScheduledViewButtonText: {
+    fontSize: wp('4%'),
+    fontWeight: '600',
+    color: '#6FA36D',
+  },
+  alreadyScheduledOkButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: hp('1.8%'),
+    borderRadius: 12,
+    backgroundColor: '#6FA36D',
+  },
+  alreadyScheduledOkButtonText: {
+    fontSize: wp('4%'),
+    fontWeight: '600',
+    color: '#fff',
   },
 });
 

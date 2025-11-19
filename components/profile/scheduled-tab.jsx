@@ -176,7 +176,11 @@ const ScheduledTab = ({ scheduledRecipes, onDelete, onRefresh }) => {
 
   return (
     <View style={styles.listContainer}>
-      {scheduledRecipes.map((item) => renderScheduledRecipe({ item }))}
+      {scheduledRecipes.map((item) => (
+        <View key={item.scheduleID}>
+          {renderScheduledRecipe({ item })}
+        </View>
+      ))}
     </View>
   );
 };
