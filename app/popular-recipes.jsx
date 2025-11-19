@@ -260,13 +260,12 @@ const styles = StyleSheet.create({
     recipeStats: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: wp('5%'),
         marginBottom: hp('1%'),
     },
     statItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: wp('1.5%'),
+        marginRight: wp('5%'),
     },
     statIcon: {
         marginRight: wp('1%'),
