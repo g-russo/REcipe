@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { supabase } from '../lib/supabase'
 import * as Crypto from 'expo-crypto'
 
@@ -28,6 +29,16 @@ export function useCustomAuth() {
     // Get initial session and user data
     const getInitialSession = async () => {
       try {
+        // Check if user chose not to stay logged in
+        const autoLogout = await AsyncStorage.getItem('autoLogout')
+        if (autoLogout === 'true') {
+          console.log('🔒 Auto-logout enabled - signing out')
+          await supabase.auth.signOut()
+          await AsyncStorage.removeItem('autoLogout')
+          setLoading(false)
+          return
+        }
+
         const { data: { session } } = await supabase.auth.getSession()
 
         if (session?.user) {
@@ -313,10 +324,14 @@ export function useCustomAuth() {
     try {
       setLoading(true)
 
-      // Configure session persistence based on rememberMe
-      // If rememberMe is true: persistent storage (stays logged in across app restarts)
-      // If rememberMe is false: session-only (logs out when app closes)
-      await supabase.auth.updateSession({ persistSession: rememberMe })
+      // Note: Session persistence in React Native
+      // - Supabase automatically persists sessions in AsyncStorage by default
+      // - If rememberMe is false, we store a flag to auto-logout on next app launch
+      if (!rememberMe) {
+        await AsyncStorage.setItem('autoLogout', 'true')
+      } else {
+        await AsyncStorage.removeItem('autoLogout')
+      }
 
       // Try to sign in with Supabase auth first (this is the primary authentication)
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({

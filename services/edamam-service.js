@@ -398,7 +398,7 @@ class EdamamService {
       }
       
       const fallbackInstructions = this.generateSmartFallback(recipeUrl);
-      await this.cacheInstructions(recipeUrl, fallbackInstructions);
+      // Don't cache fallback instructions - only cache successful scrapes
       
       return {
         success: true,
