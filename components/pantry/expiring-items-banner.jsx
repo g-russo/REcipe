@@ -160,7 +160,7 @@ const styles = StyleSheet.create({
   viewAllSimpleText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#8ac551',
+    color: '#81A969',
   },
   listCard: {
     marginTop: 6,

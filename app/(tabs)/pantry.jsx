@@ -9,6 +9,7 @@ import {
   Text,
   View,
   Platform,
+  Animated,
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useCustomAuth } from '../../hooks/use-custom-auth';
@@ -30,6 +31,30 @@ import GroupFormModal from '../../components/pantry/group-form-modal';
 import GroupItemsModal from '../../components/pantry/group-items-modal';
 import SearchFilterModal from '../../components/pantry/search-filter-modal';
 import ExpiringItemsBanner from '../../components/pantry/expiring-items-banner';
+import AppAlert, { AnimatedButton } from '../../components/common/app-alert';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+
+// Category icon mapping for consistent icon usage across alerts
+const getCategoryIcon = (category, size = 64, color = '#81A969') => {
+  const categoryIconMap = {
+    'Fruits': 'food-apple-outline',
+    'Vegetables': 'carrot',
+    'Meat & Poultry': 'food-drumstick-outline',
+    'Seafood': 'fish',
+    'Dairy & Eggs': 'egg-outline',
+    'Grains & Pasta': 'pasta',
+    'Canned & Jarred': 'canned-food',
+    'Condiments & Sauces': 'soy-sauce',
+    'Spices & Herbs': 'mortar-pestle',
+    'Snacks': 'cookie-outline',
+    'Beverages': 'coffee-outline',
+    'Frozen': 'snowflake',
+    'Baking': 'cake',
+    'Other': 'help-circle-outline',
+  };
+  const iconName = categoryIconMap[category] || 'help-circle-outline';
+  return <MaterialCommunityIcons name={iconName} size={size} color={color} />;
+};
 
 /**
  * Pantry Screen - Database Integrated
@@ -60,10 +85,32 @@ const Pantry = () => {
   // Selection mode
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedItems, setSelectedItems] = useState([]);
+  const [showSelectionHeader, setShowSelectionHeader] = useState(false);
+  const [isExitingSelection, setIsExitingSelection] = useState(false);
+  const [showFAB, setShowFAB] = useState(false);
 
   // Expiring items
   const [expiringItems, setExpiringItems] = useState([]);
   const [notificationSummary, setNotificationSummary] = useState(null);
+
+  // Alert state
+  const [alert, setAlert] = useState({ visible: false, type: 'info', message: '', title: null, onAction: null, actionLabel: 'OK' });
+  const [duplicateAlert, setDuplicateAlert] = useState({ visible: false, existingItem: null, incomingItem: null, mergeAvailable: false, resolve: null });
+  const [deleteAlert, setDeleteAlert] = useState({ visible: false, item: null, expired: false });
+  const [deleteExpiredAlert, setDeleteExpiredAlert] = useState({ visible: false, count: 0, items: [] });
+  const [itemMenuAlert, setItemMenuAlert] = useState({ visible: false, item: null });
+  const [groupSelectionAlert, setGroupSelectionAlert] = useState({ visible: false, message: '', groups: [], onSelectGroup: null });
+  const [deleteGroupAlert, setDeleteGroupAlert] = useState({ visible: false, group: null });
+
+  // FAB Animation
+  const fabScale = useRef(new Animated.Value(0)).current;
+  const fabTranslateY = useRef(new Animated.Value(0)).current;
+  const fabOpacity = useRef(new Animated.Value(0)).current;
+  const floatingAnimation = useRef(null);
+
+  // Header Animation
+  const headerOpacity = useRef(new Animated.Value(1)).current;
+  const headerTranslateY = useRef(new Animated.Value(0)).current;
 
   // Initialize notifications on mount
   useEffect(() => {
@@ -79,6 +126,121 @@ const Pantry = () => {
       console.log('⚠️ No user ID available yet');
     }
   }, [customUserData]);
+
+  // Header entrance/exit animation based on selection mode
+  useEffect(() => {
+    if (selectionMode) {
+      // Entering selection mode
+      setIsExitingSelection(false);
+      setShowSelectionHeader(true);
+      
+      // Hide main header - only fade, no translate
+      Animated.timing(headerOpacity, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      // Exiting selection mode
+      if (showSelectionHeader) {
+        setIsExitingSelection(true);
+        
+        // Wait for exit animation to complete before hiding
+        setTimeout(() => {
+          setShowSelectionHeader(false);
+          setIsExitingSelection(false);
+        }, 280);
+      }
+      
+      // Show main header - only fade, no translate
+      Animated.timing(headerOpacity, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [selectionMode]);
+
+  // FAB entrance/exit animation with continuous floating
+  useEffect(() => {
+    const shouldShow = selectionMode && selectedItems.length > 0;
+
+    if (shouldShow) {
+      // Show FAB and start entrance animation
+      setShowFAB(true);
+      
+      // Entrance animation - fast and smooth with opacity
+      Animated.parallel([
+        Animated.spring(fabScale, {
+          toValue: 1,
+          useNativeDriver: true,
+          tension: 65,
+          friction: 7,
+          delay: 200,
+        }),
+        Animated.timing(fabOpacity, {
+          toValue: 1,
+          duration: 300,
+          delay: 150,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        // Start continuous floating animation after entrance
+        floatingAnimation.current = Animated.loop(
+          Animated.sequence([
+            Animated.timing(fabTranslateY, {
+              toValue: -12,
+              duration: 800,
+              useNativeDriver: true,
+            }),
+            Animated.timing(fabTranslateY, {
+              toValue: 0,
+              duration: 800,
+              useNativeDriver: true,
+            }),
+          ])
+        );
+        floatingAnimation.current.start();
+      });
+    } else if (showFAB) {
+      // Stop floating animation immediately
+      if (floatingAnimation.current) {
+        floatingAnimation.current.stop();
+      }
+      
+      // Exit animation - scale down, slide down, and fade out
+      Animated.parallel([
+        Animated.spring(fabScale, {
+          toValue: 0,
+          useNativeDriver: true,
+          tension: 50,
+          friction: 7,
+        }),
+        Animated.timing(fabTranslateY, {
+          toValue: 50,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.timing(fabOpacity, {
+          toValue: 0,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        // Reset values and hide after exit
+        fabScale.setValue(0);
+        fabTranslateY.setValue(0);
+        fabOpacity.setValue(0);
+        setShowFAB(false);
+      });
+    }
+
+    return () => {
+      if (floatingAnimation.current) {
+        floatingAnimation.current.stop();
+      }
+    };
+  }, [selectionMode, selectedItems.length]);
 
   // Handle highlight parameter from notifications
   useEffect(() => {
@@ -170,7 +332,7 @@ const Pantry = () => {
         console.log('📦 No inventory found, creating default...');
         try {
           const newInventory = await PantryService.createInventory(customUserData.userID, {
-            inventoryColor: '#8ac551',
+            inventoryColor: '#81A969',
             inventoryTags: [],
             maxItems: 100,
           });
@@ -186,7 +348,7 @@ const Pantry = () => {
       await scheduleExpirationNotifications();
     } catch (error) {
       console.error('❌ Error loading pantry data:', error);
-      Alert.alert('Error', 'Failed to load pantry data');
+      showAlert('error', 'Failed to load pantry data', 'Error');
     } finally {
       setLoading(false);
     }
@@ -198,7 +360,7 @@ const Pantry = () => {
       try {
         console.log('📦 No inventory found, creating default inventory...');
         const newInventory = await PantryService.createInventory(customUserData.userID, {
-          inventoryColor: '#8ac551',
+          inventoryColor: '#81A969',
           inventoryTags: [],
           maxItems: 100,
         });
@@ -210,18 +372,27 @@ const Pantry = () => {
         
         // Check if it's a verification error
         if (error.message && error.message.includes('verified')) {
-          Alert.alert(
-            'Account Not Verified',
+          showAlert(
+            'error',
             'Please verify your account via OTP to start using the pantry. Check your email for the verification code.',
-            [{ text: 'OK' }]
+            'Account Not Verified',
+            true
           );
         } else {
-          Alert.alert('Error', 'Failed to create inventory. Please try again.');
+          showAlert('error', 'Failed to create inventory. Please try again.', 'Error', true);
         }
         return null;
       }
     }
     return inventories[0].inventoryID;
+  };
+
+  const showAlert = (type, message, title = null, actionable = false, actionLabel = 'OK', onAction = null) => {
+    setAlert({ visible: true, type, message, title, actionable, actionLabel, onAction });
+  };
+
+  const hideAlert = () => {
+    setAlert({ visible: false, type: 'info', message: '', title: null, onAction: null, actionLabel: 'OK' });
   };
 
   const normalizeItemName = (name = '') => name.trim().toLowerCase();
@@ -247,32 +418,7 @@ const Pantry = () => {
 
   const promptDuplicateResolution = (existingItem, incomingItem, mergeAvailable) =>
     new Promise((resolve) => {
-      const messageParts = [
-        `You already have "${existingItem.itemName}" in this inventory (${existingItem.quantity || 0} ${existingItem.unit || ''}).`,
-        'Would you like to merge the quantities or add it anyway?'
-      ];
-      const buttons = [
-        { text: 'Cancel', style: 'cancel', onPress: () => resolve('cancel') },
-        { text: 'Add Anyway', onPress: () => resolve('create') },
-      ];
-      if (mergeAvailable) {
-        buttons.splice(1, 0, {
-          text: 'Merge Quantities',
-          onPress: () => resolve('merge'),
-        });
-      }
-      if (!mergeAvailable) {
-        messageParts.push('Units differ, so auto-merge is unavailable.');
-      }
-      Alert.alert(
-        'Duplicate Item Detected',
-        messageParts.join('\n\n'),
-        buttons,
-        {
-          cancelable: true,
-          onDismiss: () => resolve('cancel'),
-        }
-      );
+      setDuplicateAlert({ visible: true, existingItem, incomingItem, mergeAvailable, resolve });
     });
 
   const mergeDuplicateItem = async (existingItem, incomingItem) => {
@@ -297,9 +443,11 @@ const Pantry = () => {
     }
 
     await PantryService.updateItem(existingItem.itemID, updates);
-    Alert.alert(
+    showAlert(
+      'success',
+      `Updated "${existingItem.itemName}" to ${mergedQty} ${existingItem.unit || ''}`.trim(),
       'Duplicate Merged',
-      `Updated "${existingItem.itemName}" to ${mergedQty} ${existingItem.unit || ''}`.trim()
+      true
     );
   };
 
@@ -331,7 +479,7 @@ const Pantry = () => {
           }
         }
         
-        Alert.alert('Success', 'Item updated successfully');
+        showAlert('success', 'Item updated successfully', 'Success', true);
       } else {
         // Create new item
         console.log('➕ Creating new item...');
@@ -391,7 +539,7 @@ const Pantry = () => {
         // NEW: Check for matching category groups and prompt user
         await checkAndPromptForCategoryGroup(createdItem);
         
-        Alert.alert('Success', 'Item added successfully');
+        showAlert('success', 'Item added successfully', 'Success', true);
         newlyCreatedItem = createdItem;
       }
       
@@ -411,13 +559,13 @@ const Pantry = () => {
         stack: error.stack,
         name: error.name,
       });
-      Alert.alert('Error', error.message || 'Failed to save item');
+      showAlert('error', error.message || 'Failed to save item', 'Error', true);
       return { status: 'error', error };
     }
   };
 
   // NEW: Check for groups with matching category and prompt user
-  const checkAndPromptForCategoryGroup = async (item) => {
+  const checkAndPromptForCategoryGroup = async (item, context = 'default') => {
     if (!item.itemCategory) return;
 
     // Find groups with matching category
@@ -432,51 +580,50 @@ const Pantry = () => {
       if (matchingGroups.length === 1) {
         // Single matching group - show styled prompt
         const group = matchingGroups[0];
-        Alert.alert(
-          `📂 Add to ${group.groupTitle}?`,
-          `This ${item.itemCategory} item matches your "${group.groupTitle}" group.\n\nWould you like to add it?`,
-          [
-            {
-              text: 'No, thanks',
-              style: 'cancel',
-              onPress: () => resolve(),
-            },
-            {
-              text: `Add to ${group.groupTitle}`,
-              onPress: async () => {
-                try {
-                  await PantryService.addItemToGroup(item.itemID, group.groupID);
-                  Alert.alert(
-                    '✅ Added!',
-                    `"${item.itemName}" has been added to "${group.groupTitle}"`
-                  );
-                  await loadData();
-                } catch (error) {
-                  if (error.message && error.message.includes('already in this group')) {
-                    // Silently ignore if already in group
-                  } else {
-                    console.error('Error adding to group:', error);
-                  }
-                }
-                resolve();
-              },
-            },
-          ],
-          {
-            cancelable: true,
-            onDismiss: () => resolve(),
-          }
-        );
+        setGroupSelectionAlert({
+          visible: true,
+          message: `This ${item.itemCategory} item matches your "${group.groupTitle}" group.\n\nWould you like to add it?`,
+          groups: [group],
+          singleGroupMode: true,
+          onSelectGroup: async (selectedGroup) => {
+            try {
+              await PantryService.addItemToGroup(item.itemID, selectedGroup.groupID);
+              showAlert(
+                'success',
+                `"${item.itemName}" has been added to "${selectedGroup.groupTitle}"`,
+                'Added',
+                true
+              );
+              await loadData();
+            } catch (error) {
+              if (error.message && error.message.includes('already in this group')) {
+                // Silently ignore if already in group
+              } else {
+                console.error('Error adding to group:', error);
+              }
+            }
+            resolve();
+          },
+          onCancel: () => resolve(),
+        });
       } else {
         // Multiple matching groups - let user choose
-        const groupButtons = matchingGroups.map(group => ({
-          text: `📂 ${group.groupTitle}`,
-          onPress: async () => {
+        const message = context === 'after-duplicate-merge'
+          ? `Merged with existing item. Add to a ${item.itemCategory} group?`
+          : `You have ${matchingGroups.length} groups for ${item.itemCategory} items.\n\nAdd "${item.itemName}" to one?`;
+        
+        setGroupSelectionAlert({
+          visible: true,
+          message,
+          groups: matchingGroups,
+          onSelectGroup: async (group) => {
             try {
               await PantryService.addItemToGroup(item.itemID, group.groupID);
-              Alert.alert(
-                '✅ Added!',
-                `"${item.itemName}" has been added to "${group.groupTitle}"`
+              showAlert(
+                'success',
+                `"${item.itemName}" has been added to "${group.groupTitle}"`,
+                'Added',
+                true
               );
               await loadData();
             } catch (error) {
@@ -488,23 +635,8 @@ const Pantry = () => {
             }
             resolve();
           },
-        }));
-
-        groupButtons.push({
-          text: 'None',
-          style: 'cancel',
-          onPress: () => resolve(),
+          onCancel: () => resolve(),
         });
-
-        Alert.alert(
-          `Add to a ${item.itemCategory} Group?`,
-          `You have ${matchingGroups.length} groups for ${item.itemCategory} items.\n\nAdd "${item.itemName}" to one?`,
-          groupButtons,
-          {
-            cancelable: true,
-            onDismiss: () => resolve(),
-          }
-        );
       }
     });
   };
@@ -519,31 +651,7 @@ const Pantry = () => {
   // Handle delete item
   const handleDeleteItem = async (item) => {
     const expired = isItemExpired(item);
-    const message = expired 
-      ? `"${item.itemName}" has expired. Do you want to delete it?`
-      : `Are you sure you want to delete "${item.itemName}"?`;
-    
-    Alert.alert(
-      expired ? 'Delete Expired Item' : 'Delete Item',
-      message,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await PantryService.deleteItem(item.itemID);
-              await loadData();
-              Alert.alert('Success', 'Item deleted successfully');
-            } catch (error) {
-              console.error('Error deleting item:', error);
-              Alert.alert('Error', 'Failed to delete item');
-            }
-          },
-        },
-      ]
-    );
+    setDeleteAlert({ visible: true, item, expired });
   };
 
   // Handle delete all expired items
@@ -551,40 +659,11 @@ const Pantry = () => {
     const expiredItems = items.filter(item => isItemExpired(item));
     
     if (expiredItems.length === 0) {
-      Alert.alert('No Expired Items', 'There are no expired items to delete.');
+      showAlert('info', 'There are no expired items to delete.', 'No Expired Items', true);
       return;
     }
 
-    Alert.alert(
-      'Delete All Expired Items',
-      `Found ${expiredItems.length} expired item(s). Delete all of them?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: `Delete ${expiredItems.length} Item(s)`,
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              console.log(`🗑️ Deleting ${expiredItems.length} expired items...`);
-              
-              // Delete all expired items
-              await Promise.all(
-                expiredItems.map(item => PantryService.deleteItem(item.itemID))
-              );
-              
-              await loadData();
-              Alert.alert(
-                'Success', 
-                `Deleted ${expiredItems.length} expired item(s) successfully`
-              );
-            } catch (error) {
-              console.error('Error deleting expired items:', error);
-              Alert.alert('Error', 'Failed to delete some expired items');
-            }
-          },
-        },
-      ]
-    );
+    setDeleteExpiredAlert({ visible: true, count: expiredItems.length, items: expiredItems });
   };
 
   // Handle item press
@@ -615,26 +694,8 @@ const Pantry = () => {
         }
       }
       
-      // Show item details or navigate to detail screen
-      Alert.alert(
-        item.itemName,
-        `Category: ${item.itemCategory}\nQuantity: ${item.quantity} ${item.unit}\nExpires: ${expiryText}`,
-        [
-          {
-            text: 'Edit',
-            onPress: () => {
-              setEditingItem(item);
-              setItemFormVisible(true);
-            },
-          },
-          {
-            text: expired ? 'Delete Expired Item' : 'Delete',
-            style: 'destructive',
-            onPress: () => handleDeleteItem(item),
-          },
-          { text: 'Cancel', style: 'cancel' },
-        ]
-      );
+      // Show item details with custom category icon
+      setItemMenuAlert({ visible: true, item });
     }
   };
 
@@ -647,32 +708,7 @@ const Pantry = () => {
   // Handle item menu press
   const handleItemMenuPress = (e, item) => {
     e.stopPropagation();
-    Alert.alert(
-      'Item Actions',
-      `What would you like to do with "${item.itemName}"?`,
-      [
-        {
-          text: 'Add to Group',
-          onPress: () => {
-            setSelectedItems([item.itemID]);
-            handleAddToGroup();
-          },
-        },
-        {
-          text: 'Edit',
-          onPress: () => {
-            setEditingItem(item);
-            setItemFormVisible(true);
-          },
-        },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => handleDeleteItem(item),
-        },
-        { text: 'Cancel', style: 'cancel' },
-      ]
-    );
+    setItemMenuAlert({ visible: true, item });
   };
 
   // Toggle item selection
@@ -700,26 +736,26 @@ const Pantry = () => {
   // Handle add items to group
   const handleAddToGroup = () => {
     if (selectedItems.length === 0) {
-      Alert.alert('No Items Selected', 'Please select items to add to a group');
+      showAlert('info', 'Please select items to add to a group', 'No Items Selected', true);
       return;
     }
 
     if (groups.length === 0) {
-      Alert.alert(
-        'No Groups Available',
-        'Please create a group first before adding items.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Create Group', onPress: handleCreateGroup }
-        ]
-      );
+      setGroupSelectionAlert({
+        visible: true,
+        message: 'Please create a group first before adding items.',
+        groups: [],
+        onSelectGroup: handleCreateGroup,
+      });
       return;
     }
 
     // Show group selection dialog
-    const groupButtons = groups.map(group => ({
-      text: `${group.groupTitle} (${group.itemCount || 0} items)`,
-      onPress: async () => {
+    setGroupSelectionAlert({
+      visible: true,
+      message: `Select a group to add ${selectedItems.length} item(s)`,
+      groups: groups,
+      onSelectGroup: async (group) => {
         try {
           console.log(`📂 Adding ${selectedItems.length} items to group ${group.groupID}`);
           
@@ -747,21 +783,27 @@ const Pantry = () => {
           // Show appropriate message
           if (alreadyInGroupCount === selectedItems.length) {
             // All items already in group
-            Alert.alert(
+            showAlert(
+              'info',
+              `${alreadyInGroupCount === 1 ? 'This item is' : 'All selected items are'} already in "${group.groupTitle}".\n\n${alreadyInGroupItems.join(', ')}`,
               'Already in Group',
-              `${alreadyInGroupCount === 1 ? 'This item is' : 'All selected items are'} already in "${group.groupTitle}".\n\n${alreadyInGroupItems.join(', ')}`
+              true
             );
           } else if (alreadyInGroupCount > 0) {
             // Some items already in group
-            Alert.alert(
+            showAlert(
+              'info',
+              `${addedCount} item(s) added to "${group.groupTitle}".\n\n${alreadyInGroupCount} item(s) were already in this group: ${alreadyInGroupItems.join(', ')}`,
               'Partially Added',
-              `${addedCount} item(s) added to "${group.groupTitle}".\n\n${alreadyInGroupCount} item(s) were already in this group: ${alreadyInGroupItems.join(', ')}`
+              true
             );
           } else {
             // All items added successfully
-            Alert.alert(
+            showAlert(
+              'success',
+              `${addedCount} item(s) added to "${group.groupTitle}"`,
               'Success',
-              `${addedCount} item(s) added to "${group.groupTitle}"`
+              true
             );
           }
           
@@ -770,55 +812,20 @@ const Pantry = () => {
           await loadData();
         } catch (error) {
           console.error('Error adding items to group:', error);
-          Alert.alert('Error', 'Failed to add items to group');
+          showAlert('error', 'Failed to add items to group', 'Error', true);
         }
-      }
-    }));
-
-    // Add cancel button
-    groupButtons.push({ text: 'Cancel', style: 'cancel' });
-
-    Alert.alert(
-      'Select Group',
-      `Add ${selectedItems.length} item(s) to which group?`,
-      groupButtons
-    );
+      },
+    });
   };
   
   // 💡 NEW: Handle deleting multiple selected items
   const handleDeleteSelectedItems = () => {
     if (selectedItems.length === 0) {
-      Alert.alert('No Items Selected', 'Please select items to delete');
+      showAlert('info', 'Please select items to delete', 'No Items Selected', true);
       return;
     }
 
-    Alert.alert(
-      'Delete Items',
-      `Are you sure you want to delete ${selectedItems.length} selected item(s)?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              console.log(`🗑️ Deleting ${selectedItems.length} items...`);
-              // Use Promise.all to delete all items concurrently
-              await Promise.all(
-                selectedItems.map(itemID => PantryService.deleteItem(itemID))
-              );
-              
-              Alert.alert('Success', `Deleted ${selectedItems.length} item(s)`);
-              exitSelectionMode();
-              await loadData(); // Reload data after deletion
-            } catch (error) {
-              console.error('Error deleting selected items:', error);
-              Alert.alert('Error', 'Failed to delete selected items');
-            }
-          },
-        },
-      ]
-    );
+    setDeleteAlert({ visible: true, item: { itemName: `${selectedItems.length} selected item(s)`, bulk: true }, expired: false });
   };
 
   // Handle group press
@@ -829,40 +836,7 @@ const Pantry = () => {
 
   // Handle delete group
   const handleDeleteGroup = (group) => {
-    Alert.alert(
-      'Delete Group',
-      `Are you sure you want to delete "${group.groupTitle}"?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete Group Only',
-          onPress: async () => {
-            try {
-              await PantryService.deleteGroup(group.groupID, false);
-              await loadData();
-              Alert.alert('Success', 'Group deleted (items kept)');
-            } catch (error) {
-              console.error('Error deleting group:', error);
-              Alert.alert('Error', 'Failed to delete group');
-            }
-          },
-        },
-        {
-          text: 'Delete Group & Items',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await PantryService.deleteGroup(group.groupID, true);
-              await loadData();
-              Alert.alert('Success', 'Group and items deleted');
-            } catch (error) {
-              console.error('Error deleting group:', error);
-              Alert.alert('Error', 'Failed to delete group');
-            }
-          },
-        },
-      ]
-    );
+    setDeleteGroupAlert({ visible: true, group });
   };
 
   // Handle save group - now saves groupCategory to database
@@ -871,18 +845,18 @@ const Pantry = () => {
       if (editingGroup) {
         // Update existing group (including groupCategory)
         await PantryService.updateGroup(editingGroup.groupID, groupData);
-        Alert.alert('Success', 'Group updated successfully');
+        showAlert('success', 'Group updated successfully', 'Success', true);
       } else {
         // Create new group (including groupCategory)
         await PantryService.createGroup(customUserData.userID, groupData);
-        Alert.alert('Success', 'Group created successfully');
+        showAlert('success', 'Group created successfully', 'Success', true);
       }
       
       await loadData();
       setEditingGroup(null);
     } catch (error) {
       console.error('Error saving group:', error);
-      Alert.alert('Error', 'Failed to save group');
+      showAlert('error', 'Failed to save group', 'Error', true);
     }
   };
 
@@ -914,7 +888,7 @@ const Pantry = () => {
   // Handle find recipe with selected items
   const handleFindRecipe = async () => {
     if (selectedItems.length === 0) {
-      Alert.alert('No Items Selected', 'Please select items to find recipes');
+      showAlert('info', 'Please select items to find recipes', 'No Items Selected', true);
       return;
     }
 
@@ -924,7 +898,7 @@ const Pantry = () => {
       .map(item => item.itemName);
 
     if (selectedItemNames.length === 0) {
-      Alert.alert('Error', 'Could not find selected items');
+      showAlert('error', 'Could not find selected items', 'Error', true);
       return;
     }
 
@@ -950,7 +924,7 @@ const Pantry = () => {
       }, 300);
     } catch (error) {
       console.error('Navigation error:', error);
-      Alert.alert('Error', 'Could not navigate to recipe search');
+      showAlert('error', 'Could not navigate to recipe search', 'Error', true);
     }
   };
 
@@ -968,13 +942,14 @@ const Pantry = () => {
           <StatusBar barStyle="dark-content" backgroundColor="#fff" />
           
           {/* CONDITIONAL HEADER */}
-          {selectionMode && (
+          {showSelectionHeader && (
             <SelectionModeHeader
               selectedCount={selectedItems.length}
               onCancel={exitSelectionMode}
               onAddToGroup={handleAddToGroup}
               onDeleteSelected={handleDeleteSelectedItems}
               isDisabled={selectedItems.length === 0}
+              isExiting={isExitingSelection}
             />
           )}
 
@@ -983,7 +958,14 @@ const Pantry = () => {
             contentContainerStyle={styles.scrollViewContent}
             showsVerticalScrollIndicator={false}
           >
-            {!selectionMode && <PantryHeader onSearchPress={() => setSearchModalVisible(true)} />}
+            <Animated.View
+              style={{
+                opacity: headerOpacity,
+              }}
+              pointerEvents={selectionMode ? 'none' : 'auto'}
+            >
+              <PantryHeader onSearchPress={() => setSearchModalVisible(true)} />
+            </Animated.View>
             
             <ExpiringItemsBanner
               expiringItems={expiringItems}
@@ -1059,34 +1041,382 @@ const Pantry = () => {
         </SafeAreaView>
         
         {/* 💡 FAB (FIXED) - Sibling to SafeAreaView, positioned by container */}
-        {(() => {
-          const shouldShow = selectionMode && selectedItems.length > 0;
-          console.log('🔍 FAB Debug:', {
-            selectionMode,
-            selectedItemsLength: selectedItems.length,
-            shouldShow
-          });
-          
-          if (shouldShow) {
-            return (
-              <View style={styles.fabContainer}>
+        {showFAB && (
+          <View style={styles.fabContainer}>
+            <Animated.View
+              style={{
+                transform: [
+                  { scale: fabScale },
+                  { translateY: fabTranslateY }
+                ],
+                opacity: fabOpacity,
+              }}
+            >
+              <TouchableOpacity
+                style={styles.fab}
+                onPress={() => {
+                  console.log('🍽️ FAB pressed!');
+                  handleFindRecipe();
+                }}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="restaurant-outline" size={24} color="#fff" />
+                <Text style={styles.fabText}>Find Recipe ({selectedItems.length})</Text>
+              </TouchableOpacity>
+            </Animated.View>
+          </View>
+        )}
+      </View>
+
+      <AppAlert
+        visible={alert.visible}
+        type={alert.type}
+        message={alert.message}
+        title={alert.title}
+        actionable={alert.actionable}
+        actionLabel={alert.actionLabel}
+        onAction={alert.onAction}
+        onClose={() => setTimeout(hideAlert, 1)}
+      />
+
+      {/* Duplicate Alert */}
+      <AppAlert
+        visible={duplicateAlert.visible}
+        type="info"
+        title="Duplicate Item Detected"
+        message={duplicateAlert.existingItem ? `"${duplicateAlert.existingItem.itemName}" already exists (${duplicateAlert.existingItem.quantity || 0} ${duplicateAlert.existingItem.unit || ''}).\n${duplicateAlert.mergeAvailable ? 'Merge quantities or add a separate entry?' : 'Units differ; merge unavailable. Add a separate entry?'} ` : ''}
+        customIcon={duplicateAlert.existingItem ? getCategoryIcon(duplicateAlert.existingItem.itemCategory) : null}
+        onClose={() => {
+          if (duplicateAlert.resolve) duplicateAlert.resolve('cancel');
+          setTimeout(() => setDuplicateAlert({ visible: false, existingItem: null, incomingItem: null, mergeAvailable: false, resolve: null }), 50);
+        }}
+      >
+        <View style={{ width: '100%', marginTop: 12, gap: 10 }}>
+          {duplicateAlert.mergeAvailable && (
+            <AnimatedButton
+              style={{ 
+                backgroundColor: '#81A969', 
+                paddingVertical: 12, 
+                borderRadius: 12, 
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.1,
+                shadowRadius: 4,
+                elevation: 3
+              }}
+              onPress={() => {
+                if (duplicateAlert.resolve) duplicateAlert.resolve('merge');
+                setDuplicateAlert({ visible: false, existingItem: null, incomingItem: null, mergeAvailable: false, resolve: null });
+              }}
+            >
+              <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '700', fontSize: 16 }}>Merge Quantities</Text>
+            </AnimatedButton>
+          )}
+          <AnimatedButton
+            style={{ 
+              backgroundColor: duplicateAlert.mergeAvailable ? '#fff' : '#81A969',
+              borderWidth: duplicateAlert.mergeAvailable ? 2 : 0,
+              borderColor: '#81A969',
+              paddingVertical: 12, 
+              borderRadius: 12,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.1,
+              shadowRadius: 4,
+              elevation: 2
+            }}
+            onPress={() => {
+              if (duplicateAlert.resolve) duplicateAlert.resolve('create');
+              setDuplicateAlert({ visible: false, existingItem: null, incomingItem: null, mergeAvailable: false, resolve: null });
+            }}
+          >
+            <Text style={{ 
+              color: duplicateAlert.mergeAvailable ? '#81A969' : '#fff', 
+              textAlign: 'center', 
+              fontWeight: '700',
+              fontSize: 16
+            }}>Add Anyway</Text>
+          </AnimatedButton>
+        </View>
+      </AppAlert>
+
+      {/* Delete Item Alert */}
+      <AppAlert
+        visible={deleteAlert.visible}
+        type="error"
+        title={deleteAlert.expired ? 'Delete Expired Item' : 'Delete Item'}
+        message={deleteAlert.item ? (deleteAlert.item.bulk ? `Are you sure you want to delete ${deleteAlert.item.itemName}?` : `${deleteAlert.expired ? `"${deleteAlert.item.itemName}" has expired. Do you want to delete it?` : `Are you sure you want to delete "${deleteAlert.item.itemName}"?`}`) : ''}
+        customIcon={deleteAlert.item && !deleteAlert.item.bulk ? getCategoryIcon(deleteAlert.item.itemCategory) : null}
+        onClose={() => setTimeout(() => setDeleteAlert({ visible: false, item: null, expired: false }), 50)}
+      >
+        <View style={{ width: '100%', marginTop: 20, gap: 12 }}>
+          <TouchableOpacity
+            style={{ 
+              backgroundColor: '#dc3545', 
+              paddingVertical: 16, 
+              borderRadius: 12,
+              shadowColor: '#dc3545',
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.3,
+              shadowRadius: 6,
+              elevation: 4
+            }}
+            onPress={async () => {
+              try {
+                if (deleteAlert.item?.bulk) {
+                  console.log(`Deleting ${selectedItems.length} items...`);
+                  await Promise.all(selectedItems.map(itemID => PantryService.deleteItem(itemID)));
+                  showAlert('success', `Deleted ${selectedItems.length} item(s)`, 'Success', true);
+                  exitSelectionMode();
+                } else {
+                  await PantryService.deleteItem(deleteAlert.item?.itemID);
+                  showAlert('success', 'Item deleted successfully', 'Success', true);
+                }
+                await loadData();
+              } catch (error) {
+                console.error('Error deleting item:', error);
+                showAlert('error', 'Failed to delete item', 'Error', true);
+              }
+              setDeleteAlert({ visible: false, item: null, expired: false });
+            }}
+            activeOpacity={0.8}
+          >
+            <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '700', fontSize: 16 }}>Delete</Text>
+          </TouchableOpacity>
+        </View>
+      </AppAlert>
+
+      {/* Delete Expired Items Alert */}
+      <AppAlert
+        visible={deleteExpiredAlert.visible}
+        type="error"
+        title="Delete All Expired Items"
+        message={`Found ${deleteExpiredAlert.count} expired item(s). Delete all of them?`}
+        onClose={() => setTimeout(() => setDeleteExpiredAlert({ visible: false, count: 0, items: [] }), 50)}
+      >
+        <View style={{ width: '100%', marginTop: 20, gap: 12 }}>
+          <TouchableOpacity
+            style={{ 
+              backgroundColor: '#dc3545', 
+              paddingVertical: 16, 
+              borderRadius: 12,
+              shadowColor: '#dc3545',
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.3,
+              shadowRadius: 6,
+              elevation: 4
+            }}
+            onPress={async () => {
+              try {
+                console.log(`Deleting ${deleteExpiredAlert.items.length} expired items...`);
+                await Promise.all(deleteExpiredAlert.items.map(item => PantryService.deleteItem(item.itemID)));
+                await loadData();
+                showAlert('success', `Deleted ${deleteExpiredAlert.items.length} expired item(s) successfully`, 'Success', true);
+              } catch (error) {
+                console.error('Error deleting expired items:', error);
+                showAlert('error', 'Failed to delete some expired items', 'Error', true);
+              }
+              setDeleteExpiredAlert({ visible: false, count: 0, items: [] });
+            }}
+            activeOpacity={0.8}
+          >
+            <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '700', fontSize: 16 }}>Delete {deleteExpiredAlert.count} Item(s)</Text>
+          </TouchableOpacity>
+        </View>
+      </AppAlert>
+
+      {/* Item Menu Alert */}
+      <AppAlert
+        visible={itemMenuAlert.visible}
+        type="info"
+        title="Item Actions"
+        message={itemMenuAlert.item ? `What would you like to do with \"${itemMenuAlert.item.itemName}\"?` : 'What would you like to do?'}
+        customIcon={itemMenuAlert.item ? getCategoryIcon(itemMenuAlert.item.itemCategory) : null}
+        onClose={() => setItemMenuAlert(prev => ({ ...prev, visible: false }))}
+      >
+        <View style={{ width: '100%', marginTop: 12, gap: 10 }}>
+          <TouchableOpacity
+            style={{ 
+              backgroundColor: '#81A969', 
+              paddingVertical: 12, 
+              borderRadius: 12,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.1,
+              shadowRadius: 4,
+              elevation: 3
+            }}
+            onPress={() => {
+              setItemMenuAlert({ visible: false, item: null });
+              setSelectedItems([itemMenuAlert.item.itemID]);
+              // Use setTimeout to ensure state update completes before calling handleAddToGroup
+              setTimeout(() => {
+                handleAddToGroup();
+              }, 0);
+            }}
+            activeOpacity={0.8}
+          >
+            <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '700', fontSize: 16 }}>Add to Group</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={{ 
+              backgroundColor: '#fff',
+              borderWidth: 2,
+              borderColor: '#81A969',
+              paddingVertical: 12, 
+              borderRadius: 12
+            }}
+            onPress={() => {
+              setEditingItem(itemMenuAlert.item);
+              setItemFormVisible(true);
+              setItemMenuAlert({ visible: false, item: null });
+            }}
+            activeOpacity={0.8}
+          >
+            <Text style={{ color: '#81A969', textAlign: 'center', fontWeight: '700', fontSize: 16 }}>Edit</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={{ 
+              backgroundColor: '#fff',
+              borderWidth: 2,
+              borderColor: '#dc3545',
+              paddingVertical: 12, 
+              borderRadius: 12
+            }}
+            onPress={() => {
+              handleDeleteItem(itemMenuAlert.item);
+              setItemMenuAlert({ visible: false, item: null });
+            }}
+            activeOpacity={0.8}
+          >
+            <Text style={{ color: '#dc3545', textAlign: 'center', fontWeight: '700', fontSize: 16 }}>Delete</Text>
+          </TouchableOpacity>
+        </View>
+      </AppAlert>
+
+      {/* Group Selection Alert */}
+      <AppAlert
+        visible={groupSelectionAlert.visible}
+        type="info"
+        title={groupSelectionAlert.groups?.length === 0 ? 'No Groups Available' : 'Select Group'}
+        message={groupSelectionAlert.message || ''}
+        onClose={() => setTimeout(() => setGroupSelectionAlert({ visible: false, message: '', groups: [], onSelectGroup: null }), 50)}
+      >
+        <View style={{ width: '100%', marginTop: 20 }}>
+          {groupSelectionAlert.groups?.length === 0 ? (
+            <TouchableOpacity
+              style={{ 
+                backgroundColor: '#81A969', 
+                paddingVertical: 16, 
+                borderRadius: 12,
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.1,
+                shadowRadius: 4,
+                elevation: 3
+              }}
+              onPress={() => {
+                if (groupSelectionAlert.onSelectGroup) groupSelectionAlert.onSelectGroup();
+                setGroupSelectionAlert({ visible: false, message: '', groups: [], onSelectGroup: null });
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '700', fontSize: 16 }}>Create Group</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={{ gap: 12 }}>
+              {groupSelectionAlert.groups?.map((group, index) => (
                 <TouchableOpacity
-                  style={styles.fab}
+                  key={group.groupID}
+                  style={{ 
+                    backgroundColor: '#81A969', 
+                    paddingVertical: 16, 
+                    borderRadius: 12,
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.1,
+                    shadowRadius: 4,
+                    elevation: 3
+                  }}
                   onPress={() => {
-                    console.log('🍽️ FAB pressed!');
-                    handleFindRecipe();
+                    if (groupSelectionAlert.onSelectGroup) groupSelectionAlert.onSelectGroup(group);
+                    setGroupSelectionAlert({ visible: false, message: '', groups: [], onSelectGroup: null });
                   }}
                   activeOpacity={0.8}
                 >
-                  <Ionicons name="restaurant-outline" size={24} color="#fff" />
-                  <Text style={styles.fabText}>Find Recipe ({selectedItems.length})</Text>
+                  <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '700', fontSize: 16 }}>
+                    {groupSelectionAlert.singleGroupMode ? `Add to ${group.groupTitle}` : `${group.groupTitle} (${group.itemCount || 0} ${(group.itemCount || 0) === 1 ? 'item' : 'items'})`}
+                  </Text>
                 </TouchableOpacity>
-              </View>
-            );
-          }
-          return null;
-        })()}
-      </View>
+              ))}
+            </View>
+          )}
+        </View>
+      </AppAlert>
+
+      {/* Delete Group Alert */}
+      <AppAlert
+        visible={deleteGroupAlert.visible}
+        type="error"
+        title="Delete Group"
+        message={deleteGroupAlert.group ? `Delete "${deleteGroupAlert.group.groupTitle}"? Choose whether to keep or delete the items in this group.` : ''}
+        onClose={() => setTimeout(() => setDeleteGroupAlert({ visible: false, group: null }), 50)}
+      >
+        <View style={{ width: '100%', marginTop: 20, gap: 12 }}>
+          <TouchableOpacity
+            style={{ 
+              backgroundColor: '#81A969', 
+              paddingVertical: 16, 
+              borderRadius: 12,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.1,
+              shadowRadius: 4,
+              elevation: 3
+            }}
+            onPress={async () => {
+              try {
+                await PantryService.deleteGroup(deleteGroupAlert.group.groupID, false);
+                await loadData();
+                showAlert('success', 'Group deleted (items kept)', 'Success', true);
+              } catch (error) {
+                console.error('Error deleting group:', error);
+                showAlert('error', 'Failed to delete group', 'Error', true);
+              }
+              setDeleteGroupAlert({ visible: false, group: null });
+            }}
+            activeOpacity={0.8}
+          >
+            <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '700', fontSize: 16 }}>Delete Group Only (Keep Items)</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={{ 
+              backgroundColor: '#dc3545', 
+              paddingVertical: 16, 
+              borderRadius: 12,
+              shadowColor: '#dc3545',
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.3,
+              shadowRadius: 6,
+              elevation: 4
+            }}
+            onPress={async () => {
+              try {
+                await PantryService.deleteGroup(deleteGroupAlert.group.groupID, true);
+                await loadData();
+                showAlert('success', 'Group and items deleted', 'Success', true);
+              } catch (error) {
+                console.error('Error deleting group:', error);
+                showAlert('error', 'Failed to delete group', 'Error', true);
+              }
+              setDeleteGroupAlert({ visible: false, group: null });
+            }}
+            activeOpacity={0.8}
+          >
+            <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '700', fontSize: 16 }}>Delete Group & All Items</Text>
+          </TouchableOpacity>
+        </View>
+      </AppAlert>
     </AuthGuard>
   );
 };
@@ -1107,6 +1437,9 @@ const styles = StyleSheet.create({
   scrollViewContent: {
     paddingBottom: 100,
   },
+  headerSpacer: {
+    height: hp('11%'), // Match PantryHeader height (7% + 2% + ~2% for title)
+  },
   groupsSectionSpacer: {
     paddingTop: 12, // adds space below the banner
   },
@@ -1122,7 +1455,7 @@ const styles = StyleSheet.create({
   fab: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#8ac551',
+    backgroundColor: '#81A969',
     paddingVertical: 14,
     paddingHorizontal: 24,
     borderRadius: 30,
