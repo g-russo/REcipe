@@ -57,20 +57,35 @@ export const recognizeFood = async (imageUri) => {
     console.log('📱 Platform:', Platform.OS);
     console.log('🖼️ Image URI:', imageUri);
     
+    // ✅ FIX: Validate imageUri
+    if (!imageUri) {
+      throw new Error('No image URI provided');
+    }
+    
     // Test connection first
     const connectionTest = await testConnection();
     if (!connectionTest.success) {
       throw new Error(`Server unreachable: ${connectionTest.error}`);
     }
     
+    // ✅ FIX: Determine file extension
+    const fileExtension = imageUri.split('.').pop().toLowerCase();
+    const mimeType = fileExtension === 'jpg' || fileExtension === 'jpeg' 
+      ? 'image/jpeg' 
+      : `image/${fileExtension}`;
+    
     const formData = new FormData();
     formData.append('file', {
       uri: imageUri,
-      type: 'image/jpeg',
-      name: 'food.jpg',
+      type: mimeType,
+      name: `photo.${fileExtension}`,
     });
 
-    console.log('📦 Sending FormData...');
+    console.log('📦 Sending FormData with:', {
+      uri: imageUri,
+      type: mimeType,
+      name: `photo.${fileExtension}`
+    });
     
     const response = await fetchWithTimeout(
       `${API_BASE_URL}/recognize-food`,
@@ -79,6 +94,7 @@ export const recognizeFood = async (imageUri) => {
         body: formData,
         headers: {
           'Accept': 'application/json',
+          // ✅ DO NOT set Content-Type - let fetch handle it
         },
       },
       30000
@@ -97,11 +113,80 @@ export const recognizeFood = async (imageUri) => {
     return data;
   } catch (error) {
     console.error('❌ Food recognition error:', error);
-    console.error('📋 Error details:', {
-      message: error.message,
-      name: error.name,
-      stack: error.stack
+    
+    if (error.message === 'Request timeout') {
+      throw new Error('Server is taking too long to respond. Please try again.');
+    } else if (error.message.includes('Network request failed')) {
+      throw new Error(`Cannot connect to ${API_BASE_URL}. Please check:\n1. Server is running\n2. You are connected to the internet\n3. Firewall/VPN is not blocking the connection`);
+    }
+    
+    throw error;
+  }
+};
+
+/**
+ * ✅ NEW: Recognize food from image with combined endpoint (includes ingredients)
+ */
+export const recognizeFoodCombined = async (imageUri) => {
+  try {
+    console.log('🔍 ===== COMBINED FOOD RECOGNITION REQUEST =====');
+    console.log('📤 API URL:', `${API_BASE_URL}/recognize-food-combined`);
+    console.log('📱 Platform:', Platform.OS);
+    console.log('🖼️ Image URI:', imageUri);
+    
+    if (!imageUri) {
+      throw new Error('No image URI provided');
+    }
+    
+    // Test connection first
+    const connectionTest = await testConnection();
+    if (!connectionTest.success) {
+      throw new Error(`Server unreachable: ${connectionTest.error}`);
+    }
+    
+    const fileExtension = imageUri.split('.').pop().toLowerCase();
+    const mimeType = fileExtension === 'jpg' || fileExtension === 'jpeg' 
+      ? 'image/jpeg' 
+      : `image/${fileExtension}`;
+    
+    const formData = new FormData();
+    formData.append('file', {
+      uri: imageUri,
+      type: mimeType,
+      name: `photo.${fileExtension}`,
     });
+
+    console.log('📦 Sending FormData with:', {
+      uri: imageUri,
+      type: mimeType,
+      name: `photo.${fileExtension}`
+    });
+    
+    const response = await fetchWithTimeout(
+      `${API_BASE_URL}/recognize-food-combined`,
+      {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'Accept': 'application/json',
+        },
+      },
+      30000
+    );
+
+    console.log('📥 Combined Response status:', response.status);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Combined API Error Response:', errorText);
+      throw new Error(`API Error: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log('✅ Combined API Response:', data);
+    return data;
+  } catch (error) {
+    console.error('❌ Combined food recognition error:', error);
     
     if (error.message === 'Request timeout') {
       throw new Error('Server is taking too long to respond. Please try again.');
@@ -130,25 +215,25 @@ export const extractText = async (imageUri) => {
     }
     
     const formData = new FormData();
+    
+    const filename = imageUri.split('/').pop();
+    const match = /\.(\w+)$/.exec(filename);
+    const type = match ? `image/${match[1]}` : 'image/jpeg';
+
     formData.append('file', {
-      uri: imageUri,
-      type: 'image/jpeg',
-      name: 'ocr-image.jpg',
+      uri: Platform.OS === 'ios' ? imageUri.replace('file://', '') : imageUri,
+      name: filename,
+      type: type,
     });
 
     console.log('📦 Sending FormData for OCR...');
-
-    const response = await fetchWithTimeout(
-      `${API_BASE_URL}/ocr/extract`,
-      {
-        method: 'POST',
-        body: formData,
-        headers: {
-          'Accept': 'application/json',
-        },
+    const response = await fetch(`${API_BASE_URL}/ocr/extract`, {
+      method: 'POST',
+      body: formData,
+      headers: {
+        'Content-Type': 'multipart/form-data',
       },
-      30000
-    );
+    });
 
     console.log('📥 OCR Response status:', response.status);
 
@@ -159,7 +244,7 @@ export const extractText = async (imageUri) => {
     }
 
     const data = await response.json();
-    console.log('✅ OCR API Response:', data);
+    console.log('✅ OCR successful:', data);
     return data;
   } catch (error) {
     console.error('❌ OCR extraction error:', error);
