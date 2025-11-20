@@ -158,53 +158,13 @@ export const useIngredientSubstitution = (recipe, userID) => {
    * @param {Function} onConfirm - Callback when user confirms usage
    */
   const showIngredientUsageConfirmation = (onConfirm) => {
-    // Only show if user said they want to use pantry ingredients
-    if (!usingPantryIngredients) {
-      // User didn't want to use pantry ingredients, just save to history
-      saveRecipeToHistory(onConfirm);
-      return;
-    }
-
-    const recipeToUse = modifiedRecipe || recipe;
-    const ingredientsToUse = recipeToUse.ingredients || recipeToUse.ingredientLines || [];
+    // ✅ REMOVED automatic usage confirmation
+    // User must now specify quantities during cooking, not after
+    // This ensures accurate subtraction based on actual usage
     
-    const availableIngredientsList = ingredientsToUse
-      .filter(ing => {
-        const ingredientText = typeof ing === 'string' ? ing : (ing.text || ing);
-        // Include if it's available in pantry or has been substituted
-        return availableIngredients.some(a => {
-          const availableText = typeof a === 'string' ? a : (a.text || a);
-          return availableText === ingredientText;
-        }) || (ing.isSubstituted && substitutionMap[ing.originalText]);
-      })
-      .map(ing => {
-        const text = typeof ing === 'string' ? ing : (ing.text || ing);
-        return `• ${text}`;
-      })
-      .join('\n');
-
-    if (!ingredientsToUse || ingredientsToUse.length === 0) {
-      // No ingredients to subtract, just save to history
-      saveRecipeToHistory(onConfirm);
-      return;
-    }
-
-    const { Alert } = require('react-native');
-    Alert.alert(
-      'Cooking Complete! 🎉',
-      `Did you use these ingredients from your pantry?\n\n${availableIngredientsList || 'No ingredients from pantry used'}`,
-      [
-        {
-          text: 'No',
-          onPress: () => saveRecipeToHistory(onConfirm),
-          style: 'cancel'
-        },
-        {
-          text: 'Yes, Subtract',
-          onPress: () => subtractUsedIngredients(onConfirm)
-        }
-      ]
-    );
+    // Just save to history without subtracting ingredients
+    // Ingredient subtraction will happen when user explicitly confirms quantities during cooking
+    saveRecipeToHistory(onConfirm);
   };
 
   /**

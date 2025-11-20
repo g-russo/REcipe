@@ -14,6 +14,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import EdamamService from '../../services/edamam-service';
+import ImageGenerationService from '../../services/image-generation-service';
 
 export default function HistoryTab({
   history,
@@ -53,6 +55,10 @@ export default function HistoryTab({
   const [isProcessing, setIsProcessing] = React.useState(false);
   const removeModalScale = React.useRef(new Animated.Value(0)).current;
   const removeModalOpacity = React.useRef(new Animated.Value(0)).current;
+  
+  // Track failed images and their fresh URLs
+  const [imageRetries, setImageRetries] = React.useState({});
+  const [freshImageUrls, setFreshImageUrls] = React.useState({});
 
   const openRemoveModal = (item) => {
     setSelectedRecipe(item);
@@ -151,16 +157,52 @@ export default function HistoryTab({
           {/* Image Container with inset rounded rectangle */}
           <View style={styles.imageContainer}>
             <Image
-              source={{ uri: imageUrl }}
+              source={{ uri: freshImageUrls[item.historyID] || imageUrl }}
               style={styles.recipeImage}
               resizeMode="cover"
-              onError={(error) => {
+              onError={async (error) => {
                 console.error('❌ History: Image load error for:', {
                   recipeSource: item.recipeSource,
                   recipeName: recipe?.label || recipe?.recipeName,
-                  imageUrl: imageUrl,
-                  error: error.nativeEvent?.error
+                  imageUrl: freshImageUrls[item.historyID] || imageUrl,
+                  error: error.nativeEvent?.error,
+                  retryCount: imageRetries[item.historyID] || 0
                 });
+                
+                // Only retry once per item
+                const retryCount = imageRetries[item.historyID] || 0;
+                if (retryCount < 1 && recipe?.uri) {
+                  console.log('🔄 Attempting to fetch fresh image URL from Edamam API...');
+                  setImageRetries(prev => ({ ...prev, [item.historyID]: retryCount + 1 }));
+                  
+                  try {
+                    // Get fresh recipe data from Edamam API with new AWS signature
+                    const result = await EdamamService.getRecipeByUri(recipe.uri);
+                    
+                    if (result.success && result.recipe?.image) {
+                      console.log('✅ Got fresh image URL from Edamam API');
+                      
+                      // Download and store the fresh image permanently
+                      const permanentUrl = await ImageGenerationService.downloadAndStoreEdamamImage(
+                        result.recipe.image,
+                        recipe.uri
+                      );
+                      
+                      if (permanentUrl) {
+                        console.log('✅ Fresh image stored permanently:', permanentUrl);
+                        setFreshImageUrls(prev => ({ ...prev, [item.historyID]: permanentUrl }));
+                      } else {
+                        // Use fresh URL from API even if storage fails
+                        console.log('⚠️ Storage failed, using fresh API URL:', result.recipe.image);
+                        setFreshImageUrls(prev => ({ ...prev, [item.historyID]: result.recipe.image }));
+                      }
+                    } else {
+                      console.warn('⚠️ Could not get fresh image from API');
+                    }
+                  } catch (retryError) {
+                    console.error('❌ Failed to fetch fresh image:', retryError);
+                  }
+                }
               }}
               onLoad={() => {
                 console.log('✅ History: Image loaded successfully for:', recipe?.label || recipe?.recipeName);
