@@ -12,7 +12,8 @@ import {
   SafeAreaView,
   ActivityIndicator,
   StatusBar,
-  Platform
+  Platform,
+  RefreshControl
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
@@ -36,6 +37,7 @@ const RecipeSearch = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [recipes, setRecipes] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [generatingAI, setGeneratingAI] = useState(false);
   const [aiRecipeCount, setAiRecipeCount] = useState(0); // Track how many AI recipes generated
   const [canGenerateMore, setCanGenerateMore] = useState(false); // Show "Generate Another" button
@@ -153,11 +155,11 @@ const RecipeSearch = () => {
       clearTimeout(popularTimeoutRef.current);
     }
 
-    // Set 7-second timeout to force stop loading
+    // Set 10-second timeout to force stop loading (increased from 7 to allow API fetch time)
     popularTimeoutRef.current = setTimeout(() => {
-      console.log('⏱️ Popular recipes timeout reached (7 seconds) - stopping loading state');
+      console.log('⏱️ Popular recipes timeout reached (10 seconds) - stopping loading state');
       setLoadingPopular(false);
-    }, 7000);
+    }, 10000);
 
     try {
       console.log('📱 Loading popular recipes from Supabase cache...');
@@ -192,7 +194,9 @@ const RecipeSearch = () => {
         setPopularRecipes(formattedRecipes);
       } else {
         console.log('⚠️ No cached recipes available, will fetch fresh');
+        // Keep loading state - don't call finally yet
         await handleRefreshPopularRecipes();
+        return; // Exit here to prevent double finally
       }
     } catch (error) {
       // Clear timeout on error
@@ -202,9 +206,11 @@ const RecipeSearch = () => {
       }
 
       console.error('❌ Error loading popular recipes from cache:', error);
-      // Fallback: fetch fresh popular recipes
+      // Fallback: fetch fresh popular recipes - keep loading state
       await handleRefreshPopularRecipes();
+      return; // Exit here to prevent double finally
     } finally {
+      // Only set loading to false if we didn't call handleRefreshPopularRecipes
       setLoadingPopular(false);
     }
   };
@@ -223,6 +229,73 @@ const RecipeSearch = () => {
       }
     } catch (error) {
       console.error('Error loading recent searches:', error);
+    }
+  };
+
+  // Pull to refresh handler - refreshes popular recipes
+  const onRefresh = async () => {
+    setRefreshing(true);
+    console.log('🔄 Pull to refresh initiated - refreshing popular recipes...');
+    try {
+      await handleRefreshPopularRecipes();
+    } catch (error) {
+      console.error('❌ Error during refresh:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  // Handle refresh popular recipes from cache service
+  const handleRefreshPopularRecipes = async () => {
+    // Clear any existing popular timeout
+    if (popularTimeoutRef.current) {
+      clearTimeout(popularTimeoutRef.current);
+    }
+
+    // Set 10-second timeout to force stop loading (for API fetch)
+    popularTimeoutRef.current = setTimeout(() => {
+      console.log('⏱️ Popular recipes refresh timeout reached (10 seconds)');
+      setLoadingPopular(false);
+    }, 10000);
+
+    try {
+      console.log('🔄 Refreshing popular recipes from Supabase...');
+      setLoadingPopular(true);
+      
+      // Force refresh from cache service (it will fetch fresh data from API)
+      const cached = await cacheService.getPopularRecipes(true); // Pass true to force refresh
+
+      // Clear timeout since we got results
+      if (popularTimeoutRef.current) {
+        clearTimeout(popularTimeoutRef.current);
+        popularTimeoutRef.current = null;
+      }
+      
+      if (cached && cached.length > 0) {
+        console.log(`✅ Refreshed ${cached.length} popular recipes`);
+        const limitedRecipes = cached.slice(0, 8);
+        const formattedRecipes = limitedRecipes.map((recipe, index) => ({
+          id: recipe.uri || `recipe-${index}`,
+          title: recipe.label || recipe.title,
+          image: recipe.image,
+          fullData: recipe,
+          category: recipe.cuisineType?.[0] || recipe.category || 'General',
+          calories: Math.round(recipe.calories / recipe.yield) || recipe.calories || 0,
+          time: recipe.totalTime || recipe.time || 30,
+          difficulty: recipe.difficulty || 'Medium',
+          rating: recipe.rating || 4.5
+        }));
+        setPopularRecipes(formattedRecipes);
+      }
+    } catch (error) {
+      // Clear timeout on error
+      if (popularTimeoutRef.current) {
+        clearTimeout(popularTimeoutRef.current);
+        popularTimeoutRef.current = null;
+      }
+      console.error('❌ Error refreshing popular recipes:', error);
+    } finally {
+      setLoadingPopular(false);
     }
   };
 
@@ -1288,6 +1361,16 @@ const RecipeSearch = () => {
           style={styles.content}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: hp('12%') }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={['#81A969']}
+              tintColor="#81A969"
+              title="Pull to refresh"
+              titleColor="#999"
+            />
+          }
         >
           {/* Search Results - Show when user has searched */}
           {hasSearched && recipes.length > 0 && (

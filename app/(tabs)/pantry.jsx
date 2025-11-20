@@ -10,8 +10,9 @@ import {
   View,
   Platform,
   Animated,
+  RefreshControl,
 } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useCustomAuth } from '../../hooks/use-custom-auth';
 import AuthGuard from '../../components/auth-guard';
 import PantryService from '../../services/pantry-service';
@@ -72,6 +73,7 @@ const Pantry = () => {
   const [groups, setGroups] = useState([]);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [highlightedItemId, setHighlightedItemId] = useState(null);
   
   // Modal states
@@ -127,6 +129,16 @@ const Pantry = () => {
       console.log('⚠️ No user ID available yet');
     }
   }, [customUserData]);
+
+  // Refresh data when screen comes into focus (e.g., after cooking)
+  useFocusEffect(
+    React.useCallback(() => {
+      if (customUserData?.userID) {
+        console.log('🔄 Pantry screen focused - refreshing data...');
+        loadData();
+      }
+    }, [customUserData?.userID])
+  );
 
   // Header entrance/exit animation based on selection mode
   useEffect(() => {
@@ -308,10 +320,19 @@ const Pantry = () => {
     }
   };
 
+  // Pull to refresh handler
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadData();
+    setRefreshing(false);
+  };
+
   // Load inventories and items
   const loadData = async () => {
     try {
-      setLoading(true);
+      if (!refreshing) {
+        setLoading(true);
+      }
       console.log('📥 Loading pantry data for user:', customUserData.userID);
       
       const [inventoriesData, groupsData, itemsData] = await Promise.all([
@@ -943,9 +964,20 @@ const Pantry = () => {
           )}
 
           <ScrollView
+            ref={scrollViewRef}
             style={styles.scrollView}
             contentContainerStyle={styles.scrollViewContent}
             showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                colors={['#81A969']}
+                tintColor="#81A969"
+                title="Pull to refresh"
+                titleColor="#999"
+              />
+            }
           >
             <Animated.View
               style={{
