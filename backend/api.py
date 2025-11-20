@@ -69,7 +69,7 @@ print(f"🔧 Using device: {device}")
 detector_model = YOLO('models/best.pt').to(device)
 food101_model = YOLO('models/food101_cls_best.pt').to(device)
 filipino_model = YOLO('models/filipino_cls_best.pt').to(device)
-ingredients_model = YOLO('models/ingredients_best.pt').to(device)  # ✅ NEW
+ingredients_model = YOLO('models/ingredients_best.pt').to(device)
 
 print("✅ All models loaded successfully!")
 
@@ -104,7 +104,7 @@ async def recognize_food(file: UploadFile = File(...)):
     try:
         img = pil_from_upload(file)
         
-        # ✅ Step 1: Object Detection (finds food items in image)
+        # ✅ Step 1: Object Detection
         det_results = detector_model(img)
         detections = []
         
@@ -121,7 +121,7 @@ async def recognize_food(file: UploadFile = File(...)):
                     "class": class_name
                 })
         
-        # ✅ Step 2: Food Classification (Food101 dataset)
+        # ✅ Step 2: Food101 Classification
         food101_results = food101_model(img)
         food101_predictions = topk_from_probs(food101_results, k=5)
         
@@ -129,17 +129,16 @@ async def recognize_food(file: UploadFile = File(...)):
         filipino_results = filipino_model(img)
         filipino_predictions = topk_from_probs(filipino_results, k=5)
         
-        # ✅ Step 4: Ingredient Detection (NEW!)
+        # ✅ Step 4: Ingredient Detection
         ingredients_results = ingredients_model(img)
         ingredient_predictions = topk_from_probs(ingredients_results, k=10)
         
-        # ✅ Combine all results
         return {
             "success": True,
             "detections": detections,
             "food101_predictions": food101_predictions,
             "filipino_predictions": filipino_predictions,
-            "ingredient_predictions": ingredient_predictions,  # ✅ NEW
+            "ingredient_predictions": ingredient_predictions,
             "detection_count": len(detections)
         }
     except Exception as e:
@@ -170,10 +169,7 @@ async def extract_text_from_image(file: UploadFile = File(...)):
         print(f"❌ OCR Error: {e}")
         raise HTTPException(status_code=500, detail=f"OCR failed: {str(e)}")
 
-# ============================================================================
 # FatSecret API Endpoints
-# ============================================================================
-
 @app.get("/fatsecret/foods/search")
 async def search_foods(search_expression: str = Query(...)):
     try:
@@ -205,3 +201,9 @@ async def get_food_by_qr(qr_code: str = Query(...)):
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# ✅ THIS IS CRITICAL - Run the server!
+if __name__ == "__main__":
+    import uvicorn
+    print("🚀 Starting FastAPI server on http://0.0.0.0:8000")
+    uvicorn.run(app, host="0.0.0.0", port=8000)
