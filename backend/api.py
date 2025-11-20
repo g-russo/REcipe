@@ -124,7 +124,7 @@ async def recognize_food(file: UploadFile = File(...)):
             print(f"❌ Failed to load image: {img_error}")
             raise HTTPException(status_code=400, detail=f"Invalid image file: {str(img_error)}")
         
-        # Step 1: Object Detection
+        # Step 1: Object Detection (Food Detector)
         try:
             det_results = detector_model(img)
             detections = []
@@ -164,13 +164,29 @@ async def recognize_food(file: UploadFile = File(...)):
             print(f"❌ Filipino error: {fil_error}")
             filipino_predictions = []
         
-        # ✅ Step 4: Ingredient Detection (ADDED!)
+        # ✅ Step 4: Ingredient Detection
         try:
-            ingredients_results = ingredients_model(img)
-            ingredient_predictions = topk_from_probs(ingredients_results, k=10)
-            print(f"✅ Ingredients classification: {len(ingredient_predictions)} predictions")
+            # ✅ Lower confidence threshold for testing
+            ingredients_results = ingredients_model(img, conf=0.1)  # 10% confidence
+            ingredient_predictions = []
+            
+            if ingredients_results and len(ingredients_results) > 0 and len(ingredients_results[0].boxes) > 0:
+                for box in ingredients_results[0].boxes:
+                    x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
+                    conf = float(box.conf[0].cpu().numpy())
+                    cls = int(box.cls[0].cpu().numpy())
+                    class_name = ingredients_model.names[cls]
+                    
+                    ingredient_predictions.append({
+                        "name": class_name,
+                        "confidence": conf,
+                        "bbox": [int(x1), int(y1), int(x2), int(y2)]
+                    })
+            
+            print(f"✅ Ingredients detection: {len(ingredient_predictions)} ingredients found")
         except Exception as ing_error:
             print(f"❌ Ingredients error: {ing_error}")
+            traceback.print_exc()
             ingredient_predictions = []
         
         return {
@@ -178,7 +194,7 @@ async def recognize_food(file: UploadFile = File(...)):
             "detections": detections,
             "food101_predictions": food101_predictions,
             "filipino_predictions": filipino_predictions,
-            "ingredient_predictions": ingredient_predictions,  # ✅ ADDED!
+            "ingredient_predictions": ingredient_predictions,
             "detection_count": len(detections)
         }
     except HTTPException:
