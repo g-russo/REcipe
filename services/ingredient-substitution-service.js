@@ -3,6 +3,14 @@ import { supabase } from '../lib/supabase';
 /**
  * Ingredient Substitution Service
  * Handles smart ingredient substitutions using pantry data and AI suggestions
+ * 
+ * ✅ KEY BEHAVIORS:
+ * 1. ALWAYS honor the user's pantry unit of measurement (g, kg, pcs, lb, etc.)
+ * 2. NEVER convert to "pcs" automatically - use the exact unit from inventory
+ * 3. ALWAYS ask user how much they want to use (requiresUserInput: true)
+ * 4. Better ingredient subtraction: User specifies exact amounts used
+ * 
+ * Example: If pantry has "500g pork tenderloin", substitution shows "500g" not "1 pcs"
  */
 
 class IngredientSubstitutionService {
@@ -88,7 +96,7 @@ class IngredientSubstitutionService {
   checkIngredientAvailability(recipeIngredients, pantryItems) {
     const available = [];
     const missing = [];
-    const insufficient = []; // NEW: Ingredients in pantry but not enough quantity
+    const insufficient = []; // Not used anymore - user specifies quantity manually
 
     recipeIngredients.forEach(ingredient => {
       const ingredientText = ingredient.text || ingredient;
@@ -100,9 +108,9 @@ class IngredientSubstitutionService {
       );
 
       if (pantryItem) {
-        // Item exists in pantry - don't check quantity here!
-        // The user will specify how much they want to use during substitution
-        // This avoids unit mismatch issues (e.g., 1 kg vs 2 lb comparison)
+        // ✅ Item exists in pantry
+        // User will be asked how much they want to use (respecting pantry's unit)
+        // No automatic quantity checking or unit conversion
         available.push(ingredient);
       } else {
         missing.push(ingredient);
@@ -703,52 +711,22 @@ Only suggest items that are ACTUALLY in the pantry list above. Return empty arra
         );
 
         suggestions.push(...categorySubstitutes.map(item => {
-          const hasMeasurement = this.hasMeasurementUnit(item.unit);
-          const pantrySystem = this.detectMeasurementSystem(item.unit);
-          
-          // Determine target unit for substitution display
-          let targetUnit = item.unit;
-          let targetQuantity = item.quantity;
-          
-          // VAGUE UNIT HANDLING: Keep pantry's original unit, let user specify amount
-          if (hasVagueUnit) {
-            console.log(`   ⚠️ Vague unit detected - using pantry's unit "${item.unit}" for "${item.itemName}"`);
-            return {
-              name: item.itemName,
-              category: category,
-              quantity: item.quantity, // Show available quantity in pantry's unit
-              unit: item.unit, // Use pantry's unit
-              originalQuantityInPantry: item.quantity,
-              originalUnitInPantry: item.unit,
-              confidence: 'high',
-              hasMeasurement: hasMeasurement,
-              conversionApplied: false,
-              requiresUserInput: true, // Flag that user needs to specify amount
-              vagueMeasurement: originalIngredientText // Store original vague measurement
-            };
-          }
-          
-          // If recipe prefers a specific system and pantry uses different system, convert
-          if (preferredSystem !== 'none' && pantrySystem !== 'none' && 
-              preferredSystem !== pantrySystem && hasMeasurement) {
-            targetUnit = this.getTargetUnitInSystem(item.unit, preferredSystem);
-            if (targetUnit !== item.unit) {
-              targetQuantity = this.convertUnit(item.quantity, item.unit, targetUnit);
-              console.log(`   🔄 Converting pantry item "${item.itemName}": ${item.quantity} ${item.unit} → ${targetQuantity} ${targetUnit} (for ${preferredSystem} recipe)`);
-            }
-          }
+          // ✅ ALWAYS honor pantry's original unit of measurement
+          // Don't convert or use "pcs" - use exactly what's in the user's inventory
+          console.log(`   📦 Using pantry's unit "${item.unit}" for "${item.itemName}"`);
           
           return {
             name: item.itemName,
             category: category,
-            quantity: targetQuantity, // Display quantity in recipe's preferred system
-            unit: targetUnit, // Display unit in recipe's preferred system
-            originalQuantityInPantry: item.quantity, // Store original for subtraction
-            originalUnitInPantry: item.unit, // Store original for subtraction
+            quantity: item.quantity, // Show available quantity in pantry's original unit
+            unit: item.unit, // Always use pantry's original unit (g, kg, pcs, etc.)
+            originalQuantityInPantry: item.quantity,
+            originalUnitInPantry: item.unit,
             confidence: 'high',
-            hasMeasurement: hasMeasurement,
-            conversionApplied: targetUnit !== item.unit,
-            requiresUserInput: false
+            hasMeasurement: this.hasMeasurementUnit(item.unit),
+            conversionApplied: false,
+            requiresUserInput: true, // ✅ ALWAYS ask user how much they want to use
+            vagueMeasurement: originalIngredientText
           };
         }));
       }
@@ -762,50 +740,21 @@ Only suggest items that are ACTUALLY in the pantry list above. Return empty arra
           return itemName.length > 3 && ingredientName.includes(itemName.substring(0, 3));
         })
         .map(item => {
-          const hasMeasurement = this.hasMeasurementUnit(item.unit);
-          const pantrySystem = this.detectMeasurementSystem(item.unit);
-          
-          // VAGUE UNIT HANDLING for similar items
-          if (hasVagueUnit) {
-            return {
-              name: item.itemName,
-              category: 'similar',
-              quantity: item.quantity,
-              unit: item.unit,
-              originalQuantityInPantry: item.quantity,
-              originalUnitInPantry: item.unit,
-              confidence: 'medium',
-              hasMeasurement: hasMeasurement,
-              conversionApplied: false,
-              requiresUserInput: true,
-              vagueMeasurement: originalIngredientText
-            };
-          }
-          
-          // Apply same conversion logic for similar items
-          let targetUnit = item.unit;
-          let targetQuantity = item.quantity;
-          
-          if (preferredSystem !== 'none' && pantrySystem !== 'none' && 
-              preferredSystem !== pantrySystem && hasMeasurement) {
-            targetUnit = this.getTargetUnitInSystem(item.unit, preferredSystem);
-            if (targetUnit !== item.unit) {
-              targetQuantity = this.convertUnit(item.quantity, item.unit, targetUnit);
-              console.log(`   🔄 Converting similar item "${item.itemName}": ${item.quantity} ${item.unit} → ${targetQuantity} ${targetUnit}`);
-            }
-          }
+          // ✅ ALWAYS honor pantry's original unit for similar items too
+          console.log(`   📦 Using pantry's unit "${item.unit}" for similar item "${item.itemName}"`);
           
           return {
             name: item.itemName,
             category: 'similar',
-            quantity: targetQuantity,
-            unit: targetUnit,
+            quantity: item.quantity, // Use pantry's original quantity
+            unit: item.unit, // Always use pantry's original unit (g, kg, pcs, etc.)
             originalQuantityInPantry: item.quantity,
             originalUnitInPantry: item.unit,
             confidence: 'medium',
-            hasMeasurement: hasMeasurement,
-            conversionApplied: targetUnit !== item.unit,
-            requiresUserInput: false
+            hasMeasurement: this.hasMeasurementUnit(item.unit),
+            conversionApplied: false,
+            requiresUserInput: true, // ✅ ALWAYS ask user how much they want to use
+            vagueMeasurement: originalIngredientText
           };
         });
 

@@ -12,6 +12,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import EdamamService from '../../services/edamam-service';
+import ImageGenerationService from '../../services/image-generation-service';
 
 export default function FavoritesTab({
   recipes,
@@ -39,6 +41,10 @@ export default function FavoritesTab({
   const [isProcessing, setIsProcessing] = React.useState(false);
   const removeModalScale = React.useRef(new Animated.Value(0)).current;
   const removeModalOpacity = React.useRef(new Animated.Value(0)).current;
+  
+  // Track failed images and their fresh URLs
+  const [imageRetries, setImageRetries] = React.useState({});
+  const [freshImageUrls, setFreshImageUrls] = React.useState({});
 
   const openRemoveModal = (item) => {
     setSelectedRecipe(item);
@@ -142,16 +148,47 @@ export default function FavoritesTab({
           {/* Image Container with inset rounded rectangle */}
           <View style={styles.imageContainer}>
             <Image
-              source={{ uri: imageUrl }}
+              source={{ uri: freshImageUrls[item.favoriteID || item.aiRecipeID] || imageUrl }}
               style={styles.recipeImage}
               resizeMode="cover"
-              onError={(error) => {
+              onError={async (error) => {
+                const itemKey = item.favoriteID || item.aiRecipeID;
                 console.error('❌ Favorites: Image load error for:', {
                   recipeSource: item.recipeSource,
                   recipeName: recipe?.label || recipe?.recipeName,
-                  imageUrl: imageUrl,
-                  error: error.nativeEvent?.error
+                  imageUrl: freshImageUrls[itemKey] || imageUrl,
+                  error: error.nativeEvent?.error,
+                  retryCount: imageRetries[itemKey] || 0
                 });
+                
+                // Only retry for Edamam recipes with URI
+                const retryCount = imageRetries[itemKey] || 0;
+                if (retryCount < 1 && !isAI && recipe?.uri) {
+                  console.log('🔄 Fetching fresh image from Edamam API...');
+                  setImageRetries(prev => ({ ...prev, [itemKey]: retryCount + 1 }));
+                  
+                  try {
+                    const result = await EdamamService.getRecipeByUri(recipe.uri);
+                    
+                    if (result.success && result.recipe?.image) {
+                      console.log('✅ Got fresh image URL from API');
+                      
+                      const permanentUrl = await ImageGenerationService.downloadAndStoreEdamamImage(
+                        result.recipe.image,
+                        recipe.uri
+                      );
+                      
+                      if (permanentUrl) {
+                        console.log('✅ Fresh image stored permanently');
+                        setFreshImageUrls(prev => ({ ...prev, [itemKey]: permanentUrl }));
+                      } else {
+                        setFreshImageUrls(prev => ({ ...prev, [itemKey]: result.recipe.image }));
+                      }
+                    }
+                  } catch (retryError) {
+                    console.error('❌ Failed to fetch fresh image:', retryError);
+                  }
+                }
               }}
               onLoad={() => {
                 console.log('✅ Favorites: Image loaded successfully for:', recipe?.label || recipe?.recipeName);

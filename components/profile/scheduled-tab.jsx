@@ -13,6 +13,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { router } from 'expo-router';
 import RecipeSchedulingService from '../../services/recipe-scheduling-service';
+import EdamamService from '../../services/edamam-service';
+import ImageGenerationService from '../../services/image-generation-service';
 
 const ScheduledTab = ({ scheduledRecipes, onDelete, onRefresh }) => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -25,6 +27,10 @@ const ScheduledTab = ({ scheduledRecipes, onDelete, onRefresh }) => {
   const deleteModalOpacity = useRef(new Animated.Value(0)).current;
   const completedModalScale = useRef(new Animated.Value(0)).current;
   const completedModalOpacity = useRef(new Animated.Value(0)).current;
+  
+  // Track failed images and their fresh URLs
+  const [imageRetries, setImageRetries] = useState({});
+  const [freshImageUrls, setFreshImageUrls] = useState({});
   const handleRecipePress = (recipe) => {
     // Navigate to recipe details
     router.push({
@@ -186,7 +192,45 @@ const ScheduledTab = ({ scheduledRecipes, onDelete, onRefresh }) => {
           activeOpacity={0.8}
         >
           <View style={styles.recipeImageContainer}>
-            <Image source={{ uri: imageUrl }} style={styles.recipeImage} />
+            <Image 
+              source={{ uri: freshImageUrls[item.scheduleID] || imageUrl }} 
+              style={styles.recipeImage}
+              onError={async (error) => {
+                console.error('❌ Scheduled: Image load error for:', {
+                  recipeName: item.recipeName,
+                  imageUrl: freshImageUrls[item.scheduleID] || imageUrl,
+                  error: error.nativeEvent?.error,
+                  retryCount: imageRetries[item.scheduleID] || 0
+                });
+                
+                const retryCount = imageRetries[item.scheduleID] || 0;
+                if (retryCount < 1 && recipe?.uri) {
+                  console.log('🔄 Fetching fresh image from Edamam API...');
+                  setImageRetries(prev => ({ ...prev, [item.scheduleID]: retryCount + 1 }));
+                  
+                  try {
+                    const result = await EdamamService.getRecipeByUri(recipe.uri);
+                    
+                    if (result.success && result.recipe?.image) {
+                      console.log('✅ Got fresh image URL');
+                      
+                      const permanentUrl = await ImageGenerationService.downloadAndStoreEdamamImage(
+                        result.recipe.image,
+                        recipe.uri
+                      );
+                      
+                      if (permanentUrl) {
+                        setFreshImageUrls(prev => ({ ...prev, [item.scheduleID]: permanentUrl }));
+                      } else {
+                        setFreshImageUrls(prev => ({ ...prev, [item.scheduleID]: result.recipe.image }));
+                      }
+                    }
+                  } catch (retryError) {
+                    console.error('❌ Failed to fetch fresh image:', retryError);
+                  }
+                }
+              }}
+            />
             {isToday && (
               <View style={[styles.statusBadge, { backgroundColor: '#FF6B6B' }]}>
                 <Text style={styles.statusBadgeText}>TODAY</Text>

@@ -87,7 +87,7 @@ const ScheduleRecipeModal = ({ visible, onClose, recipe, userID }) => {
     // Check if date is in the future
     const now = new Date();
     if (selectedDate <= now) {
-      Alert.alert('Invalid Date', 'Please select a future date');
+      Alert.alert('Invalid Date', 'Cannot schedule a recipe for a past date.');
       return;
     }
 
