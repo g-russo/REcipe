@@ -9,6 +9,7 @@ import {
   ScrollView,
   Platform,
   StatusBar,
+  Dimensions,
 } from 'react-native';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { router } from 'expo-router';
@@ -18,6 +19,8 @@ import BarcodeScannerModal from '../../components/barcode-scanner-modal';
 import QRScannerModal from '../../components/qr-scanner-modal';
 import OCRScannerModal from '../../components/ocr-scanner-modal';
 import { supabase } from '../../lib/supabase';
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 export default function FoodRecognitionUpload() {
   const [barcodeScannerVisible, setBarcodeScannerVisible] = useState(false);
@@ -190,13 +193,11 @@ export default function FoodRecognitionUpload() {
       ? await ImagePicker.launchCameraAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
-        aspect: [4, 3],
         quality: 0.8,
       })
       : await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
-        aspect: [4, 3],
         quality: 0.8,
       });
 
