@@ -14,292 +14,196 @@ from PIL import Image
 from ultralytics import YOLO
 import torch
 import pytesseract
-from dotenv import load_dotenv  # ✅ ADD THIS
+from dotenv import load_dotenv
 
-# ✅ CRITICAL: Load .env file FIRST
+# ✅ Load .env file FIRST
 load_dotenv()
 
 # FatSecret API credentials
 FATSECRET_API_URL = "https://platform.fatsecret.com/rest/server.api"
-FATSECRET_KEY = os.getenv("FATSECRET_CLIENT_ID", "")  # ✅ Changed from FATSECRET_KEY
-FATSECRET_SECRET = os.getenv("FATSECRET_CLIENT_SECRET", "")  # ✅ Changed from FATSECRET_SECRET
+FATSECRET_KEY = os.getenv("FATSECRET_CLIENT_ID", "")
+FATSECRET_SECRET = os.getenv("FATSECRET_CLIENT_SECRET", "")
 
 def call_server_api(method: str, params: dict = None):
-    """Call FatSecret server API with OAuth 1.0 signature."""
-    if params is None:
-        params = {}
+    timestamp = str(int(time.time()))
+    nonce = hashlib.md5(timestamp.encode()).hexdigest()
     
-    params["method"] = method
-    params["format"] = "json"
-    params["oauth_consumer_key"] = FATSECRET_KEY
-    params["oauth_signature_method"] = "HMAC-SHA1"
-    params["oauth_timestamp"] = str(int(time.time()))
-    params["oauth_nonce"] = hashlib.md5(str(time.time()).encode()).hexdigest()
-    params["oauth_version"] = "1.0"
+    base_params = {
+        "method": method,
+        "oauth_consumer_key": FATSECRET_KEY,
+        "oauth_signature_method": "HMAC-SHA1",
+        "oauth_timestamp": timestamp,
+        "oauth_nonce": nonce,
+        "oauth_version": "1.0",
+        "format": "json"
+    }
     
-    # Create signature
-    sorted_params = sorted(params.items())
+    if params:
+        base_params.update(params)
+    
+    sorted_params = sorted(base_params.items())
     param_string = "&".join([f"{k}={urllib.parse.quote(str(v), safe='')}" for k, v in sorted_params])
-    base_string = f"GET&{urllib.parse.quote(FATSECRET_API_URL, safe='')}&{urllib.parse.quote(param_string, safe='')}"
-    signing_key = f"{FATSECRET_SECRET}&"
-    signature = hmac.new(signing_key.encode(), base_string.encode(), hashlib.sha1).digest()
-    import base64
-    oauth_signature = base64.b64encode(signature).decode()
-    params["oauth_signature"] = oauth_signature
     
-    response = requests.get(FATSECRET_API_URL, params=params)
+    base_string = f"POST&{urllib.parse.quote(FATSECRET_API_URL, safe='')}&{urllib.parse.quote(param_string, safe='')}"
+    
+    signing_key = f"{urllib.parse.quote(FATSECRET_SECRET, safe='')}&"
+    signature = hmac.new(
+        signing_key.encode(),
+        base_string.encode(),
+        hashlib.sha1
+    ).digest()
+    
+    oauth_signature = urllib.parse.quote(
+        hmac.new(signing_key.encode(), base_string.encode(), hashlib.sha1).hexdigest()
+    )
+    
+    base_params["oauth_signature"] = oauth_signature
+    
+    response = requests.post(FATSECRET_API_URL, data=base_params)
     return response.json()
 
-# Load models at startup
+# ✅ Load all models at startup
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
+print(f"🔧 Using device: {device}")
+
 detector_model = YOLO('models/best.pt').to(device)
 food101_model = YOLO('models/food101_cls_best.pt').to(device)
 filipino_model = YOLO('models/filipino_cls_best.pt').to(device)
+ingredients_model = YOLO('models/ingredients_best.pt').to(device)
+
+print("✅ All models loaded successfully!")
 
 app = FastAPI(title="REcipe API", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], allow_credentials=True,
-    allow_methods=["*"], allow_headers=["*"],
+    allow_origins=["*"], 
+    allow_credentials=True,
+    allow_methods=["*"], 
+    allow_headers=["*"],
 )
 
 @app.get("/health")
-def health():
-    return {
-        "ok": True,
-        "models": {
-            "detector": True,
-            "cls_main": True,
-            "cls_fil": True,
-        },
-    }
+async def health_check():
+    return {"status": "healthy", "device": device}
 
 def pil_from_upload(upload: UploadFile) -> Image.Image:
-    b = upload.file.read()
-    if not b:
-        raise HTTPException(400, "Empty image")
-    try:
-        return Image.open(io.BytesIO(b)).convert("RGB")
-    except Exception:
-        raise HTTPException(400, "Invalid image")
+    return Image.open(io.BytesIO(upload.file.read())).convert("RGB")
 
 def topk_from_probs(res, k: int):
-    # res: Ultralytics classification result (res.probs, res.names)
-    items: List = []
-    try:
-        probs = res.probs.data
-        if hasattr(probs, "cpu"):
-            probs = probs.cpu()
-        if hasattr(probs, "numpy"):
-            probs = probs.numpy()
-        vals = [(int(i), float(p)) for i, p in enumerate(probs)]
-        vals.sort(key=lambda x: x[1], reverse=True)
-        names = res.names if hasattr(res, "names") else {}
-        for idx, p in vals[:k]:
-            label = names[idx] if isinstance(names, dict) and idx in names else str(idx)
-            items.append({"label": label, "conf": p})
-    except Exception:
-        pass
-    return items
+    probs = res[0].probs.data.cpu().numpy()
+    names = res[0].names
+    top_indices = probs.argsort()[-k:][::-1]
+    return [{"name": names[i], "confidence": float(probs[i])} for i in top_indices]
 
 @app.post("/recognize-food")
 async def recognize_food(file: UploadFile = File(...)):
     """
-    Food recognition endpoint combining detector + classifiers
+    Recognize food in an image using object detection and classification.
+    Now includes ingredient detection!
     """
     try:
-        start_time = time.time()
+        img = pil_from_upload(file)
         
-        # Read and prepare image
-        contents = await file.read()
-        image = Image.open(io.BytesIO(contents)).convert('RGB')
-        
-        # 1. Detector (best.pt) - find food objects
-        detector_results = detector_model(image, conf=0.25)
+        # ✅ Step 1: Object Detection
+        det_results = detector_model(img)
         detections = []
         
-        for r in detector_results:
-            boxes = r.boxes
-            for box in boxes:
-                x1, y1, x2, y2 = box.xyxy[0].tolist()
-                conf = float(box.conf[0])
-                cls = int(box.cls[0])
+        if len(det_results[0].boxes) > 0:
+            for box in det_results[0].boxes:
+                x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
+                conf = float(box.conf[0].cpu().numpy())
+                cls = int(box.cls[0].cpu().numpy())
                 class_name = detector_model.names[cls]
                 
                 detections.append({
-                    "x1": x1,
-                    "y1": y1,
-                    "x2": x2,
-                    "y2": y2,
+                    "bbox": [int(x1), int(y1), int(x2), int(y2)],
                     "confidence": conf,
-                    "label": class_name,
-                    "class_id": cls
+                    "class": class_name
                 })
         
-        # 2. Food101 classifier - top-k predictions
-        food101_results = food101_model(image)
-        food101_topk = []
+        # ✅ Step 2: Food101 Classification
+        food101_results = food101_model(img)
+        food101_predictions = topk_from_probs(food101_results, k=5)
         
-        if food101_results and len(food101_results) > 0:
-            probs = food101_results[0].probs
-            if probs is not None:
-                top5_indices = probs.top5
-                top5_conf = probs.top5conf.tolist()
-                
-                for idx, conf in zip(top5_indices, top5_conf):
-                    food101_topk.append({
-                        "label": food101_model.names[idx],
-                        "conf": conf,
-                        "class_id": int(idx)
-                    })
+        # ✅ Step 3: Filipino Food Classification
+        filipino_results = filipino_model(img)
+        filipino_predictions = topk_from_probs(filipino_results, k=5)
         
-        # 3. Filipino classifier - top-k predictions
-        filipino_topk = []
-        filipino_results = filipino_model(image)
-        
-        if filipino_results and len(filipino_results) > 0:
-            probs = filipino_results[0].probs
-            if probs is not None:
-                top5_indices = probs.top5
-                top5_conf = probs.top5conf.tolist()
-                
-                for idx, conf in zip(top5_indices, top5_conf):
-                    filipino_topk.append({
-                        "label": filipino_model.names[idx],
-                        "conf": conf,
-                        "class_id": int(idx)
-                    })
-        
-        # Determine global class (highest confidence across all models)
-        global_class = None
-        global_conf = 0.0
-        global_source = None
-        
-        if food101_topk and food101_topk[0]["conf"] > global_conf:
-            global_conf = food101_topk[0]["conf"]
-            global_class = food101_topk[0]["label"]
-            global_source = "food101"
-        
-        if filipino_topk and filipino_topk[0]["conf"] > global_conf:
-            global_conf = filipino_topk[0]["conf"]
-            global_class = filipino_topk[0]["label"]
-            global_source = "filipino"
-        
-        elapsed_ms = (time.time() - start_time) * 1000
+        # ✅ Step 4: Ingredient Detection
+        ingredients_results = ingredients_model(img)
+        ingredient_predictions = topk_from_probs(ingredients_results, k=10)
         
         return {
             "success": True,
             "detections": detections,
-            "food101_topk": food101_topk,
-            "filipino_topk": filipino_topk,
-            "global_class": global_class,
-            "global_conf": global_conf,
-            "global_class_source": global_source,
-            "model": "YOLOv8 ensemble",
-            "device": device,
-            "elapsed_ms": elapsed_ms
+            "food101_predictions": food101_predictions,
+            "filipino_predictions": filipino_predictions,
+            "ingredient_predictions": ingredient_predictions,
+            "detection_count": len(detections)
         }
-        
     except Exception as e:
-        return {
-            "success": False,
-            "error": str(e),
-            "detections": [],
-            "food101_topk": [],
-            "filipino_topk": []
-        }
+        print(f"❌ Recognition error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/ocr/extract")
-async def ocr_extract_text(file: UploadFile = File(...)):
-    """Extract text from image using OCR (Tesseract)."""
+async def extract_text_from_image(file: UploadFile = File(...)):
+    """Extract text from image using Tesseract OCR."""
     try:
         img = pil_from_upload(file)
         
-        # Use Tesseract OCR to extract text
-        text = pytesseract.image_to_string(img, lang='eng')
+        if img.mode != 'RGB':
+            img = img.convert('RGB')
         
-        # Clean up text
-        text = text.strip()
+        text = pytesseract.image_to_string(img)
+        
+        data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)
+        confidences = [int(conf) for conf in data['conf'] if int(conf) > 0]
+        avg_confidence = sum(confidences) / len(confidences) if confidences else 0
         
         return {
             "success": True,
-            "text": text,
-            "length": len(text),
+            "text": text.strip(),
+            "confidence": round(avg_confidence, 2)
         }
     except Exception as e:
+        print(f"❌ OCR Error: {e}")
         raise HTTPException(status_code=500, detail=f"OCR failed: {str(e)}")
 
-# ============================================================================
 # FatSecret API Endpoints
-# ============================================================================
-
 @app.get("/fatsecret/foods/search")
-def fs_foods_search(q: str, page: int = Query(0, ge=0), max_results: int = Query(20, ge=1, le=50)):
-    """Search for foods by text query."""
+async def search_foods(search_expression: str = Query(...)):
     try:
-        result = call_server_api(
-            "foods.search",
-            {"search_expression": q, "page_number": page, "max_results": max_results},
-        )
+        result = call_server_api("foods.search", {"search_expression": search_expression})
         return result
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"FatSecret search failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/fatsecret/food")
-def fs_food_get(food_id: int = Query(..., alias="id")):
-    """Get detailed food information by food_id."""
+async def get_food(food_id: str = Query(...)):
     try:
         result = call_server_api("food.get.v2", {"food_id": food_id})
         return result
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"FatSecret food.get failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/fatsecret/barcode")
-async def fatsecret_barcode(barcode: str = Query(...)):
-    """Lookup food by barcode."""
+async def get_food_by_barcode(barcode: str = Query(...)):
     try:
         result = call_server_api("food.find_id_for_barcode", {"barcode": barcode})
-        if not result or "error" in result:
-            return {"error": {"message": "Barcode not found"}}
-        
-        # If barcode found, get full food details
-        food_id = result.get("food_id", {}).get("value")
-        if food_id:
-            food_details = call_server_api("food.get.v2", {"food_id": food_id})
-            return {"food": food_details.get("food", {})}
-        
-        return {"error": {"message": "Invalid barcode response"}}
+        return result
     except Exception as e:
-        return {"error": {"message": str(e)}}
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/fatsecret/qr")
-async def fatsecret_qr(qr_code: str = Query(...)):
-    """Lookup food by QR code."""
+async def get_food_by_qr(qr_code: str = Query(...)):
     try:
-        result = call_server_api("food.find_id_for_qr", {"qr_code": qr_code})
-        if not result or "error" in result:
-            return {"error": {"message": "QR code not found"}}
-        
-        # If QR found, get full food details
-        food_id = result.get("food_id", {}).get("value")
-        if food_id:
-            food_details = call_server_api("food.get.v2", {"food_id": food_id})
-            return {"food": food_details.get("food", {})}
-        
-        return {"error": {"message": "Invalid QR code response"}}
+        result = call_server_api("food.find_id_for_barcode", {"barcode": qr_code})
+        return result
     except Exception as e:
-        return {"error": {"message": str(e)}}
+        raise HTTPException(status_code=500, detail=str(e))
 
+# ✅ THIS IS CRITICAL - Run the server!
 if __name__ == "__main__":
     import uvicorn
-    # ✅ Bind to 0.0.0.0 to accept external connections
-    print("🚀 Starting REcipe API on 0.0.0.0:8000")
-    print(f"📊 Using device: {device}")
-    print("✅ Access from anywhere at: http://54.153.205.43:8000")
-    
-    uvicorn.run(
-        app, 
-        host="0.0.0.0",  # Accept connections from any IP
-        port=8000,
-        reload=False  # Disable reload in production
-    )
+    print("🚀 Starting FastAPI server on http://0.0.0.0:8000")
+    uvicorn.run(app, host="0.0.0.0", port=8000)
