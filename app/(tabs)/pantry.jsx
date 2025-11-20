@@ -29,7 +29,7 @@ import PantryItemsGrid from '../../components/pantry/pantry-items-grid';
 import ItemFormModal from '../../components/pantry/item-form-modal';
 import GroupFormModal from '../../components/pantry/group-form-modal';
 import GroupItemsModal from '../../components/pantry/group-items-modal';
-import SearchFilterModal from '../../components/pantry/search-filter-modal';
+import SearchFilterModal from '../../components/pantry/search-filter-modal-v2';
 import ExpiringItemsBanner from '../../components/pantry/expiring-items-banner';
 import AppAlert from '../../components/common/app-alert';
 import PantryAlert, { AnimatedButton } from '../../components/pantry/pantry-alert';
@@ -868,18 +868,6 @@ const Pantry = () => {
   };
 
   // Handle search result selection
-  const handleSearchResultPress = (result) => {
-    setSearchModalVisible(false);
-    
-    if (result.type === 'item') {
-      // Show item details
-      handleItemPress(result);
-    } else if (result.type === 'inventory') {
-      // Show inventory/group details
-      handleGroupPress(result);
-    }
-  };
-
   // Handle view all expiring items
   const handleViewAllExpiring = () => {
     setSearchModalVisible(true);
@@ -1000,8 +988,11 @@ const Pantry = () => {
             visible={searchModalVisible}
             onClose={() => setSearchModalVisible(false)}
             items={items}
+            groups={groups}
             inventories={inventories}
-            onResultPress={handleSearchResultPress}
+            onItemPress={handleItemPress}
+            onGroupPress={handleGroupPress}
+            userName={customUserData?.firstName || 'My'}
           />
 
           <ItemFormModal
