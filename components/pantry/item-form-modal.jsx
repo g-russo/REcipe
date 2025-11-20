@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 const ITEM_NAME_REGEX = /^[a-zA-Z0-9\s'-]+$/;
 const ITEM_NAME_MIN_LENGTH = 2;
@@ -54,9 +55,9 @@ const ItemFormModal = ({
 
   // Simplified food categories (matching group categories)
   const foodCategories = [
-    'Fruits', 'Vegetables', 'Meat & Poultry', 'Seafood', 'Dairy & Eggs',
-    'Grains & Pasta', 'Canned & Jarred', 'Condiments & Sauces', 
-    'Spices & Herbs', 'Snacks', 'Beverages', 'Frozen', 'Baking', 'Other'
+    'Baking', 'Beverages','Canned & Jarred', 'Condiments & Sauces', 'Dairy & Eggs',
+    'Fruits', 'Frozen', 'Grains & Pasta', 'Meat & Poultry', 'Seafood', 'Snacks',
+    'Spices & Herbs', 'Vegetables', 'Other'
   ];
 
   // Units
