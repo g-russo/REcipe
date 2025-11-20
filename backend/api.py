@@ -113,9 +113,10 @@ def topk_from_probs(res, k: int):
 async def recognize_food(file: UploadFile = File(...)):
     """
     Recognize food in an image using object detection and classification.
-    Now includes ingredient detection!
+    ✅ NOW INCLUDES INGREDIENT DETECTION!
     """
     try:
+        # Load image
         try:
             img = pil_from_upload(file)
             print(f"✅ Image loaded successfully: {img.size}")
@@ -123,7 +124,7 @@ async def recognize_food(file: UploadFile = File(...)):
             print(f"❌ Failed to load image: {img_error}")
             raise HTTPException(status_code=400, detail=f"Invalid image file: {str(img_error)}")
         
-        # ✅ Step 1: Object Detection
+        # Step 1: Object Detection
         try:
             det_results = detector_model(img)
             detections = []
@@ -145,7 +146,7 @@ async def recognize_food(file: UploadFile = File(...)):
             print(f"❌ Detection error: {det_error}")
             detections = []
         
-        # ✅ Step 2: Food101 Classification
+        # Step 2: Food101 Classification
         try:
             food101_results = food101_model(img)
             food101_predictions = topk_from_probs(food101_results, k=5)
@@ -154,7 +155,7 @@ async def recognize_food(file: UploadFile = File(...)):
             print(f"❌ Food101 error: {f101_error}")
             food101_predictions = []
         
-        # ✅ Step 3: Filipino Food Classification
+        # Step 3: Filipino Food Classification
         try:
             filipino_results = filipino_model(img)
             filipino_predictions = topk_from_probs(filipino_results, k=5)
@@ -163,7 +164,7 @@ async def recognize_food(file: UploadFile = File(...)):
             print(f"❌ Filipino error: {fil_error}")
             filipino_predictions = []
         
-        # ✅ Step 4: Ingredient Detection
+        # ✅ Step 4: Ingredient Detection (ADDED!)
         try:
             ingredients_results = ingredients_model(img)
             ingredient_predictions = topk_from_probs(ingredients_results, k=10)
@@ -177,7 +178,7 @@ async def recognize_food(file: UploadFile = File(...)):
             "detections": detections,
             "food101_predictions": food101_predictions,
             "filipino_predictions": filipino_predictions,
-            "ingredient_predictions": ingredient_predictions,
+            "ingredient_predictions": ingredient_predictions,  # ✅ ADDED!
             "detection_count": len(detections)
         }
     except HTTPException:
@@ -190,79 +191,9 @@ async def recognize_food(file: UploadFile = File(...)):
 @app.post("/recognize-food-combined")
 async def recognize_food_combined(file: UploadFile = File(...)):
     """
-    Combined endpoint that returns both food and ingredient predictions.
+    Combined endpoint - same as /recognize-food now!
     """
-    try:
-        try:
-            img = pil_from_upload(file)
-            print(f"✅ Image loaded successfully: {img.size}")
-        except Exception as img_error:
-            print(f"❌ Failed to load image: {img_error}")
-            raise HTTPException(status_code=400, detail=f"Invalid image file: {str(img_error)}")
-        
-        # Detection
-        try:
-            det_results = detector_model(img)
-            detections = []
-            
-            if det_results and len(det_results) > 0 and len(det_results[0].boxes) > 0:
-                for box in det_results[0].boxes:
-                    x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
-                    conf = float(box.conf[0].cpu().numpy())
-                    cls = int(box.cls[0].cpu().numpy())
-                    class_name = detector_model.names[cls]
-                    
-                    detections.append({
-                        "bbox": [int(x1), int(y1), int(x2), int(y2)],
-                        "confidence": conf,
-                        "class": class_name
-                    })
-            print(f"✅ Detection complete: {len(detections)} objects found")
-        except Exception as det_error:
-            print(f"❌ Detection error: {det_error}")
-            detections = []
-        
-        # Food101 Classification
-        try:
-            food101_results = food101_model(img)
-            food101_predictions = topk_from_probs(food101_results, k=5)
-            print(f"✅ Food101 classification: {len(food101_predictions)} predictions")
-        except Exception as f101_error:
-            print(f"❌ Food101 error: {f101_error}")
-            food101_predictions = []
-        
-        # Filipino Food Classification
-        try:
-            filipino_results = filipino_model(img)
-            filipino_predictions = topk_from_probs(filipino_results, k=5)
-            print(f"✅ Filipino classification: {len(filipino_predictions)} predictions")
-        except Exception as fil_error:
-            print(f"❌ Filipino error: {fil_error}")
-            filipino_predictions = []
-        
-        # Ingredient Detection
-        try:
-            ingredients_results = ingredients_model(img)
-            ingredient_predictions = topk_from_probs(ingredients_results, k=10)
-            print(f"✅ Ingredients classification: {len(ingredient_predictions)} predictions")
-        except Exception as ing_error:
-            print(f"❌ Ingredients error: {ing_error}")
-            ingredient_predictions = []
-        
-        return {
-            "success": True,
-            "detections": detections,
-            "food101_predictions": food101_predictions,
-            "filipino_predictions": filipino_predictions,
-            "ingredient_predictions": ingredient_predictions,
-            "detection_count": len(detections)
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"❌ Recognition error: {e}")
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+    return await recognize_food(file)
 
 @app.post("/ocr/extract")
 async def extract_text_from_image(file: UploadFile = File(...)):
