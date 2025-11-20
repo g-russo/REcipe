@@ -201,9 +201,13 @@ export default function FoodRecognitionUpload() {
       });
 
     if (!result.canceled && result.assets[0]) {
+      // ✅ FIX: Log the URI before navigating
+      const selectedUri = result.assets[0].uri;
+      console.log('✅ Selected image URI:', selectedUri);
+      
       router.push({
         pathname: '/food-recognition/result',
-        params: { uri: result.assets[0].uri },
+        params: { uri: selectedUri }, // ✅ Make sure this is passed correctly
       });
     }
   };

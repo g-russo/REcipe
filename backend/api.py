@@ -1,20 +1,21 @@
-import os
 from pathlib import Path
-import io
-import time
-import requests
-import hashlib
-import hmac
-import urllib.parse
 from typing import List, Optional
 from fastapi import FastAPI, File, UploadFile, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from PIL import Image
 from ultralytics import YOLO
+from dotenv import load_dotenv
+import io
+import os
+import time
+import hashlib
+import hmac
+import urllib.parse
+import requests
 import torch
 import pytesseract
-from dotenv import load_dotenv
+import traceback
 
 # ✅ Load .env file FIRST
 load_dotenv()
@@ -92,14 +93,11 @@ def pil_from_upload(upload: UploadFile) -> Image.Image:
 def topk_from_probs(res, k: int):
     """Extract top-k predictions from classification results"""
     try:
-        # ✅ FIX: Check if probs exists
         if res is None or len(res) == 0:
             print("⚠️ Warning: No results from model")
             return []
         
-        # ✅ FIX: Handle both detection and classification results
         if hasattr(res[0], 'probs') and res[0].probs is not None:
-            # Classification model
             probs = res[0].probs.data.cpu().numpy()
             names = res[0].names
             top_indices = probs.argsort()[-k:][::-1]
@@ -118,7 +116,6 @@ async def recognize_food(file: UploadFile = File(...)):
     Now includes ingredient detection!
     """
     try:
-        # ✅ FIX: Add error handling for image loading
         try:
             img = pil_from_upload(file)
             print(f"✅ Image loaded successfully: {img.size}")
@@ -187,7 +184,83 @@ async def recognize_food(file: UploadFile = File(...)):
         raise
     except Exception as e:
         print(f"❌ Recognition error: {e}")
-        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/recognize-food-combined")
+async def recognize_food_combined(file: UploadFile = File(...)):
+    """
+    Combined endpoint that returns both food and ingredient predictions.
+    """
+    try:
+        try:
+            img = pil_from_upload(file)
+            print(f"✅ Image loaded successfully: {img.size}")
+        except Exception as img_error:
+            print(f"❌ Failed to load image: {img_error}")
+            raise HTTPException(status_code=400, detail=f"Invalid image file: {str(img_error)}")
+        
+        # Detection
+        try:
+            det_results = detector_model(img)
+            detections = []
+            
+            if det_results and len(det_results) > 0 and len(det_results[0].boxes) > 0:
+                for box in det_results[0].boxes:
+                    x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
+                    conf = float(box.conf[0].cpu().numpy())
+                    cls = int(box.cls[0].cpu().numpy())
+                    class_name = detector_model.names[cls]
+                    
+                    detections.append({
+                        "bbox": [int(x1), int(y1), int(x2), int(y2)],
+                        "confidence": conf,
+                        "class": class_name
+                    })
+            print(f"✅ Detection complete: {len(detections)} objects found")
+        except Exception as det_error:
+            print(f"❌ Detection error: {det_error}")
+            detections = []
+        
+        # Food101 Classification
+        try:
+            food101_results = food101_model(img)
+            food101_predictions = topk_from_probs(food101_results, k=5)
+            print(f"✅ Food101 classification: {len(food101_predictions)} predictions")
+        except Exception as f101_error:
+            print(f"❌ Food101 error: {f101_error}")
+            food101_predictions = []
+        
+        # Filipino Food Classification
+        try:
+            filipino_results = filipino_model(img)
+            filipino_predictions = topk_from_probs(filipino_results, k=5)
+            print(f"✅ Filipino classification: {len(filipino_predictions)} predictions")
+        except Exception as fil_error:
+            print(f"❌ Filipino error: {fil_error}")
+            filipino_predictions = []
+        
+        # Ingredient Detection
+        try:
+            ingredients_results = ingredients_model(img)
+            ingredient_predictions = topk_from_probs(ingredients_results, k=10)
+            print(f"✅ Ingredients classification: {len(ingredient_predictions)} predictions")
+        except Exception as ing_error:
+            print(f"❌ Ingredients error: {ing_error}")
+            ingredient_predictions = []
+        
+        return {
+            "success": True,
+            "detections": detections,
+            "food101_predictions": food101_predictions,
+            "filipino_predictions": filipino_predictions,
+            "ingredient_predictions": ingredient_predictions,
+            "detection_count": len(detections)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Recognition error: {e}")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -195,12 +268,11 @@ async def recognize_food(file: UploadFile = File(...)):
 async def extract_text_from_image(file: UploadFile = File(...)):
     """Extract text from image using Tesseract OCR."""
     try:
-        # ✅ FIX: Add error handling for image loading
         try:
             img = pil_from_upload(file)
-            print(f"✅ OCR image loaded: {img.size}")
+            print(f"✅ Image loaded for OCR: {img.size}")
         except Exception as img_error:
-            print(f"❌ Failed to load image for OCR: {img_error}")
+            print(f"❌ Failed to load image: {img_error}")
             raise HTTPException(status_code=400, detail=f"Invalid image file: {str(img_error)}")
         
         if img.mode != 'RGB':
@@ -222,8 +294,7 @@ async def extract_text_from_image(file: UploadFile = File(...)):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ OCR Error: {e}")
-        import traceback
+        print(f"❌ OCR error: {e}")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"OCR failed: {str(e)}")
 
@@ -239,7 +310,7 @@ async def search_foods(search_expression: str = Query(...)):
 @app.get("/fatsecret/food")
 async def get_food(food_id: str = Query(...)):
     try:
-        result = call_server_api("food.get.v2", {"food_id": food_id})
+        result = call_server_api("food.get", {"food_id": food_id})
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
