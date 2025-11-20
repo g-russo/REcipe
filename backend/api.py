@@ -20,6 +20,9 @@ import traceback
 # ✅ Load .env file FIRST
 load_dotenv()
 
+# ✅ EXPLICITLY SET TESSERACT PATH FOR LINUX
+pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
+
 # FatSecret API credentials
 FATSECRET_API_URL = "https://platform.fatsecret.com/rest/server.api"
 FATSECRET_KEY = os.getenv("FATSECRET_CLIENT_ID", "")
@@ -73,6 +76,7 @@ filipino_model = YOLO('models/filipino_cls_best.pt').to(device)
 ingredients_model = YOLO('models/ingredients_best.pt').to(device)
 
 print("✅ All models loaded successfully!")
+print(f"🔍 Tesseract path: {pytesseract.pytesseract.tesseract_cmd}")
 
 app = FastAPI(title="REcipe API", version="1.0.0")
 app.add_middleware(
@@ -166,8 +170,8 @@ async def recognize_food(file: UploadFile = File(...)):
         
         # ✅ Step 4: Ingredient Detection
         try:
-            # ✅ Lower confidence threshold for testing
-            ingredients_results = ingredients_model(img, conf=0.1)  # 10% confidence
+            # ✅ LOWERED confidence threshold to 0.01 (1%) to detect more
+            ingredients_results = ingredients_model(img, conf=0.01)
             ingredient_predictions = []
             
             if ingredients_results and len(ingredients_results) > 0 and len(ingredients_results[0].boxes) > 0:
@@ -224,6 +228,14 @@ async def extract_text_from_image(file: UploadFile = File(...)):
         
         if img.mode != 'RGB':
             img = img.convert('RGB')
+        
+        # ✅ Test if Tesseract is accessible
+        try:
+            version = pytesseract.get_tesseract_version()
+            print(f"✅ Tesseract version: {version}")
+        except Exception as version_error:
+            print(f"❌ Tesseract version check failed: {version_error}")
+            raise HTTPException(status_code=500, detail=f"Tesseract not accessible: {str(version_error)}")
         
         text = pytesseract.image_to_string(img)
         
