@@ -17,8 +17,13 @@ class SousChefAIService {
       // 2. Similar recipe names
       // 3. Similar ingredients (using JSONB search)
       
-      // Split search query into keywords
-      const keywords = searchQuery.toLowerCase().split(' ').filter(k => k.length > 2);
+      // Filter out common words that don't indicate recipe content
+      const stopWords = ['generate', 'recipe', 'for', 'with', 'the', 'and', 'make', 'create', 'cook', 'using'];
+      
+      // Split search query into meaningful keywords (longer than 3 chars and not stop words)
+      const keywords = searchQuery.toLowerCase()
+        .split(' ')
+        .filter(k => k.length > 3 && !stopWords.includes(k));
       
       let allRecipes = [];
 
@@ -60,15 +65,20 @@ class SousChefAIService {
 
         if (!error3 && allDbRecipes) {
           // Filter recipes that have matching ingredients
-          const ingredientMatches = allDbRecipes.filter(recipe => {
-            const ingredientsStr = JSON.stringify(recipe.ingredients).toLowerCase();
-            return keywords.some(keyword => ingredientsStr.includes(keyword));
-          });
+          // Score each recipe by how many keywords match
+          const scoredMatches = allDbRecipes.map(recipe => {
+            const recipeText = `${recipe.recipeName} ${JSON.stringify(recipe.ingredients)}`.toLowerCase();
+            const matchCount = keywords.filter(keyword => recipeText.includes(keyword)).length;
+            return { recipe, score: matchCount };
+          })
+          .filter(item => item.score > 0) // Only include recipes with at least one match
+          .sort((a, b) => b.score - a.score); // Sort by relevance
 
-          // Avoid duplicates
-          const newRecipes = ingredientMatches.filter(
-            recipe => !allRecipes.some(r => r.recipeID === recipe.recipeID)
-          ).slice(0, 3);
+          // Avoid duplicates and take top matches
+          const newRecipes = scoredMatches
+            .map(item => item.recipe)
+            .filter(recipe => !allRecipes.some(r => r.recipeID === recipe.recipeID))
+            .slice(0, 3);
 
           allRecipes.push(...newRecipes);
         }

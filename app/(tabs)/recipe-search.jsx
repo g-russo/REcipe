@@ -378,12 +378,15 @@ const RecipeSearch = () => {
   };
 
   const performSearch = async (query) => {
-    // Add to recent searches
-    addToRecentSearches(query);
+    // Replace underscores with spaces
+    const cleanedQuery = query.replace(/_/g, ' ');
+    
+    // Add to recent searches (use cleaned query)
+    addToRecentSearches(cleanedQuery);
 
     // ✅ CRITICAL: Save search query IMMEDIATELY for "Generate Another" button
-    setCurrentSearchQuery(query);
-    console.log(`🎯 Search query saved for AI generation: "${query}"`);
+    setCurrentSearchQuery(cleanedQuery);
+    console.log(`🎯 Search query saved for AI generation: "${cleanedQuery}"`);
 
     // Clear previous results to show loading screen
     setRecipes([]);
@@ -413,7 +416,7 @@ const RecipeSearch = () => {
     try {
       console.log('='.repeat(60));
       console.log('🔍 SEARCH STARTED');
-      console.log('🔍 Searching for recipes:', query);
+      console.log('🔍 Searching for recipes:', cleanedQuery);
       console.log('📋 Applied filters:', filters);
       console.log('🔑 API Keys loaded:', {
         edamamId: process.env.EXPO_PUBLIC_EDAMAM_APP_ID,
@@ -450,9 +453,9 @@ const RecipeSearch = () => {
 
       // Use Supabase cache service (automatically handles caching and API calls)
       // Note: Cache service returns recipes array directly, not wrapped in an object
-      console.log('📞 Calling cache service with query:', query);
+      console.log('📞 Calling cache service with query:', cleanedQuery);
 
-      const recipesResult = await cacheService.getSearchResults(query, searchOptions);
+      const recipesResult = await cacheService.getSearchResults(cleanedQuery, searchOptions);
       console.log('📦 Cache service raw result type:', Array.isArray(recipesResult) ? 'Array' : typeof recipesResult);
       console.log('📦 Cache service returned:', recipesResult?.length || 0, 'recipes');
       console.log('📦 First recipe:', recipesResult?.[0]?.label || 'No recipes');
