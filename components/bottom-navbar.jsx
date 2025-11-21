@@ -4,10 +4,12 @@ import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-nat
 import { useRouter, usePathname } from 'expo-router';
 import Svg, { Path, Circle, Rect } from 'react-native-svg';
 import * as Haptics from 'expo-haptics';
+import { useTabContext } from '../contexts/tab-context';
 
 const BottomNavbar = () => {
   const router = useRouter();
   const pathname = usePathname();
+  const { emit } = useTabContext();
   const [hasNavigationBar, setHasNavigationBar] = useState(false);
 
   // Animation values for each tab
@@ -40,8 +42,13 @@ const BottomNavbar = () => {
 
   // Handle press with haptics and animation
   const handlePress = (route, scaleValue) => {
+    const isAlreadyActive = isActive(route);
+
     // Trigger haptic feedback
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+    // Emit tab press event
+    emit({ type: 'tabPress', route, isAlreadyActive });
 
     // Instant spring bounce animation
     scaleValue.setValue(0.85);
@@ -52,8 +59,10 @@ const BottomNavbar = () => {
       bounciness: 12,
     }).start();
 
-    // Navigate to route
-    router.push(route);
+    // Navigate to route only if not already active
+    if (!isAlreadyActive) {
+      router.push(route);
+    }
   };
 
   // Only show navbar on tab pages - check if pathname includes the tab routes
@@ -184,6 +193,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: wp('7.5%'),
     borderTopWidth: 0,
     elevation: 15,
+    zIndex: 100, // Ensure navbar stays on top of flash
   },
   navItem: {
     flex: 1,

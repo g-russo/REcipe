@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { forwardRef, useImperativeHandle, useRef } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Dimensions } from 'react-native';
 // MODIFIED: Use a more direct import for MaterialCommunityIcons
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -32,14 +32,23 @@ const categoryIconMap = {
  * Inventory Groups Section Component
  * Displays horizontal scrollable list of inventory groups
  */
-const InventoryGroupsSection = ({ 
-  groups, 
-  onGroupPress, 
+const InventoryGroupsSection = forwardRef(({
+  groups,
+  onGroupPress,
   onCreateGroup,
   userName = 'My'
-}) => {
+}, ref) => {
   const router = useRouter();
-  
+  const scrollViewRef = useRef(null);
+
+  useImperativeHandle(ref, () => ({
+    scrollToStart: () => {
+      if (scrollViewRef.current) {
+        scrollViewRef.current.scrollTo({ x: 0, animated: true });
+      }
+    }
+  }));
+
   // Helper function to render icon or letter
   const renderGroupIcon = (group) => {
     const iconName = categoryIconMap[group.groupCategory];
@@ -47,10 +56,10 @@ const InventoryGroupsSection = ({
     if (iconName) {
       // Render MaterialCommunityIcons
       return (
-        <MaterialCommunityIcons 
-          name={iconName} 
-          size={28} 
-          color="#fff" 
+        <MaterialCommunityIcons
+          name={iconName}
+          size={28}
+          color="#fff"
         />
       );
     }
@@ -62,7 +71,7 @@ const InventoryGroupsSection = ({
       </Text>
     );
   };
-  
+
   if (groups.length === 0) {
     return (
       <View style={styles.section}>
@@ -76,7 +85,7 @@ const InventoryGroupsSection = ({
           </View>
           <Text style={styles.emptyTitle}>No groups created yet</Text>
           <Text style={styles.emptySubtitle}>Create groups to organize your pantry items</Text>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.addItemButton}
             onPress={onCreateGroup}
           >
@@ -91,7 +100,7 @@ const InventoryGroupsSection = ({
     <View style={styles.section}>
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Groups</Text>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.viewAllButton}
           onPress={() => router.push('/all-groups')}
         >
@@ -99,22 +108,23 @@ const InventoryGroupsSection = ({
           <MaterialCommunityIcons name="chevron-right" size={16} color="#81A969" />
         </TouchableOpacity>
       </View>
-      
-      <ScrollView 
+
+      <ScrollView
+        ref={scrollViewRef}
         horizontal
         showsHorizontalScrollIndicator={false}
         style={styles.categoriesScrollView}
       >
         {groups.map((group) => (
-          <TouchableOpacity 
-            key={group.groupID} 
+          <TouchableOpacity
+            key={group.groupID}
             style={[styles.categoryCard, { backgroundColor: group.groupColor || '#8BC34A' }]}
             onPress={() => onGroupPress(group)}
           >
             <View style={styles.categoryLetterContainer}>
               {renderGroupIcon(group)}
             </View>
-            
+
             <View style={styles.categoryDetails}>
               <View style={styles.categoryHeaderRow}>
                 <Text style={styles.categoryName}>
@@ -125,7 +135,7 @@ const InventoryGroupsSection = ({
                 </View>
               </View>
               <Text style={styles.itemCount}>{group.itemCount || 0} {(group.itemCount || 0) === 1 ? 'item' : 'items'}</Text>
-              
+
               {group.groupCategory && (
                 <View style={styles.categoryBadge}>
                   <Text style={styles.categoryBadgeText}>
@@ -136,10 +146,10 @@ const InventoryGroupsSection = ({
             </View>
           </TouchableOpacity>
         ))}
-        
+
         {/* Add New Group Card */}
-        <TouchableOpacity 
-          style={[styles.categoryCard, styles.emptyCard, styles.addNewCard]} 
+        <TouchableOpacity
+          style={[styles.categoryCard, styles.emptyCard, styles.addNewCard]}
           onPress={onCreateGroup}
         >
           <View style={styles.addNewContent}>
@@ -153,7 +163,7 @@ const InventoryGroupsSection = ({
       </ScrollView>
     </View>
   );
-};
+});
 
 // ... (Styles are unchanged)
 const styles = StyleSheet.create({

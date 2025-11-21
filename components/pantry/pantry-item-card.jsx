@@ -10,10 +10,10 @@ const CARD_WIDTH = (SCREEN_WIDTH - 40) * 0.48; // 48% of available width (accoun
  * Pantry Item Card Component
  * Displays a single pantry item with image, name, and expiration date
  */
-const PantryItemCard = ({ 
-  item, 
-  onPress, 
-  onLongPress, 
+const PantryItemCard = ({
+  item,
+  onPress,
+  onLongPress,
   onMenuPress,
   selectionMode = false,
   isSelected = false,
@@ -30,7 +30,7 @@ const PantryItemCard = ({
       wasSelected.current = true;
       // Trigger haptic feedback for selection
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-      
+
       // Selection animation: shrink and shake
       Animated.parallel([
         Animated.spring(scaleAnim, {
@@ -62,51 +62,32 @@ const PantryItemCard = ({
           }),
         ]),
       ]).start();
-    } else if (!isSelected && wasSelected.current) {
-      // Deselection - works both in selection mode and when exiting
-      // Trigger haptic feedback for deselection
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      
-      // Deselection animation: return to normal with shake
+    } else {
+      // Reset animation: return to normal
+      // This runs whenever selectionMode is false OR isSelected is false
+      // We ensure scale is reset to 1 and shake is 0
+
+      if (wasSelected.current) {
+        // Only trigger haptic if it was previously selected
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      }
+
       Animated.parallel([
-        Animated.spring(scaleAnim, {
+        Animated.timing(scaleAnim, {
           toValue: 1,
+          duration: 200,
           useNativeDriver: true,
-          tension: 100,
-          friction: 8,
         }),
-        Animated.sequence([
-          Animated.timing(shakeAnim, {
-            toValue: 8,
-            duration: 50,
-            useNativeDriver: true,
-          }),
-          Animated.timing(shakeAnim, {
-            toValue: -8,
-            duration: 50,
-            useNativeDriver: true,
-          }),
-          Animated.timing(shakeAnim, {
-            toValue: 8,
-            duration: 50,
-            useNativeDriver: true,
-          }),
-          Animated.timing(shakeAnim, {
-            toValue: 0,
-            duration: 50,
-            useNativeDriver: true,
-          }),
-        ]),
+        Animated.timing(shakeAnim, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
       ]).start(() => {
         wasSelected.current = false;
       });
-    } else if (!selectionMode) {
-      // Exit selection mode without being selected: just reset
-      wasSelected.current = false;
-      scaleAnim.setValue(1);
-      shakeAnim.setValue(0);
     }
-  }, [isSelected, selectionMode]);
+  }, [selectionMode, isSelected]);
 
   // Format expiration date
   const formatDate = (date) => {
@@ -151,67 +132,67 @@ const PantryItemCard = ({
         onLongPress={onLongPress}
         delayLongPress={300}
       >
-      {/* Selection Checkbox */}
-      {selectionMode && (
-        <View style={styles.checkboxContainer}>
-          <View style={[
-            styles.checkbox,
-            isSelected && styles.checkboxSelected
-          ]}>
-            {isSelected && (
-              <Ionicons name="checkmark" size={16} color="#fff" />
+        {/* Selection Checkbox */}
+        {selectionMode && (
+          <View style={styles.checkboxContainer}>
+            <View style={[
+              styles.checkbox,
+              isSelected && styles.checkboxSelected
+            ]}>
+              {isSelected && (
+                <Ionicons name="checkmark" size={16} color="#fff" />
+              )}
+            </View>
+          </View>
+        )}
+
+        {/* Item Image */}
+        {item.imageURL ? (
+          <Image
+            source={{ uri: item.imageURL }}
+            style={styles.itemImagePlaceholder}
+          />
+        ) : (
+          <View style={styles.itemImagePlaceholder}>
+            <Ionicons name="cube-outline" size={32} color="#ccc" />
+          </View>
+        )}
+
+        {/* Expiry Badge */}
+        {isExpired() && (
+          <View style={[styles.expiryBadge, styles.expiredBadge]}>
+            <Text style={styles.expiryBadgeText}>Expired</Text>
+          </View>
+        )}
+        {!isExpired() && isExpiringSoon() && (
+          <View style={[styles.expiryBadge, styles.expiringSoonBadge]}>
+            <Text style={styles.expiryBadgeText}>Expiring Soon</Text>
+          </View>
+        )}
+
+        <View style={styles.itemDetails}>
+          <Text style={styles.itemName} numberOfLines={1}>
+            {item.itemName}
+          </Text>
+          <Text style={styles.itemQuantity} numberOfLines={1}>
+            {item.quantity} {item.unit || 'unit(s)'}
+          </Text>
+          <View style={styles.itemFooter}>
+            <Text style={[
+              styles.expDate,
+              isExpired() && styles.expiredText,
+              isExpiringSoon() && styles.expiringSoonText
+            ]}>
+              {formatDate(item.itemExpiration)}
+            </Text>
+            {!selectionMode && (
+              <TouchableOpacity onPress={onMenuPress}>
+                <Ionicons name="ellipsis-vertical" size={16} color="#aaa" />
+              </TouchableOpacity>
             )}
           </View>
         </View>
-      )}
-      
-      {/* Item Image */}
-      {item.imageURL ? (
-        <Image 
-          source={{ uri: item.imageURL }} 
-          style={styles.itemImagePlaceholder}
-        />
-      ) : (
-        <View style={styles.itemImagePlaceholder}>
-          <Ionicons name="cube-outline" size={32} color="#ccc" />
-        </View>
-      )}
-
-      {/* Expiry Badge */}
-      {isExpired() && (
-        <View style={[styles.expiryBadge, styles.expiredBadge]}>
-          <Text style={styles.expiryBadgeText}>Expired</Text>
-        </View>
-      )}
-      {!isExpired() && isExpiringSoon() && (
-        <View style={[styles.expiryBadge, styles.expiringSoonBadge]}>
-          <Text style={styles.expiryBadgeText}>Expiring Soon</Text>
-        </View>
-      )}
-
-      <View style={styles.itemDetails}>
-        <Text style={styles.itemName} numberOfLines={1}>
-          {item.itemName}
-        </Text>
-        <Text style={styles.itemQuantity} numberOfLines={1}>
-          {item.quantity} {item.unit || 'unit(s)'}
-        </Text>
-        <View style={styles.itemFooter}>
-          <Text style={[
-            styles.expDate,
-            isExpired() && styles.expiredText,
-            isExpiringSoon() && styles.expiringSoonText
-          ]}>
-            {formatDate(item.itemExpiration)}
-          </Text>
-          {!selectionMode && (
-            <TouchableOpacity onPress={onMenuPress}>
-              <Ionicons name="ellipsis-vertical" size={16} color="#aaa" />
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
-    </TouchableOpacity>
+      </TouchableOpacity>
     </Animated.View>
   );
 };

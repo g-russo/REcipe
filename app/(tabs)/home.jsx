@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -18,6 +18,7 @@ import Svg, { Path, Circle } from 'react-native-svg';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { useCustomAuth } from '../../hooks/use-custom-auth';
 import { router, useFocusEffect } from 'expo-router';
+import { useTabContext } from '../../contexts/tab-context';
 import AuthGuard from '../../components/auth-guard';
 import NotificationDatabaseService from '../../services/notification-database-service';
 import RecipeHistoryService from '../../services/recipe-history-service';
@@ -60,6 +61,28 @@ const Home = () => {
   const [favoriteBusyMap, setFavoriteBusyMap] = useState({});
   const [hasPantryItems, setHasPantryItems] = useState(true);
   const userId = customUserData?.userID;
+  const scrollViewRef = useRef(null);
+  const pantryRecipesRef = useRef(null);
+  const makeItAgainRef = useRef(null);
+  const { subscribe } = useTabContext();
+
+  // Handle tab press events (scroll to top and reset horizontal scrolls)
+  useEffect(() => {
+    const unsubscribe = subscribe((event) => {
+      if (event.type === 'tabPress' && event.isAlreadyActive && event.route.includes('home')) {
+        if (scrollViewRef.current) {
+          scrollViewRef.current.scrollTo({ y: 0, animated: true });
+        }
+        if (pantryRecipesRef.current) {
+          pantryRecipesRef.current.scrollTo({ x: 0, animated: true });
+        }
+        if (makeItAgainRef.current) {
+          makeItAgainRef.current.scrollTo({ x: 0, animated: true });
+        }
+      }
+    });
+    return unsubscribe;
+  }, [subscribe]);
 
   useEffect(() => {
     if (customUserData?.userName) {
@@ -417,7 +440,7 @@ const Home = () => {
         });
 
       setPopularRecipes(normalized);
-      
+
       // ✅ Keep loading visible until recipes render (prevents flash of empty state)
       setTimeout(() => {
         setLoadingPopularRecipes(false);
@@ -596,6 +619,7 @@ const Home = () => {
               tintColor="#4CAF50"
             />
           }
+          ref={scrollViewRef}
         >
           {/* Header */}
           <View style={styles.header}>
@@ -647,6 +671,7 @@ const Home = () => {
               </View>
             ) : pantryRecipes.length > 0 ? (
               <ScrollView
+                ref={pantryRecipesRef}
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 style={[styles.horizontalScroll, { paddingLeft: wp('5%') }]}
@@ -720,6 +745,7 @@ const Home = () => {
                 Make It Again
               </Text>
               <ScrollView
+                ref={makeItAgainRef}
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 style={[styles.horizontalScroll, { paddingLeft: wp('5%') }]}
