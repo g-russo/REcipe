@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import ImageGenerationService from './image-generation-service';
+import RecipeHistoryService from './recipe-history-service';
 
 // Note: expo-notifications and NotificationDatabaseService imports removed
 // Notifications are now handled by the server-side daily cron job system
@@ -216,6 +217,36 @@ class RecipeSchedulingService {
         throw new Error('Schedule ID is required');
       }
 
+      // First, fetch the scheduled recipe to get recipe data and userID
+      const { data: scheduledRecipe, error: fetchError } = await supabase
+        .from('tbl_scheduled_recipes')
+        .select('*')
+        .eq('scheduleID', scheduleID)
+        .single();
+
+      if (fetchError) {
+        console.error('Error fetching scheduled recipe:', fetchError);
+        throw fetchError;
+      }
+
+      if (!scheduledRecipe) {
+        throw new Error('Scheduled recipe not found');
+      }
+
+      // Save to history before marking as completed
+      const historyResult = await RecipeHistoryService.saveRecipeToHistory(
+        scheduledRecipe.userID,
+        scheduledRecipe.recipeData,
+        [], // No ingredients used tracking for scheduled recipes
+        false // No substitutions for scheduled recipes
+      );
+
+      if (!historyResult.success) {
+        console.warn('⚠️ Failed to save to history, but continuing with completion:', historyResult.error);
+        // Continue marking as completed even if history save fails
+      }
+
+      // Mark as completed
       const { error } = await supabase
         .from('tbl_scheduled_recipes')
         .update({
@@ -229,7 +260,7 @@ class RecipeSchedulingService {
         throw error;
       }
 
-      console.log('✅ Recipe marked as completed');
+      console.log('✅ Recipe marked as completed and added to history');
       return {
         success: true
       };
