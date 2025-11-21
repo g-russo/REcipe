@@ -104,6 +104,7 @@ const InventoryGroupsSection = ({
         horizontal
         showsHorizontalScrollIndicator={false}
         style={styles.categoriesScrollView}
+        contentContainerStyle={{ paddingRight: 20 }}
       >
         {groups.map((group) => (
           <TouchableOpacity 
