@@ -6,9 +6,10 @@ import {
   TouchableOpacity,
   ScrollView,
   TextInput,
-  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import InsufficientPantryModal from './insufficient-pantry-modal';
+import SpecifyAmountModal from './specify-amount-modal';
 
 /**
  * Substitute Selector Component
@@ -28,6 +29,12 @@ const SubstituteSelector = ({
 }) => {
   const [editingQuantity, setEditingQuantity] = useState(null);
   const [customQuantities, setCustomQuantities] = useState({});
+  
+  // Modal states
+  const [showInsufficientModal, setShowInsufficientModal] = useState(false);
+  const [insufficientData, setInsufficientData] = useState({});
+  const [showSpecifyAmountModal, setShowSpecifyAmountModal] = useState(false);
+  const [specifyAmountData, setSpecifyAmountData] = useState({});
 
   // Unit conversion mappings
   const convertUnit = (value, fromUnit, toUnit) => {
@@ -139,11 +146,13 @@ const SubstituteSelector = ({
     if (isVagueUnit) {
       // Check if user has enough in pantry (already in same units)
       if (quantity > substitute.quantity) {
-        Alert.alert(
-          'Not Enough in Pantry',
-          `You only have ${substitute.quantity} ${substitute.unit || ''} of ${substitute.name} in your pantry.`,
-          [{ text: 'OK' }]
-        );
+        setInsufficientData({
+          ingredientName: substitute.name,
+          available: substitute.quantity,
+          availableUnit: substitute.unit || '',
+          needed: quantity,
+        });
+        setShowInsufficientModal(true);
         return;
       }
       
@@ -160,11 +169,13 @@ const SubstituteSelector = ({
     
     // Check if user has enough in pantry (compare in pantry units)
     if (quantityInPantryUnits > substitute.quantity) {
-      Alert.alert(
-        'Not Enough in Pantry',
-        `You only have ${substitute.quantity} ${substitute.unit || ''} of ${substitute.name} in your pantry.`,
-        [{ text: 'OK' }]
-      );
+      setInsufficientData({
+        ingredientName: substitute.name,
+        available: substitute.quantity,
+        availableUnit: substitute.unit || '',
+        needed: quantity,
+      });
+      setShowInsufficientModal(true);
       return;
     }
 
@@ -191,13 +202,15 @@ const SubstituteSelector = ({
         vagueMeasurement: `${originalQuantity} ${originalUnit}`  // Original "1 handful"
       };
       
-      // Alert user if they haven't specified amount
+      // Show modal if they haven't specified amount
       if (parsedQty === undefined || isNaN(parsedQty) || parsedQty === 0) {
-        Alert.alert(
-          'Specify Amount',
-          `The recipe calls for "${originalQuantity} ${originalUnit}" which is vague. Please tap the quantity to specify how much ${substitute.unit} you want to use.`,
-          [{ text: 'OK' }]
-        );
+        setSpecifyAmountData({
+          originalQuantity,
+          originalUnit,
+          substituteName: substitute.name,
+          substituteUnit: substitute.unit,
+        });
+        setShowSpecifyAmountModal(true);
         return;
       }
       
@@ -342,6 +355,26 @@ const SubstituteSelector = ({
           </Text>
         </View>
       )}
+
+      {/* Insufficient Pantry Modal */}
+      <InsufficientPantryModal
+        visible={showInsufficientModal}
+        onClose={() => setShowInsufficientModal(false)}
+        ingredientName={insufficientData.ingredientName}
+        available={insufficientData.available}
+        availableUnit={insufficientData.availableUnit}
+        needed={insufficientData.needed}
+      />
+
+      {/* Specify Amount Modal */}
+      <SpecifyAmountModal
+        visible={showSpecifyAmountModal}
+        onClose={() => setShowSpecifyAmountModal(false)}
+        originalQuantity={specifyAmountData.originalQuantity}
+        originalUnit={specifyAmountData.originalUnit}
+        substituteName={specifyAmountData.substituteName}
+        substituteUnit={specifyAmountData.substituteUnit}
+      />
     </View>
   );
 };
