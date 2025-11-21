@@ -91,17 +91,18 @@ const IngredientSubstitutionModal = ({
 
     setLoading(true);
     try {
-      // Get AI-powered substitutions for the selected ingredient
+      // Get SousChef AI-powered substitutions for the selected ingredient
       const ingredientName = IngredientSubstitutionService.normalizeIngredientName(selectedIngredient);
       const originalText = typeof selectedIngredient === 'string' ? selectedIngredient : (selectedIngredient.text || selectedIngredient);
       
-      // Try AI substitution first
-      console.log('🤖 Requesting AI substitutions...');
+      // Use SousChef AI (with automatic fallback to rule-based)
+      console.log('🤖 Requesting SousChef AI substitutions...');
       const suggestions = await IngredientSubstitutionService.getAISubstitutions(
         ingredientName,
         pantryItems,
         '', // recipe name (optional, could pass from props if available)
-        '' // cooking method (optional, could detect from recipe)
+        '', // cooking method (optional, could detect from recipe)
+        originalText // pass original text for better unit detection
       );
 
       if (suggestions.length === 0) {

@@ -212,7 +212,7 @@ export default function FavoritesTab({
             <View style={styles.recipeMeta}>
               <Ionicons name="time-outline" size={12} color="#999" />
               <Text style={styles.recipeMetaText}>
-                {recipe.cookTime || recipe.totalTime || 'N/A'} min
+                {recipe.cookTime || recipe.totalTime || '30'} min
               </Text>
             </View>
           </View>

@@ -173,7 +173,7 @@ export default function SavedRecipesScreen() {
             <View style={styles.metaItem}>
               <Ionicons name="time-outline" size={14} color="#666" />
               <Text style={styles.metaText}>
-                {recipe.cookTime || recipe.totalTime || 'N/A'} min
+                {recipe.cookTime || recipe.totalTime || '30'} min
               </Text>
             </View>
             
