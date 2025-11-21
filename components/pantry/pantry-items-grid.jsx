@@ -101,7 +101,6 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    gap: 20,
   },
   emptyStateContainer: {
     alignItems: 'center',
