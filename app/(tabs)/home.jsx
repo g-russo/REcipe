@@ -157,7 +157,7 @@ const Home = () => {
   const [favoriteBusyMap, setFavoriteBusyMap] = useState({});
   const [hasPantryItems, setHasPantryItems] = useState(true);
   const [toastQueue, setToastQueue] = useState([]);
-  
+
   const userId = customUserData?.userID;
   const scrollViewRef = useRef(null);
   const pantryRecipesRef = useRef(null);
@@ -228,7 +228,7 @@ const Home = () => {
       const map = {};
       (data || []).forEach(item => {
         if (item.isFavorited === false) return;
-        
+
         if (item.edamamRecipeURI) map[item.edamamRecipeURI] = true;
         if (item.aiRecipeID) map[item.aiRecipeID] = true;
       });
@@ -789,22 +789,22 @@ const Home = () => {
         } else {
           const result = await RecipeMatcherService.unsaveRecipe(user.email, recipeCard.recipeData);
           if (!result.success) {
-             // Revert on failure
-             setFavoritePopularUris(prev => ({ ...prev, [recipeURI]: true }));
-             Alert.alert('Error', result.error || 'Unable to remove favorite right now.');
+            // Revert on failure
+            setFavoritePopularUris(prev => ({ ...prev, [recipeURI]: true }));
+            Alert.alert('Error', result.error || 'Unable to remove favorite right now.');
           }
         }
       } catch (error) {
         console.error('Favorite toggle error:', error);
         // Revert on error
         setFavoritePopularUris(prev => {
-            if (newFavoriteState) {
-                const newMap = { ...prev };
-                delete newMap[recipeURI];
-                return newMap;
-            } else {
-                return { ...prev, [recipeURI]: true };
-            }
+          if (newFavoriteState) {
+            const newMap = { ...prev };
+            delete newMap[recipeURI];
+            return newMap;
+          } else {
+            return { ...prev, [recipeURI]: true };
+          }
         });
         Alert.alert('Error', error.message || 'Something went wrong.');
       } finally {
