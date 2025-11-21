@@ -494,16 +494,6 @@ export default function FoodRecognitionUpload() {
             <Ionicons name="chevron-forward" size={wp('5%')} color="#999" />
           </TouchableOpacity>
         </View>
-
-        {/* Info Banner */}
-        <View style={styles.infoBanner}>
-          <View style={styles.infoBannerIcon}>
-            <Ionicons name="checkmark-circle" size={wp('5%')} color="#2E7D32" />
-          </View>
-          <Text style={styles.infoBannerText}>
-            All scanned items are automatically saved to your pantry
-          </Text>
-        </View>
       </ScrollView>
 
       {/* Modals */}
