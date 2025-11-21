@@ -1459,7 +1459,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollViewContent: {
-    paddingBottom: 100,
+    paddingBottom: hp('15%'), // Increased responsive padding to match favorites-tab safe area
   },
   headerSpacer: {
     height: hp('11%'), // Match PantryHeader height (7% + 2% + ~2% for title)

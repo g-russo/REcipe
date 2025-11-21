@@ -2,7 +2,9 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
 // ✅ Add detailed logging
-const API_BASE_URL = Constants.expoConfig?.extra?.foodApiUrl || process.env.EXPO_PUBLIC_FOOD_API_URL || 'http://54.153.205.43:8000';
+// TEMPORARY: Pointing to local backend for testing Gemini
+const API_BASE_URL = 'http://192.168.5.59:8000'; // ✅ Include http:// protocol
+// const API_BASE_URL = Constants.expoConfig?.extra?.foodApiUrl || process.env.EXPO_PUBLIC_FOOD_API_URL || 'http://54.153.205.43:8000';
 
 console.log('🔧 ===== API CONFIGURATION =====');
 console.log('📍 API_BASE_URL:', API_BASE_URL);
@@ -29,15 +31,15 @@ const fetchWithTimeout = (url, options = {}, timeout = 30000) => {
 export const testConnection = async () => {
   try {
     console.log('🧪 Testing connection to:', `${API_BASE_URL}/health`);
-    
+
     const response = await fetchWithTimeout(`${API_BASE_URL}/health`, {}, 10000);
-    
+
     console.log('✅ Connection test response status:', response.status);
-    
+
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
-    
+
     const data = await response.json();
     console.log('✅ Connection test successful:', data);
     return { success: true, data };
@@ -56,24 +58,24 @@ export const recognizeFood = async (imageUri) => {
     console.log('📤 API URL:', `${API_BASE_URL}/recognize-food`);
     console.log('📱 Platform:', Platform.OS);
     console.log('🖼️ Image URI:', imageUri);
-    
+
     // ✅ FIX: Validate imageUri
     if (!imageUri) {
       throw new Error('No image URI provided');
     }
-    
+
     // Test connection first
     const connectionTest = await testConnection();
     if (!connectionTest.success) {
       throw new Error(`Server unreachable: ${connectionTest.error}`);
     }
-    
+
     // ✅ FIX: Determine file extension
     const fileExtension = imageUri.split('.').pop().toLowerCase();
-    const mimeType = fileExtension === 'jpg' || fileExtension === 'jpeg' 
-      ? 'image/jpeg' 
+    const mimeType = fileExtension === 'jpg' || fileExtension === 'jpeg'
+      ? 'image/jpeg'
       : `image/${fileExtension}`;
-    
+
     const formData = new FormData();
     formData.append('file', {
       uri: imageUri,
@@ -86,7 +88,7 @@ export const recognizeFood = async (imageUri) => {
       type: mimeType,
       name: `photo.${fileExtension}`
     });
-    
+
     const response = await fetchWithTimeout(
       `${API_BASE_URL}/recognize-food`,
       {
@@ -113,13 +115,13 @@ export const recognizeFood = async (imageUri) => {
     return data;
   } catch (error) {
     console.error('❌ Food recognition error:', error);
-    
+
     if (error.message === 'Request timeout') {
       throw new Error('Server is taking too long to respond. Please try again.');
     } else if (error.message.includes('Network request failed')) {
       throw new Error(`Cannot connect to ${API_BASE_URL}. Please check:\n1. Server is running\n2. You are connected to the internet\n3. Firewall/VPN is not blocking the connection`);
     }
-    
+
     throw error;
   }
 };
@@ -133,22 +135,22 @@ export const recognizeFoodCombined = async (imageUri) => {
     console.log('📤 API URL:', `${API_BASE_URL}/recognize-food-combined`);
     console.log('📱 Platform:', Platform.OS);
     console.log('🖼️ Image URI:', imageUri);
-    
+
     if (!imageUri) {
       throw new Error('No image URI provided');
     }
-    
+
     // Test connection first
     const connectionTest = await testConnection();
     if (!connectionTest.success) {
       throw new Error(`Server unreachable: ${connectionTest.error}`);
     }
-    
+
     const fileExtension = imageUri.split('.').pop().toLowerCase();
-    const mimeType = fileExtension === 'jpg' || fileExtension === 'jpeg' 
-      ? 'image/jpeg' 
+    const mimeType = fileExtension === 'jpg' || fileExtension === 'jpeg'
+      ? 'image/jpeg'
       : `image/${fileExtension}`;
-    
+
     const formData = new FormData();
     formData.append('file', {
       uri: imageUri,
@@ -161,7 +163,7 @@ export const recognizeFoodCombined = async (imageUri) => {
       type: mimeType,
       name: `photo.${fileExtension}`
     });
-    
+
     const response = await fetchWithTimeout(
       `${API_BASE_URL}/recognize-food-combined`,
       {
@@ -187,13 +189,13 @@ export const recognizeFoodCombined = async (imageUri) => {
     return data;
   } catch (error) {
     console.error('❌ Combined food recognition error:', error);
-    
+
     if (error.message === 'Request timeout') {
       throw new Error('Server is taking too long to respond. Please try again.');
     } else if (error.message.includes('Network request failed')) {
       throw new Error(`Cannot connect to ${API_BASE_URL}. Please check:\n1. Server is running\n2. You are connected to the internet\n3. Firewall/VPN is not blocking the connection`);
     }
-    
+
     throw error;
   }
 };
@@ -207,15 +209,15 @@ export const extractText = async (imageUri) => {
     console.log('📤 API URL:', `${API_BASE_URL}/ocr/extract`);
     console.log('📱 Platform:', Platform.OS);
     console.log('🖼️ Image URI:', imageUri);
-    
+
     // Test connection first
     const connectionTest = await testConnection();
     if (!connectionTest.success) {
       throw new Error(`Server unreachable: ${connectionTest.error}`);
     }
-    
+
     const formData = new FormData();
-    
+
     const filename = imageUri.split('/').pop();
     const match = /\.(\w+)$/.exec(filename);
     const type = match ? `image/${match[1]}` : 'image/jpeg';
@@ -253,13 +255,13 @@ export const extractText = async (imageUri) => {
       name: error.name,
       stack: error.stack
     });
-    
+
     if (error.message === 'Request timeout') {
       throw new Error('OCR is taking too long. Please try again.');
     } else if (error.message.includes('Network request failed')) {
       throw new Error(`Cannot connect to ${API_BASE_URL}. Please check:\n1. Server is running\n2. You are connected to the internet\n3. Firewall/VPN is not blocking the connection`);
     }
-    
+
     throw error;
   }
 };

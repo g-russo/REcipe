@@ -1,13 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform, Dimensions } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform, Dimensions, Animated } from 'react-native';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { useRouter, usePathname } from 'expo-router';
 import Svg, { Path, Circle, Rect } from 'react-native-svg';
+import * as Haptics from 'expo-haptics';
 
 const BottomNavbar = () => {
   const router = useRouter();
   const pathname = usePathname();
   const [hasNavigationBar, setHasNavigationBar] = useState(false);
+
+  // Animation values for each tab
+  const homeScale = useState(new Animated.Value(1))[0];
+  const searchScale = useState(new Animated.Value(1))[0];
+  const scanScale = useState(new Animated.Value(1))[0];
+  const pantryScale = useState(new Animated.Value(1))[0];
+  const profileScale = useState(new Animated.Value(1))[0];
 
   useEffect(() => {
     if (Platform.OS === 'android') {
@@ -30,6 +38,24 @@ const BottomNavbar = () => {
   const activeColor = '#81A969';
   const inactiveColor = '#C6C6C6';
 
+  // Handle press with haptics and animation
+  const handlePress = (route, scaleValue) => {
+    // Trigger haptic feedback
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+    // Instant spring bounce animation
+    scaleValue.setValue(0.85);
+    Animated.spring(scaleValue, {
+      toValue: 1,
+      useNativeDriver: true,
+      speed: 50,
+      bounciness: 12,
+    }).start();
+
+    // Navigate to route
+    router.push(route);
+  };
+
   // Only show navbar on tab pages - check if pathname includes the tab routes
   const showNavbar = pathname.includes('/home') ||
     pathname.includes('/recipe-search') ||
@@ -48,85 +74,95 @@ const BottomNavbar = () => {
         {/* Home */}
         <TouchableOpacity
           style={styles.navItem}
-          onPress={() => router.push('/(tabs)/home')}
+          onPress={() => handlePress('/(tabs)/home', homeScale)}
           activeOpacity={0.7}
         >
-          <Svg width={wp('6%')} height={wp('6%')} viewBox="0 0 24 24" fill="none" stroke={isActive('/(tabs)/home') ? activeColor : inactiveColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <Path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-            <Path d="M9 22V12h6v10" />
-          </Svg>
-          <Text style={[styles.navLabel, { color: isActive('/(tabs)/home') ? activeColor : inactiveColor, fontSize: wp('2.6%') }]}>
-            Home
-          </Text>
+          <Animated.View style={{ transform: [{ scale: homeScale }], alignItems: 'center' }}>
+            <Svg width={wp('6%')} height={wp('6%')} viewBox="0 0 24 24" fill="none" stroke={isActive('/(tabs)/home') ? activeColor : inactiveColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <Path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+              <Path d="M9 22V12h6v10" />
+            </Svg>
+            <Text style={[styles.navLabel, { color: isActive('/(tabs)/home') ? activeColor : inactiveColor, fontSize: wp('2.6%') }]}>
+              Home
+            </Text>
+          </Animated.View>
         </TouchableOpacity>
 
         {/* Search */}
         <TouchableOpacity
           style={styles.navItem}
-          onPress={() => router.push('/(tabs)/recipe-search')}
+          onPress={() => handlePress('/(tabs)/recipe-search', searchScale)}
           activeOpacity={0.7}
         >
-          <Svg width={wp('6%')} height={wp('6%')} viewBox="0 0 24 24" fill="none" stroke={isActive('/(tabs)/recipe-search') ? activeColor : inactiveColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <Circle cx="11" cy="11" r="8" />
-            <Path d="m21 21-4.35-4.35" />
-          </Svg>
-          <Text style={[styles.navLabel, { color: isActive('/(tabs)/recipe-search') ? activeColor : inactiveColor, fontSize: wp('2.6%') }]}>
-            Search
-          </Text>
+          <Animated.View style={{ transform: [{ scale: searchScale }], alignItems: 'center' }}>
+            <Svg width={wp('6%')} height={wp('6%')} viewBox="0 0 24 24" fill="none" stroke={isActive('/(tabs)/recipe-search') ? activeColor : inactiveColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <Circle cx="11" cy="11" r="8" />
+              <Path d="m21 21-4.35-4.35" />
+            </Svg>
+            <Text style={[styles.navLabel, { color: isActive('/(tabs)/recipe-search') ? activeColor : inactiveColor, fontSize: wp('2.6%') }]}>
+              Search
+            </Text>
+          </Animated.View>
         </TouchableOpacity>
 
         {/* Scan (Center) */}
         <TouchableOpacity
           style={styles.scanButton}
-          onPress={() => router.push('/food-recognition/upload')}
+          onPress={() => handlePress('/food-recognition/upload', scanScale)}
           activeOpacity={0.8}
         >
-          <View style={[styles.scanButtonInner, {
-            width: wp('14.5%'),
-            height: wp('14.5%'),
-            borderRadius: wp('7.25%')
-          }]}>
-            <Svg width={wp('8%')} height={wp('8%')} viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <Path d="M3 7V5a2 2 0 0 1 2-2h2" />
-              <Path d="M17 3h2a2 2 0 0 1 2 2v2" />
-              <Path d="M21 17v2a2 2 0 0 1-2 2h-2" />
-              <Path d="M7 21H5a2 2 0 0 1-2-2v-2" />
-              <Circle cx="12" cy="12" r="1" />
-              <Path d="M18.944 12.33a1 1 0 0 0 0-.66 7.5 7.5 0 0 0-13.888 0 1 1 0 0 0 0 .66 7.5 7.5 0 0 0 13.888 0" />
-            </Svg>
-          </View>
+          <Animated.View style={{ transform: [{ scale: scanScale }], alignItems: 'center' }}>
+            <View style={[styles.scanButtonInner, {
+              width: wp('14.5%'),
+              height: wp('14.5%'),
+              borderRadius: wp('7.25%')
+            }]}>
+              <Svg width={wp('8%')} height={wp('8%')} viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <Path d="M3 7V5a2 2 0 0 1 2-2h2" />
+                <Path d="M17 3h2a2 2 0 0 1 2 2v2" />
+                <Path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+                <Path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+                <Circle cx="12" cy="12" r="1" />
+                <Path d="M18.944 12.33a1 1 0 0 0 0-.66 7.5 7.5 0 0 0-13.888 0 1 1 0 0 0 0 .66 7.5 7.5 0 0 0 13.888 0" />
+              </Svg>
+            </View>
+          </Animated.View>
         </TouchableOpacity>
 
         {/* Pantry */}
         <TouchableOpacity
           style={styles.navItem}
-          onPress={() => router.push('/(tabs)/pantry')}
+          onPress={() => handlePress('/(tabs)/pantry', pantryScale)}
           activeOpacity={0.7}
         >
-          <Svg width={wp('6%')} height={wp('6%')} viewBox="0 0 24 24" fill="none" stroke={isActive('/(tabs)/pantry') ? activeColor : inactiveColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <Rect width="7" height="7" x="3" y="3" rx="1" />
-            <Rect width="7" height="7" x="14" y="3" rx="1" />
-            <Rect width="7" height="7" x="14" y="14" rx="1" />
-            <Rect width="7" height="7" x="3" y="14" rx="1" />
-          </Svg>
-          <Text style={[styles.navLabel, { color: isActive('/(tabs)/pantry') ? activeColor : inactiveColor, fontSize: wp('2.6%') }]}>
-            Pantry
-          </Text>
+          <Animated.View style={{ transform: [{ scale: pantryScale }], alignItems: 'center' }}>
+            <Svg width={wp('6%')} height={wp('6%')} viewBox="0 0 24 24" fill="none" stroke={isActive('/(tabs)/pantry') ? activeColor : inactiveColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <Rect width="7" height="7" x="3" y="3" rx="1" />
+              <Rect width="7" height="7" x="14" y="3" rx="1" />
+              <Rect width="7" height="7" x="14" y="14" rx="1" />
+              <Rect width="7" height="7" x="3" y="14" rx="1" />
+            </Svg>
+            <Text style={[styles.navLabel, { color: isActive('/(tabs)/pantry') ? activeColor : inactiveColor, fontSize: wp('2.6%') }]}>
+              Pantry
+            </Text>
+          </Animated.View>
         </TouchableOpacity>
 
         {/* Profile */}
         <TouchableOpacity
           style={styles.navItem}
-          onPress={() => router.push('/(tabs)/profile')}
+          onPress={() => handlePress('/(tabs)/profile', profileScale)}
           activeOpacity={0.7}
         >
-          <Svg width={wp('6%')} height={wp('6%')} viewBox="0 0 24 24" fill="none" stroke={isActive('/(tabs)/profile') ? activeColor : inactiveColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <Circle cx="12" cy="8" r="5" />
-            <Path d="M20 21a8 8 0 0 0-16 0" />
-          </Svg>
-          <Text style={[styles.navLabel, { color: isActive('/(tabs)/profile') ? activeColor : inactiveColor, fontSize: wp('2.6%') }]}>
-            Profile
-          </Text>
+          <Animated.View style={{ transform: [{ scale: profileScale }], alignItems: 'center' }}>
+            <Svg width={wp('6%')} height={wp('6%')} viewBox="0 0 24 24" fill="none" stroke={isActive('/(tabs)/profile') ? activeColor : inactiveColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <Circle cx="12" cy="8" r="5" />
+              <Path d="M20 21a8 8 0 0 0-16 0" />
+            </Svg>
+            <Text style={[styles.navLabel, { color: isActive('/(tabs)/profile') ? activeColor : inactiveColor, fontSize: wp('2.6%') }]}>
+              Profile
+            </Text>
+          </Animated.View>
         </TouchableOpacity>
       </View>
     );

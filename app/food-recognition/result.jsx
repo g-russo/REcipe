@@ -24,6 +24,7 @@ import * as Haptics from 'expo-haptics';
 import AuthGuard from '../../components/auth-guard';
 
 const CONFIDENCE_THRESHOLD = 0.03; // 3% minimum confidence
+const DISPLAY_THRESHOLD = 0.60; // 60% minimum confidence for "Other Options" list
 
 // Category options for manual entry
 const CATEGORIES = [
@@ -41,13 +42,15 @@ export default function FoodRecognitionResult() {
   // ✅ FIX: Get params correctly
   const params = useLocalSearchParams();
   const uri = params.uri;
-  
+
   const insets = useSafeAreaInsets();
 
   const [loading, setLoading] = useState(true);
   const [result, setResult] = useState(null);
   const [selectedFood, setSelectedFood] = useState(null);
-  
+  const [showOtherOptions, setShowOtherOptions] = useState(false);
+  const [optionsModalVisible, setOptionsModalVisible] = useState(false); // ✅ NEW: Options Modal State
+
   // Manual entry modal state
   const [manualEntryVisible, setManualEntryVisible] = useState(false);
   const [manualItemName, setManualItemName] = useState('');
@@ -58,7 +61,7 @@ export default function FoodRecognitionResult() {
 
   // Detailed Results Modal State
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
-  
+
   // Success Modal State
   const [successModalVisible, setSuccessModalVisible] = useState(false);
   const [addedItemName, setAddedItemName] = useState('');
@@ -121,87 +124,135 @@ export default function FoodRecognitionResult() {
     }
   }, [result, uri]);
 
-  // Get ALL predictions with ≥3% confidence for selection
+  // Get ALL predictions with ≥60% confidence for selection
   const getSelectableOptions = (data) => {
     if (!data || !data.success) return [];
 
-    const allPredictions = [];
-
-    // Add detector detections
-    if (data.detections && Array.isArray(data.detections)) {
-      data.detections.forEach(d => {
-        allPredictions.push({
-          label: d.class,
-          confidence: d.confidence || 0,
-          source: 'Detector (YOLOv8)',
-          type: 'detector'
-        });
-      });
-    }
-
-    // Add Food101 predictions
-    if (data.food101_predictions && Array.isArray(data.food101_predictions)) {
-      data.food101_predictions.forEach(f => {
-        allPredictions.push({
-          label: f.name,
-          confidence: f.confidence || 0,
-          source: 'Food101 Classifier',
-          type: 'food101'
-        });
-      });
-    }
-
-    // Add Filipino predictions
-    if (data.filipino_predictions && Array.isArray(data.filipino_predictions)) {
-      data.filipino_predictions.forEach(f => {
-        allPredictions.push({
-          label: f.name,
-          confidence: f.confidence || 0,
-          source: 'Filipino Classifier',
-          type: 'filipino'
-        });
-      });
-    }
-
-    // ✅ Add ingredient predictions
-    if (data.ingredient_predictions && Array.isArray(data.ingredient_predictions)) {
-      data.ingredient_predictions.forEach(i => {
-        allPredictions.push({
-          label: i.name,
-          confidence: i.confidence || 0,
-          source: 'Ingredient Detector',
-          type: 'ingredient'
-        });
-      });
-    }
-
-    // Remove duplicates (keep highest confidence for same food)
-    const uniqueMap = new Map();
-    allPredictions.forEach(pred => {
-      const normalizedLabel = pred.label.toLowerCase().trim();
-      const existing = uniqueMap.get(normalizedLabel);
-      
-      if (!existing || pred.confidence > existing.confidence) {
-        uniqueMap.set(normalizedLabel, pred);
+    let geminiPredictions = [];
+    if (data.gemini_prediction) {
+      if (Array.isArray(data.gemini_prediction)) {
+        geminiPredictions = data.gemini_prediction;
+      } else {
+        geminiPredictions = [data.gemini_prediction];
       }
-    });
+    }
 
-    // Filter by threshold and sort by confidence
+    // ✅ Check for Gemini "Unknown" or "Not a Food"
+    if (geminiPredictions.length > 0) {
+      const first = geminiPredictions[0];
+      const name = first.name.toLowerCase();
+      if (name.includes('unknown') || name.includes('not a food')) {
+        return [{
+          label: 'Unknown Food',
+          confidence: 0,
+          source: 'SousChef AI',
+          type: 'unknown',
+          isUnknown: true
+        }];
+      }
+    }
+
+    const uniqueMap = new Map();
+
+    // 1. Add Gemini Primary (Always add if available)
+    if (geminiPredictions.length > 0) {
+      const first = geminiPredictions[0];
+      uniqueMap.set(first.name.toLowerCase().trim(), {
+        label: first.name,
+        confidence: first.confidence || 0.95, // High trust
+        source: 'SousChef AI',
+        type: 'gemini'
+      });
+    }
+
+    // Helper to add predictions if they meet threshold
+    const addIfValid = (items, source, type) => {
+      if (!items || !Array.isArray(items)) return;
+      items.forEach(item => {
+        const conf = item.confidence || 0;
+        // STRICT FILTER: Only >= DISPLAY_THRESHOLD (0.60)
+        if (conf >= DISPLAY_THRESHOLD) {
+          const label = (item.class || item.name).trim(); // Handle 'class' vs 'name'
+          const normalizedLabel = label.toLowerCase();
+
+          // Only add if not exists or higher confidence
+          const existing = uniqueMap.get(normalizedLabel);
+          if (!existing || conf > existing.confidence) {
+            uniqueMap.set(normalizedLabel, {
+              label: label,
+              confidence: conf,
+              source: source,
+              type: type
+            });
+          }
+        }
+      });
+    };
+
+    // 2. Add Local Models (Filtered by 60% threshold)
+    addIfValid(data.detections, 'Detector (YOLOv8)', 'detector');
+    addIfValid(data.food101_predictions, 'Food101 Classifier', 'food101');
+    addIfValid(data.filipino_predictions, 'Filipino Classifier', 'filipino');
+    addIfValid(data.ingredient_predictions, 'Ingredient Detector', 'ingredient');
+
+    // 3. Fill with Gemini Alternatives if < 5
+    if (uniqueMap.size < 5 && geminiPredictions.length > 1) {
+      for (let i = 1; i < geminiPredictions.length; i++) {
+        if (uniqueMap.size >= 5) break;
+        const pred = geminiPredictions[i];
+
+        // Ensure confidence is a number
+        const conf = typeof pred.confidence === 'number' ? pred.confidence : 0;
+
+        // ✅ STRICT CHECK: Skip if below threshold
+        if (conf < DISPLAY_THRESHOLD) continue;
+
+        const normalizedLabel = pred.name.toLowerCase().trim();
+
+        if (!uniqueMap.has(normalizedLabel)) {
+          uniqueMap.set(normalizedLabel, {
+            label: pred.name,
+            confidence: conf,
+            source: 'SousChef AI (Alternative)',
+            type: 'gemini_alt'
+          });
+        }
+      }
+    }
+
+    // Sort by confidence (Gemini first)
     return Array.from(uniqueMap.values())
-      .filter(p => p.confidence >= CONFIDENCE_THRESHOLD)
-      .sort((a, b) => b.confidence - a.confidence);
-  };
-
-  // Get top 5 results per model for display
+      .sort((a, b) => {
+        if (a.type === 'gemini') return -1;
+        if (b.type === 'gemini') return 1;
+        return b.confidence - a.confidence;
+      });
+  };  // Get top 5 results per model for display
   const getModelResults = (data) => {
-    if (!data || !data.success) return { detector: [], food101: [], filipino: [], ingredients: [] };
+    if (!data || !data.success) return { detector: [], food101: [], filipino: [], ingredients: [], gemini: [] };
 
     const results = {
       detector: [],
       food101: [],
       filipino: [],
-      ingredients: [] // ✅ Add ingredients
+      ingredients: [], // ✅ Add ingredients
+      gemini: [] // ✅ Add Gemini
     };
+
+    // ✅ Map Gemini result
+    if (data.gemini_prediction) {
+      if (Array.isArray(data.gemini_prediction)) {
+        results.gemini = data.gemini_prediction.map(p => ({
+          label: p.name,
+          confidence: p.confidence || 0.99
+        }));
+      } else {
+        results.gemini.push({
+          label: data.gemini_prediction.name,
+          confidence: data.gemini_prediction.confidence || 0.99
+        });
+      }
+    }
 
     // Detector results (top 5)
     if (data.detections && Array.isArray(data.detections)) {
@@ -247,24 +298,31 @@ export default function FoodRecognitionResult() {
   };
 
   const selectableOptions = result ? getSelectableOptions(result) : [];
-  const modelResults = result ? getModelResults(result) : { detector: [], food101: [], filipino: [], ingredients: [] };
+  const modelResults = result ? getModelResults(result) : { detector: [], food101: [], filipino: [], ingredients: [], gemini: [] };
+
+  // ✅ FIX: Automatically select the best option when results load
+  useEffect(() => {
+    if (selectableOptions.length > 0 && !selectedFood) {
+      setSelectedFood(selectableOptions[0]);
+    }
+  }, [result]);
 
   // Helper function to determine category
   const determineFoodCategory = (foodName) => {
     const name = foodName.toLowerCase();
-    if (/apple|banana|orange|grape|strawberry|mango|pineapple|watermelon|kiwi|berry|guava|papaya|melon/i.test(name)) 
+    if (/apple|banana|orange|grape|strawberry|mango|pineapple|watermelon|kiwi|berry|guava|papaya|melon/i.test(name))
       return 'Fruits';
-    if (/carrot|tomato|potato|onion|lettuce|cabbage|spinach|broccoli|pepper|cucumber|eggplant|squash|pumpkin/i.test(name)) 
+    if (/carrot|tomato|potato|onion|lettuce|cabbage|spinach|broccoli|pepper|cucumber|eggplant|squash|pumpkin/i.test(name))
       return 'Vegetables';
-    if (/chicken|beef|pork|fish|salmon|tuna|egg|tofu|meat|steak|shrimp|lobster|crab/i.test(name)) 
+    if (/chicken|beef|pork|fish|salmon|tuna|egg|tofu|meat|steak|shrimp|lobster|crab/i.test(name))
       return 'Meat & Protein';
-    if (/milk|cheese|yogurt|butter|cream|dairy/i.test(name)) 
+    if (/milk|cheese|yogurt|butter|cream|dairy/i.test(name))
       return 'Dairy';
-    if (/rice|bread|pasta|noodle|wheat|cereal|oat|quinoa|barley/i.test(name)) 
+    if (/rice|bread|pasta|noodle|wheat|cereal|oat|quinoa|barley/i.test(name))
       return 'Grains';
-    if (/juice|soda|coffee|tea|water|drink|beverage|smoothie/i.test(name)) 
+    if (/juice|soda|coffee|tea|water|drink|beverage|smoothie/i.test(name))
       return 'Beverages';
-    if (/chip|cookie|candy|chocolate|snack|cracker|popcorn/i.test(name)) 
+    if (/chip|cookie|candy|chocolate|snack|cracker|popcorn/i.test(name))
       return 'Snacks';
     return 'Other';
   };
@@ -286,7 +344,7 @@ export default function FoodRecognitionResult() {
     }
 
     setAddingToInventory(true);
-    
+
     try {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) {
@@ -441,10 +499,10 @@ export default function FoodRecognitionResult() {
 
   const handleSearchRecipes = () => {
     if (!selectedFood) return;
-    
+
     router.push({
       pathname: '/(tabs)/recipe-search',
-      params: { 
+      params: {
         searchQuery: selectedFood.label,
         autoSearch: 'true'
       }
@@ -494,7 +552,7 @@ export default function FoodRecognitionResult() {
         <Animated.View
           style={[
             styles.stickyHeader,
-            { 
+            {
               opacity: headerOpacity,
               transform: [{ translateY: headerTranslateY }],
               height: insets.top + hp('2%') + wp('12%') + hp('1.5%'),
@@ -503,13 +561,13 @@ export default function FoodRecognitionResult() {
           ]}
         >
           <View style={styles.stickyHeaderContent}>
-            <TouchableOpacity 
-              style={styles.stickyBackButton} 
+            <TouchableOpacity
+              style={styles.stickyBackButton}
               onPress={() => router.back()}
             >
               <Ionicons name="arrow-back" size={24} color="#fff" />
             </TouchableOpacity>
-            <Animated.Text 
+            <Animated.Text
               style={[
                 styles.stickyHeaderTitle,
                 {
@@ -551,147 +609,113 @@ export default function FoodRecognitionResult() {
             { useNativeDriver: true }
           )}
           scrollEventThrottle={16}
+          scrollEnabled={false}
         >
           <View style={styles.parallaxSpacer} />
 
           <View style={styles.contentCard}>
-            {/* Header Section */}
-            <View style={styles.headerSection}>
-              <Text style={styles.resultsTitle}>Food Recognition Results</Text>
-              <Text style={styles.resultsSubtitle}>
-                {selectableOptions.length} items detected with ≥3% confidence
-              </Text>
-            </View>
-
-            {/* Selectable Options Section */}
-            {selectableOptions.length > 0 ? (
-              <View style={styles.optionsContainer}>
-                <View style={styles.sectionHeader}>
-                  <Ionicons name="checkmark-circle-outline" size={20} color="#81A969" />
-                  <Text style={styles.sectionHeaderText}>
-                    Select Food to Add ({selectableOptions.length} options)
-                  </Text>
+            {/* Hero Section - Top Result */}
+            {selectedFood && !selectedFood.isUnknown ? (
+              <View style={styles.heroContainer}>
+                <View style={styles.heroHeader}>
+                  <Text style={styles.heroLabel}>{selectedFood.label}</Text>
+                  <View style={styles.heroBadgeContainer}>
+                    <View style={styles.confidenceBadgeLarge}>
+                      <Ionicons name="analytics" size={16} color="#FFF" />
+                      <Text style={styles.confidenceTextLarge}>
+                        {(selectedFood.confidence * 100).toFixed(0)}% Confidence
+                      </Text>
+                    </View>
+                    <View style={styles.sourceBadgeLarge}>
+                      <Ionicons name={selectedFood.source.includes('SousChef') ? "sparkles" : "flask"} size={16} color="#666" />
+                      <Text style={styles.sourceTextLarge}>{selectedFood.source}</Text>
+                    </View>
+                  </View>
                 </View>
 
-                {selectableOptions.map((item, index) => (
+                {/* Primary Actions for Selected Food */}
+                <View style={styles.heroActions}>
                   <TouchableOpacity
-                    key={index}
                     style={[
-                      styles.optionCard,
-                      selectedFood?.label === item.label && styles.optionCardSelected,
+                      styles.addButton,
+                      addingToInventory && styles.addButtonDisabled,
                     ]}
-                    onPress={() => {
-                      Haptics.selectionAsync();
-                      setSelectedFood(item);
-                    }}
-                    activeOpacity={0.7}
+                    onPress={handleAddToInventory}
+                    disabled={addingToInventory}
                   >
-                    <View style={styles.optionContent}>
-                      <View style={styles.optionTextContainer}>
-                        <Text style={styles.optionLabel}>{item.label}</Text>
-                        <View style={styles.optionMeta}>
-                          <View style={styles.confidenceBadge}>
-                            <Ionicons name="analytics-outline" size={14} color="#81A969" />
-                            <Text style={styles.optionConfidence}>
-                              {(item.confidence * 100).toFixed(1)}%
-                            </Text>
-                          </View>
-                          <View style={styles.sourceBadge}>
-                            <Ionicons name="flask-outline" size={12} color="#666" />
-                            <Text style={styles.optionSource}>{item.source}</Text>
-                          </View>
-                        </View>
-                      </View>
-                      <View style={[
-                        styles.radioButton,
-                        selectedFood?.label === item.label && styles.radioButtonSelected
-                      ]}>
-                        {selectedFood?.label === item.label && (
-                          <Ionicons name="checkmark" size={16} color="#fff" />
-                        )}
-                      </View>
-                    </View>
+                    {addingToInventory ? (
+                      <ActivityIndicator size="small" color="#FFF" />
+                    ) : (
+                      <>
+                        <Ionicons name="add-circle" size={22} color="#FFF" />
+                        <Text style={styles.addButtonText}>Add to Pantry</Text>
+                      </>
+                    )}
                   </TouchableOpacity>
-                ))}
+
+                  <TouchableOpacity
+                    style={styles.searchButtonHero}
+                    onPress={handleSearchRecipes}
+                  >
+                    <Ionicons name="search" size={22} color="#FFF" />
+                    <Text style={styles.addButtonText}>Find Recipes</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             ) : (
               <View style={styles.noResultsContainer}>
-                <Ionicons name="restaurant-outline" size={48} color="#999" />
+                <Ionicons name="help-circle-outline" size={64} color="#FF6B6B" />
                 <Text style={styles.noResultsText}>
-                  No foods detected with sufficient confidence
+                  {selectedFood?.isUnknown ? "We couldn't identify this food." : "No foods detected with sufficient confidence"}
                 </Text>
                 <Text style={styles.noResultsSubtext}>
-                  Try taking a clearer photo or add the item manually
+                  Try taking a clearer photo or add the item manually.
                 </Text>
               </View>
             )}
 
-            {/* Action Buttons */}
-            <View style={styles.actionButtonsContainer}>
+            {/* "Not your food?" Button */}
+            {selectableOptions.length > 1 && !selectedFood?.isUnknown && (
+              <View style={styles.toggleOptionsButton}>
+                <Text style={styles.notYourFoodText}>
+                  Not your food?{' '}
+                </Text>
+                <TouchableOpacity onPress={() => setOptionsModalVisible(true)}>
+                  <Text style={styles.toggleOptionsText}>View Options</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            <View style={styles.divider} />
+
+            {/* Secondary Actions */}
+            <View style={styles.secondaryActions}>
               <TouchableOpacity
                 style={styles.manualButton}
                 onPress={() => setManualEntryVisible(true)}
               >
-                <Ionicons name="create-outline" size={20} color="#FF6B6B" />
+                <Ionicons name="create-outline" size={20} color="#81A969" />
                 <Text style={styles.manualButtonText}>Manual Entry</Text>
               </TouchableOpacity>
 
-              {selectableOptions.length > 0 && (
+              {/* View Detailed Results Button */}
+              {result && (
                 <TouchableOpacity
-                  style={[
-                    styles.addButton,
-                    (!selectedFood || addingToInventory) && styles.addButtonDisabled,
-                  ]}
-                  onPress={handleAddToInventory}
-                  disabled={!selectedFood || addingToInventory}
+                  style={styles.detailsButton}
+                  onPress={() => setDetailsModalVisible(true)}
                 >
-                  {addingToInventory ? (
-                    <ActivityIndicator size="small" color="#FFF" />
-                  ) : (
-                    <>
-                      <Ionicons name="add-circle-outline" size={20} color="#FFF" />
-                      <Text style={styles.addButtonText}>Add to Pantry</Text>
-                    </>
-                  )}
+                  <Ionicons name="stats-chart-outline" size={20} color="#81A969" />
+                  <Text style={styles.detailsButtonText}>View Detailed Model Results</Text>
                 </TouchableOpacity>
               )}
             </View>
-
-            {/* Search Recipes Button */}
-            {selectableOptions.length > 0 && (
-              <TouchableOpacity
-                style={[
-                  styles.searchButton,
-                  !selectedFood && styles.searchButtonDisabled,
-                ]}
-                onPress={handleSearchRecipes}
-                disabled={!selectedFood}
-              >
-                <Ionicons name="search-outline" size={20} color="#FFF" />
-                <Text style={styles.searchButtonText}>
-                  Find Recipes for "{selectedFood?.label || 'Selected Food'}"
-                </Text>
-                <Ionicons name="arrow-forward-outline" size={20} color="#FFF" />
-              </TouchableOpacity>
-            )}
-
-            {/* View Detailed Results Button */}
-            {result && (
-              <TouchableOpacity 
-                style={styles.detailsButton}
-                onPress={() => setDetailsModalVisible(true)}
-              >
-                <Ionicons name="stats-chart-outline" size={20} color="#81A969" />
-                <Text style={styles.detailsButtonText}>View Detailed Model Results</Text>
-              </TouchableOpacity>
-            )}
           </View>
         </Animated.ScrollView>
 
         {/* Fixed Back Button (Initial State) */}
         <Animated.View style={[
-          styles.fixedBackButton, 
-          { 
+          styles.fixedBackButton,
+          {
             top: insets.top + 10,
             opacity: headerProgress.interpolate({
               inputRange: [0, 0.5],
@@ -703,6 +727,56 @@ export default function FoodRecognitionResult() {
             <Ionicons name="arrow-back" size={24} color="#333" />
           </TouchableOpacity>
         </Animated.View>
+
+        {/* Options Modal */}
+        <Modal
+          animationType="none"
+          transparent={true}
+          visible={optionsModalVisible}
+          onRequestClose={() => setOptionsModalVisible(false)}
+        >
+          <Animated.View style={[styles.centeredView, {
+            opacity: optionsModalVisible ? 1 : 0
+          }]}>
+            <View style={styles.modalView}>
+              <Text style={[styles.modalTitle, { marginBottom: 15 }]}>Select a Dish</Text>
+              <ScrollView style={{ width: '100%' }} showsVerticalScrollIndicator={false}>
+                {selectableOptions
+                  .filter(item => item.label !== selectedFood?.label)
+                  .map((item, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      style={styles.optionCard}
+                      onPress={() => {
+                        Haptics.selectionAsync();
+                        setSelectedFood(item);
+                        setOptionsModalVisible(false);
+                      }}
+                    >
+                      <View style={styles.optionContent}>
+                        <View style={styles.optionTextContainer}>
+                          <Text style={styles.optionLabel}>{item.label}</Text>
+                          <View style={styles.optionMeta}>
+                            <Text style={styles.optionConfidence}>
+                              {(item.confidence * 100).toFixed(0)}%
+                            </Text>
+                            <Text style={styles.optionSource}>{item.source}</Text>
+                          </View>
+                        </View>
+                        <Ionicons name="radio-button-off" size={20} color="#ccc" />
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+              </ScrollView>
+              <TouchableOpacity
+                style={[styles.button, styles.buttonClose]}
+                onPress={() => setOptionsModalVisible(false)}
+              >
+                <Text style={styles.textStyle}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        </Modal>
 
         {/* Manual Entry Modal */}
         <ManualEntryModal
@@ -737,8 +811,26 @@ export default function FoodRecognitionResult() {
             </View>
             <ScrollView style={styles.modalContent}>
               <Text style={styles.modelDetailsSubtitle}>
-                Top 5 predictions from each AI model
+                Top predictions from each AI model
               </Text>
+
+              {/* Gemini Results Section */}
+              {modelResults.gemini.length > 0 && (
+                <View style={styles.modelSection}>
+                  <View style={styles.modelSectionHeader}>
+                    <Ionicons name="sparkles" size={18} color="#673AB7" />
+                    <Text style={styles.modelSectionTitle}>SousChef AI Analysis</Text>
+                  </View>
+                  {modelResults.gemini.map((item, i) => (
+                    <View key={i} style={styles.resultRow}>
+                      <Text style={styles.resultLabel}>{item.label}</Text>
+                      <View style={styles.resultConfidenceBadge}>
+                        <Text style={styles.resultConfidence}>{(item.confidence * 100).toFixed(0)}%</Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
 
               {/* Detector Results */}
               {modelResults.detector.length > 0 && (
@@ -863,7 +955,7 @@ export default function FoodRecognitionResult() {
               <View style={successModalStyles.iconContainer}>
                 <Ionicons name="checkmark-circle" size={80} color="#81A969" />
               </View>
-              
+
               <Text style={successModalStyles.title}>Added Successfully!</Text>
               <Text style={successModalStyles.message}>
                 {addedItemName} has been added to your pantry.
@@ -930,13 +1022,13 @@ function ManualEntryModal({
       transparent={true}
       onRequestClose={onClose}
     >
-      <TouchableOpacity 
-        style={modalStyles.overlay} 
-        activeOpacity={1} 
+      <TouchableOpacity
+        style={modalStyles.overlay}
+        activeOpacity={1}
         onPress={onClose}
       >
-        <TouchableOpacity 
-          style={modalStyles.container} 
+        <TouchableOpacity
+          style={modalStyles.container}
           activeOpacity={1}
           onPress={(e) => e.stopPropagation()}
         >
@@ -1316,12 +1408,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#FFF',
     borderWidth: 2,
-    borderColor: '#FF6B6B',
+    borderColor: '#81A969',
     paddingVertical: hp('1.5%'),
     borderRadius: 12,
   },
   manualButtonText: {
-    color: '#FF6B6B',
+    color: '#81A969',
     fontSize: wp('4%'),
     fontWeight: 'bold',
     marginLeft: 6,
@@ -1369,9 +1461,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FFF',
-    borderWidth: 2,
-    borderColor: '#81A969',
+    backgroundColor: 'transparent',
     paddingVertical: hp('1.5%'),
     borderRadius: 12,
   },
@@ -1476,6 +1566,140 @@ const styles = StyleSheet.create({
     fontSize: wp('3.5%'),
     color: '#666',
     marginBottom: 4,
+  },
+  heroContainer: {
+    alignItems: 'center',
+    marginBottom: hp('3%'),
+  },
+  heroHeader: {
+    alignItems: 'center',
+    marginBottom: hp('2%'),
+  },
+  heroLabel: {
+    fontSize: wp('7%'),
+    fontWeight: 'bold',
+    color: '#333',
+    textAlign: 'center',
+    marginBottom: hp('1%'),
+    textTransform: 'capitalize',
+  },
+  heroBadgeContainer: {
+    flexDirection: 'row',
+    gap: 10,
+    justifyContent: 'center',
+  },
+  confidenceBadgeLarge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#81A969',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  confidenceTextLarge: {
+    color: '#FFF',
+    fontWeight: 'bold',
+    fontSize: wp('3.5%'),
+    marginLeft: 6,
+  },
+  sourceBadgeLarge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0f0f0',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  sourceTextLarge: {
+    color: '#666',
+    fontSize: wp('3.5%'),
+    marginLeft: 6,
+  },
+  heroActions: {
+    flexDirection: 'row',
+    gap: 10,
+    width: '100%',
+  },
+  searchButtonHero: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#81A969',
+    paddingVertical: hp('1.5%'),
+    borderRadius: 12,
+  },
+  toggleOptionsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: hp('1.5%'),
+    marginBottom: hp('1%'),
+  },
+  notYourFoodText: {
+    color: '#666',
+    fontSize: wp('4%'),
+    fontWeight: '400',
+  },
+  toggleOptionsText: {
+    color: '#81A969',
+    fontSize: wp('4%'),
+    fontWeight: '600',
+    textDecorationLine: 'underline',
+  },
+  noOtherOptionsText: {
+    textAlign: 'center',
+    color: '#999',
+    fontStyle: 'italic',
+    padding: 10,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#eee',
+    marginVertical: hp('2%'),
+  },
+  secondaryActions: {
+    gap: 10,
+  },
+  // ✅ NEW: Modal Styles
+  centeredView: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: 'transparent'
+  },
+  modalView: {
+    margin: 20,
+    backgroundColor: "white",
+    borderRadius: 20,
+    padding: 25,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 4
+    },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 8,
+    width: '85%',
+    maxHeight: '70%'
+  },
+  button: {
+    borderRadius: 12,
+    padding: 10,
+    elevation: 2,
+    marginTop: 15,
+    minWidth: 100,
+    alignItems: 'center'
+  },
+  buttonClose: {
+    backgroundColor: "#FF6B6B",
+  },
+  textStyle: {
+    color: "white",
+    fontWeight: "bold",
+    textAlign: "center"
   },
 });
 
