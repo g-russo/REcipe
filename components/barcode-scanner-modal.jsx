@@ -40,7 +40,7 @@ export default function BarcodeScannerModal({ visible, onClose, onBarcodeScanned
 
     try {
       console.log('📊 Barcode scanned:', data);
-      
+
       // ✅ FIX: Use the service correctly
       const product = await BarcodeScannerService.searchByBarcode(data);
 
@@ -52,11 +52,13 @@ export default function BarcodeScannerModal({ visible, onClose, onBarcodeScanned
           'Not Found',
           'This barcode was not found in the database.',
           [
-            { text: 'Scan Again', onPress: () => {
-              setScanned(false);
-              setProductData(null);
-              setScannedCode(null);
-            }}
+            {
+              text: 'Scan Again', onPress: () => {
+                setScanned(false);
+                setProductData(null);
+                setScannedCode(null);
+              }
+            }
           ]
         );
         setLoading(false);
@@ -66,11 +68,13 @@ export default function BarcodeScannerModal({ visible, onClose, onBarcodeScanned
       Alert.alert(
         'Error',
         'Failed to lookup barcode: ' + error.message,
-        [{ text: 'Try Again', onPress: () => {
-          setScanned(false);
-          setProductData(null);
-          setScannedCode(null);
-        }}]
+        [{
+          text: 'Try Again', onPress: () => {
+            setScanned(false);
+            setProductData(null);
+            setScannedCode(null);
+          }
+        }]
       );
       setLoading(false);
     }
@@ -151,7 +155,7 @@ export default function BarcodeScannerModal({ visible, onClose, onBarcodeScanned
             <View style={styles.productHeader}>
               <Ionicons name="nutrition" size={48} color="#4CAF50" />
               <Text style={styles.productName}>{productData.food_name}</Text>
-              
+
               {/* Source Badge */}
               <View style={[styles.sourceBadge, { backgroundColor: source.iconColor + '20' }]}>
                 <Ionicons name={source.iconName} size={16} color={source.iconColor} />
@@ -201,13 +205,13 @@ export default function BarcodeScannerModal({ visible, onClose, onBarcodeScanned
             <View style={styles.attributionCard}>
               <Text style={styles.attributionTitle}>Data Source</Text>
               <Text style={styles.attributionText}>{source.attribution}</Text>
-              
+
               {source.url && (
                 <TouchableOpacity onPress={() => Linking.openURL(source.url)}>
                   <Text style={styles.attributionLink}>Learn more →</Text>
                 </TouchableOpacity>
               )}
-              
+
               {source.license && (
                 <Text style={styles.licenseText}>License: {source.license}</Text>
               )}
