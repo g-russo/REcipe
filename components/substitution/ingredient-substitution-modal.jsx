@@ -11,6 +11,9 @@ import IngredientSelector from './ingredient-selector';
 import SubstituteSelector from './substitute-selector';
 import ActionButtons from './action-buttons';
 import NoSubstitutesModal from './no-substitutes-modal';
+import SelectionRequiredModal from './selection-required-modal';
+import ContinueSubstitutingModal from './continue-substituting-modal';
+import ErrorModal from './error-modal';
 import IngredientSubstitutionService from '../../services/ingredient-substitution-service';
 
 /**
@@ -33,6 +36,14 @@ const IngredientSubstitutionModal = ({
   const [pantryItems, setPantryItems] = useState([]); // Store pantry items for parsing
   const [showNoSubstitutesModal, setShowNoSubstitutesModal] = useState(false);
   const [noSubstituteIngredientName, setNoSubstituteIngredientName] = useState('');
+  
+  // Custom modals state
+  const [showSelectionRequiredModal, setShowSelectionRequiredModal] = useState(false);
+  const [selectionRequiredType, setSelectionRequiredType] = useState('ingredient');
+  const [showContinueSubstitutingModal, setShowContinueSubstitutingModal] = useState(false);
+  const [continueSubstitutingData, setContinueSubstitutingData] = useState({});
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
     if (visible) {
@@ -85,7 +96,8 @@ const IngredientSubstitutionModal = ({
   // Handle "Continue" from ingredient selection
   const handleContinueFromStep1 = async () => {
     if (!selectedIngredient) {
-      Alert.alert('No Selection', 'Please select an ingredient to replace');
+      setSelectionRequiredType('ingredient');
+      setShowSelectionRequiredModal(true);
       return;
     }
 
@@ -118,8 +130,8 @@ const IngredientSubstitutionModal = ({
       setStep(2);
     } catch (error) {
       console.error('Error fetching substitutes:', error);
-      const { Alert } = require('react-native');
-      Alert.alert('Error', 'Failed to fetch substitutes. Please try again.');
+      setErrorMessage('Failed to fetch substitutes. Please try again.');
+      setShowErrorModal(true);
     } finally {
       setLoading(false);
     }
@@ -128,8 +140,8 @@ const IngredientSubstitutionModal = ({
   // Handle "Confirm" from substitute selection
   const handleConfirmSubstitution = () => {
     if (!selectedSubstitute) {
-      const { Alert } = require('react-native');
-      Alert.alert('No Selection', 'Please select a substitute ingredient');
+      setSelectionRequiredType('substitute');
+      setShowSelectionRequiredModal(true);
       return;
     }
 
@@ -143,33 +155,32 @@ const IngredientSubstitutionModal = ({
     );
 
     if (remainingMissing.length > 0) {
-      Alert.alert(
-        'Continue Substituting?',
-        `You have ${remainingMissing.length} more missing ingredient(s). Would you like to substitute another?`,
-        [
-          {
-            text: 'Done',
-            onPress: () => {
-              onConfirm(newMap);
-              onClose();
-            }
-          },
-          {
-            text: 'Yes',
-            onPress: () => {
-              setSubstitutionMap(newMap);
-              setStep(1);
-              setSelectedIngredient(null);
-              setSelectedSubstitute(null);
-            }
-          }
-        ]
-      );
+      setContinueSubstitutingData({
+        newMap,
+        remainingCount: remainingMissing.length,
+      });
+      setShowContinueSubstitutingModal(true);
     } else {
       // All missing ingredients have been handled
       onConfirm(newMap);
       onClose();
     }
+  };
+
+  // Handle "Done" from continue substituting modal
+  const handleDoneSubstituting = () => {
+    setShowContinueSubstitutingModal(false);
+    onConfirm(continueSubstitutingData.newMap);
+    onClose();
+  };
+
+  // Handle "Continue" from continue substituting modal
+  const handleContinueSubstitutingAgain = () => {
+    setShowContinueSubstitutingModal(false);
+    setSubstitutionMap(continueSubstitutingData.newMap);
+    setStep(1);
+    setSelectedIngredient(null);
+    setSelectedSubstitute(null);
   };
 
   // Handle "Go Back" from substitute selection
@@ -248,6 +259,28 @@ const IngredientSubstitutionModal = ({
         visible={showNoSubstitutesModal}
         onClose={() => setShowNoSubstitutesModal(false)}
         ingredientName={noSubstituteIngredientName}
+      />
+
+      {/* Selection Required Modal */}
+      <SelectionRequiredModal
+        visible={showSelectionRequiredModal}
+        onClose={() => setShowSelectionRequiredModal(false)}
+        type={selectionRequiredType}
+      />
+
+      {/* Continue Substituting Modal */}
+      <ContinueSubstitutingModal
+        visible={showContinueSubstitutingModal}
+        onDone={handleDoneSubstituting}
+        onContinue={handleContinueSubstitutingAgain}
+        remainingCount={continueSubstitutingData.remainingCount}
+      />
+
+      {/* Error Modal */}
+      <ErrorModal
+        visible={showErrorModal}
+        onClose={() => setShowErrorModal(false)}
+        message={errorMessage}
       />
     </Modal>
   );
