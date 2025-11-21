@@ -11,11 +11,14 @@ import {
   Platform,
   RefreshControl,
   ActivityIndicator,
-  Alert
+  Alert,
+  Animated
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Path, Circle } from 'react-native-svg';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
+import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { useCustomAuth } from '../../hooks/use-custom-auth';
 import { router, useFocusEffect } from 'expo-router';
 import { useTabContext } from '../../contexts/tab-context';
@@ -44,6 +47,99 @@ const buildPantrySignature = (items = []) =>
     .sort()
     .join('||');
 
+const TryNewCard = ({ recipe, isFavorited, onToggleFavorite, onPress }) => {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  const handleFavoritePress = (event) => {
+    // Trigger fast spring animation
+    scaleAnim.setValue(1);
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      friction: 2,
+      tension: 200,
+      velocity: 3,
+      useNativeDriver: true,
+    }).start();
+
+    onToggleFavorite(event, recipe);
+  };
+
+  return (
+    <TouchableOpacity
+      style={[styles.tryNewCard, {
+        borderRadius: wp('4.5%'),
+        height: hp('32%'),
+        padding: wp('3%'),
+        elevation: 6
+      }]}
+      activeOpacity={0.92}
+      onPress={onPress}
+    >
+      <View style={[styles.tryNewImageContainer, {
+        borderRadius: wp('4%'),
+        marginBottom: hp('1.2%')
+      }]}>
+        <Image source={{ uri: recipe.image }} style={[styles.tryNewImage, { height: hp('20%') }]} />
+        <TouchableOpacity
+          style={{
+            position: 'absolute',
+            top: wp('3%'),
+            right: wp('3%'),
+            zIndex: 10
+          }}
+          activeOpacity={0.8}
+          onPress={handleFavoritePress}
+        >
+          <Animated.View style={[
+            styles.favoriteButton,
+            {
+              position: 'relative',
+              width: wp('10%'),
+              height: wp('10%'),
+              borderRadius: wp('5%'),
+              transform: [{ scale: scaleAnim }]
+            },
+            isFavorited && styles.favoriteButtonActive
+          ]}>
+            <Svg width={wp('5%')} height={wp('5%')} viewBox="0 0 24 24" fill={isFavorited ? '#fff' : 'none'} stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <Path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
+            </Svg>
+          </Animated.View>
+        </TouchableOpacity>
+      </View>
+      <View style={[styles.tryNewContent, { paddingHorizontal: wp('1%') }]}>
+        <View style={styles.tryNewTextBlock}>
+          <Text style={[styles.tryNewTitle, { fontSize: wp('4.2%') }]} numberOfLines={2}>
+            {recipe.title}
+          </Text>
+        </View>
+        <View style={styles.tryNewMetaRow}>
+          <View style={[styles.tryNewInfoItem, { gap: wp('1.5%') }]}>
+            <Svg width={wp('4%')} height={wp('4%')} viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <Path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
+            </Svg>
+            <Text style={[styles.tryNewInfoText, { fontSize: wp('3.5%') }]}>
+              {recipe.calories ? `${recipe.calories} Kcal` : 'Calories TBD'}
+            </Text>
+          </View>
+          <Text style={[styles.tryNewDivider, { fontSize: wp('3.5%'), marginHorizontal: wp('2.5%') }]}>
+            •
+          </Text>
+          <View style={[styles.tryNewInfoItem, { gap: wp('1.5%') }]}>
+            <Svg width={wp('4%')} height={wp('4%')} viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <Circle cx="12" cy="12" r="10" />
+              <Path d="M12 6v6l4 2" />
+            </Svg>
+            <Text style={[styles.tryNewInfoText, { fontSize: wp('3.5%') }]}>
+              {recipe.time ? `${recipe.time} Min` : 'Time TBD'}
+            </Text>
+          </View>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+};
+
 const Home = () => {
   const { user, customUserData } = useCustomAuth();
   const [userName, setUserName] = useState('');
@@ -60,10 +156,14 @@ const Home = () => {
   const [favoritePopularUris, setFavoritePopularUris] = useState({});
   const [favoriteBusyMap, setFavoriteBusyMap] = useState({});
   const [hasPantryItems, setHasPantryItems] = useState(true);
+  const [toastQueue, setToastQueue] = useState([]);
+  
   const userId = customUserData?.userID;
   const scrollViewRef = useRef(null);
   const pantryRecipesRef = useRef(null);
   const makeItAgainRef = useRef(null);
+  const toastIdCounter = useRef(0);
+  const saveTimeoutMap = useRef({});
   const { subscribe } = useTabContext();
 
   // Handle tab press events (scroll to top and reset horizontal scrolls)
@@ -108,40 +208,62 @@ const Home = () => {
     return () => clearInterval(interval);
   }, []);
 
-  useEffect(() => {
-    const loadFavoriteMap = async () => {
-      if (!userId) {
-        setFavoritePopularUris({});
+  const loadFavoriteMap = useCallback(async () => {
+    if (!userId) {
+      setFavoritePopularUris({});
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('tbl_favorites')
+        .select('edamamRecipeURI, aiRecipeID, isFavorited')
+        .eq('userID', userId);
+
+      if (error) {
+        console.warn('Unable to preload favorites:', error.message);
         return;
       }
 
-      try {
-        const { data, error } = await supabase
-          .from('tbl_favorites')
-          .select('edamamRecipeURI, recipeURI, isFavorited')
-          .eq('userID', userId);
+      const map = {};
+      (data || []).forEach(item => {
+        if (item.isFavorited === false) return;
+        
+        if (item.edamamRecipeURI) map[item.edamamRecipeURI] = true;
+        if (item.aiRecipeID) map[item.aiRecipeID] = true;
+      });
 
-        if (error) {
-          console.warn('Unable to preload favorites:', error.message);
-          return;
-        }
+      setFavoritePopularUris(map);
+    } catch (error) {
+      console.error('Error loading favorites map:', error);
+    }
+  }, [userId]);
 
-        const map = {};
-        (data || []).forEach(item => {
-          const uri = item.edamamRecipeURI || item.recipeURI;
-          if (uri && (item.isFavorited ?? true)) {
-            map[uri] = true;
-          }
-        });
-
-        setFavoritePopularUris(map);
-      } catch (error) {
-        console.error('Error loading favorites map:', error);
-      }
-    };
+  useEffect(() => {
+    if (!userId) return;
 
     loadFavoriteMap();
-  }, [userId]);
+
+    const channel = supabase
+      .channel(`public:tbl_favorites:${userId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'tbl_favorites',
+          filter: `userID=eq.${userId}`,
+        },
+        () => {
+          loadFavoriteMap();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userId, loadFavoriteMap]);
 
   // Load unread notification count
   useEffect(() => {
@@ -174,7 +296,7 @@ const Home = () => {
     };
   }, [userId]);
 
-  // Refresh notification count when screen comes into focus
+  // Refresh notification count and favorites when screen comes into focus
   useFocusEffect(
     useCallback(() => {
       const refreshNotificationCount = async () => {
@@ -188,7 +310,8 @@ const Home = () => {
       };
 
       refreshNotificationCount();
-    }, [userId])
+      loadFavoriteMap();
+    }, [userId, loadFavoriteMap])
   );
 
   // Load recipe history for "Make It Again" section
@@ -557,6 +680,53 @@ const Home = () => {
     });
   };
 
+  const showToastMessage = (message, isAdded) => {
+    // Quickly fade out existing toasts when new toggle happens
+    toastQueue.forEach(toast => {
+      Animated.timing(toast.opacity, {
+        toValue: 0,
+        duration: 100,
+        useNativeDriver: true,
+      }).start();
+    });
+
+    const toastId = toastIdCounter.current++;
+    const newToast = {
+      id: toastId,
+      message,
+      isAdded,
+      opacity: new Animated.Value(0),
+      translateY: new Animated.Value(100),
+    };
+
+    setToastQueue(prev => [...prev, newToast]);
+
+    // Animate in
+    Animated.parallel([
+      Animated.timing(newToast.opacity, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(newToast.translateY, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    // Auto remove after delay
+    setTimeout(() => {
+      Animated.timing(newToast.opacity, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }).start(() => {
+        setToastQueue(prev => prev.filter(t => t.id !== toastId));
+      });
+    }, 1500);
+  };
+
   const handlePopularFavoriteToggle = async (event, recipeCard) => {
     event?.stopPropagation?.();
 
@@ -571,38 +741,76 @@ const Home = () => {
 
     const recipeURI = recipeCard.recipeData.uri;
 
-    if (favoriteBusyMap[recipeURI]) {
-      return;
+    // Clear any existing timeout for this recipe
+    if (saveTimeoutMap.current[recipeURI]) {
+      clearTimeout(saveTimeoutMap.current[recipeURI]);
+      delete saveTimeoutMap.current[recipeURI];
     }
 
-    setFavoriteBusyMap(prev => ({ ...prev, [recipeURI]: true }));
+    // Trigger haptic feedback
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
-    try {
-      if (favoritePopularUris[recipeURI]) {
-        const result = await RecipeMatcherService.unsaveRecipe(user.email, recipeCard.recipeData);
-        if (result.success) {
-          setFavoritePopularUris(prev => {
-            const map = { ...prev };
-            delete map[recipeURI];
-            return map;
-          });
-        } else {
-          Alert.alert('Error', result.error || 'Unable to remove favorite right now.');
-        }
+    // Determine new state
+    const isCurrentlyFavorited = !!favoritePopularUris[recipeURI];
+    const newFavoriteState = !isCurrentlyFavorited;
+
+    // Optimistic update
+    setFavoritePopularUris(prev => {
+      const newMap = { ...prev };
+      if (newFavoriteState) {
+        newMap[recipeURI] = true;
       } else {
-        const result = await RecipeMatcherService.saveRecipe(user.email, recipeCard.recipeData);
-        if (result.success) {
-          setFavoritePopularUris(prev => ({ ...prev, [recipeURI]: true }));
-        } else {
-          Alert.alert('Error', result.error || 'Unable to save recipe to favorites.');
-        }
+        delete newMap[recipeURI];
       }
-    } catch (error) {
-      console.error('Favorite toggle error:', error);
-      Alert.alert('Error', error.message || 'Something went wrong.');
-    } finally {
-      setFavoriteBusyMap(prev => ({ ...prev, [recipeURI]: false }));
+      return newMap;
+    });
+
+    // Show toast immediately
+    if (newFavoriteState) {
+      showToastMessage('Recipe added to your favorites', true);
+    } else {
+      showToastMessage('Recipe removed from favorites', false);
     }
+
+    // Wait 3 seconds before actually saving to database
+    saveTimeoutMap.current[recipeURI] = setTimeout(async () => {
+      try {
+        if (newFavoriteState) {
+          const result = await RecipeMatcherService.saveRecipe(user.email, recipeCard.recipeData);
+          if (!result.success) {
+            // Revert on failure
+            setFavoritePopularUris(prev => {
+              const newMap = { ...prev };
+              delete newMap[recipeURI];
+              return newMap;
+            });
+            Alert.alert('Error', result.error || 'Unable to save recipe to favorites.');
+          }
+        } else {
+          const result = await RecipeMatcherService.unsaveRecipe(user.email, recipeCard.recipeData);
+          if (!result.success) {
+             // Revert on failure
+             setFavoritePopularUris(prev => ({ ...prev, [recipeURI]: true }));
+             Alert.alert('Error', result.error || 'Unable to remove favorite right now.');
+          }
+        }
+      } catch (error) {
+        console.error('Favorite toggle error:', error);
+        // Revert on error
+        setFavoritePopularUris(prev => {
+            if (newFavoriteState) {
+                const newMap = { ...prev };
+                delete newMap[recipeURI];
+                return newMap;
+            } else {
+                return { ...prev, [recipeURI]: true };
+            }
+        });
+        Alert.alert('Error', error.message || 'Something went wrong.');
+      } finally {
+        delete saveTimeoutMap.current[recipeURI];
+      }
+    }, 3000);
   };
 
   return (
@@ -813,74 +1021,13 @@ const Home = () => {
                   const isBusy = recipeURI ? !!favoriteBusyMap[recipeURI] : false;
 
                   return (
-                    <TouchableOpacity
+                    <TryNewCard
                       key={recipe.id || recipeURI}
-                      style={[styles.tryNewCard, {
-                        borderRadius: wp('4.5%'),
-                        height: hp('32%'),
-                        padding: wp('3%'),
-                        elevation: 6
-                      }]}
-                      activeOpacity={0.92}
+                      recipe={recipe}
+                      isFavorited={isFavorited}
+                      onToggleFavorite={handlePopularFavoriteToggle}
                       onPress={() => handlePopularRecipePress(recipe)}
-                    >
-                      <View style={[styles.tryNewImageContainer, {
-                        borderRadius: wp('4%'),
-                        marginBottom: hp('1.2%')
-                      }]}
-                      >
-                        <Image source={{ uri: recipe.image }} style={[styles.tryNewImage, { height: hp('20%') }]} />
-                        <TouchableOpacity
-                          style={[styles.favoriteButton, {
-                            top: wp('3%'),
-                            right: wp('3%'),
-                            width: wp('10%'),
-                            height: wp('10%'),
-                            borderRadius: wp('5%')
-                          }, isFavorited && styles.favoriteButtonActive]}
-                          activeOpacity={0.8}
-                          onPress={(event) => handlePopularFavoriteToggle(event, recipe)}
-                          disabled={isBusy}
-                        >
-                          {isBusy ? (
-                            <ActivityIndicator size="small" color="#fff" />
-                          ) : (
-                            <Svg width={wp('5%')} height={wp('5%')} viewBox="0 0 24 24" fill={isFavorited ? '#fff' : 'none'} stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <Path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
-                            </Svg>
-                          )}
-                        </TouchableOpacity>
-                      </View>
-                      <View style={[styles.tryNewContent, { paddingHorizontal: wp('1%') }]}>
-                        <View style={styles.tryNewTextBlock}>
-                          <Text style={[styles.tryNewTitle, { fontSize: wp('4.2%') }]} numberOfLines={2}>
-                            {recipe.title}
-                          </Text>
-                        </View>
-                        <View style={styles.tryNewMetaRow}>
-                          <View style={[styles.tryNewInfoItem, { gap: wp('1.5%') }]}>
-                            <Svg width={wp('4%')} height={wp('4%')} viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <Path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
-                            </Svg>
-                            <Text style={[styles.tryNewInfoText, { fontSize: wp('3.5%') }]}>
-                              {recipe.calories ? `${recipe.calories} Kcal` : 'Calories TBD'}
-                            </Text>
-                          </View>
-                          <Text style={[styles.tryNewDivider, { fontSize: wp('3.5%'), marginHorizontal: wp('2.5%') }]}>
-                            •
-                          </Text>
-                          <View style={[styles.tryNewInfoItem, { gap: wp('1.5%') }]}>
-                            <Svg width={wp('4%')} height={wp('4%')} viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <Circle cx="12" cy="12" r="10" />
-                              <Path d="M12 6v6l4 2" />
-                            </Svg>
-                            <Text style={[styles.tryNewInfoText, { fontSize: wp('3.5%') }]}>
-                              {recipe.time ? `${recipe.time} Min` : 'Time TBD'}
-                            </Text>
-                          </View>
-                        </View>
-                      </View>
-                    </TouchableOpacity>
+                    />
                   );
                 })}
               </View>
@@ -893,6 +1040,32 @@ const Home = () => {
             )}
           </View>
         </ScrollView>
+
+        {/* Toast Notifications */}
+        {toastQueue.map((toast) => (
+          <Animated.View
+            key={toast.id}
+            style={[
+              styles.toastContainer,
+              {
+                opacity: toast.opacity,
+                transform: [{ translateY: toast.translateY }],
+              },
+            ]}
+          >
+            <View style={[
+              styles.toastContent,
+              { borderLeftColor: toast.isAdded ? '#81A969' : '#e74c3c' }
+            ]}>
+              <Ionicons
+                name={toast.isAdded ? "checkmark-circle" : "close-circle"}
+                size={wp('5%')}
+                color={toast.isAdded ? "#81A969" : "#e74c3c"}
+              />
+              <Text style={styles.toastText}>{toast.message}</Text>
+            </View>
+          </Animated.View>
+        ))}
       </SafeAreaView>
     </AuthGuard>
   );
@@ -1100,6 +1273,35 @@ const styles = StyleSheet.create({
   },
   tryNewDivider: {
     color: '#666',
+  },
+  toastContainer: {
+    position: 'absolute',
+    bottom: hp('16%'),
+    left: wp('5%'),
+    right: wp('5%'),
+    alignItems: 'center',
+    zIndex: 2000,
+  },
+  toastContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: wp('4%'),
+    paddingVertical: hp('1.5%'),
+    borderRadius: wp('3%'),
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 6,
+    borderLeftWidth: 4,
+    minWidth: wp('80%'),
+  },
+  toastText: {
+    marginLeft: wp('3%'),
+    fontSize: wp('3.8%'),
+    color: '#333',
+    fontWeight: '500',
   },
 });
 
