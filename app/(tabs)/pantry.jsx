@@ -1459,7 +1459,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollViewContent: {
-    paddingBottom: 100,
+    paddingBottom: hp('12%'), // Responsive padding to account for navigation bar on all screen sizes
   },
   headerSpacer: {
     height: hp('11%'), // Match PantryHeader height (7% + 2% + ~2% for title)

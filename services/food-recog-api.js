@@ -3,7 +3,7 @@ import Constants from 'expo-constants';
 
 // ✅ Add detailed logging
 // TEMPORARY: Pointing to local backend for testing Gemini
-const API_BASE_URL = 'http://192.168.1.4:8000';
+const API_BASE_URL = 'http://192.168.5.59:8000'; // ✅ Include http:// protocol
 // const API_BASE_URL = Constants.expoConfig?.extra?.foodApiUrl || process.env.EXPO_PUBLIC_FOOD_API_URL || 'http://54.153.205.43:8000';
 
 console.log('🔧 ===== API CONFIGURATION =====');
