@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const CARD_WIDTH = (SCREEN_WIDTH - 60) / 2; // 20px padding on each side + 20px gap
+const CARD_WIDTH = (SCREEN_WIDTH - 40) * 0.48; // 48% of available width (accounting for 20px padding on each side)
 
 /**
  * Pantry Item Card Component
@@ -222,7 +222,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 10,
-    marginBottom: 15,
+    marginBottom: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
