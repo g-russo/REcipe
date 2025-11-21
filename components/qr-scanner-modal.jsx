@@ -45,7 +45,7 @@ export default function QRScannerModal({ visible, onClose, onFoodFound }) {
     }
 
     if (scanned) return;
-    
+
     setScanned(true);
     setScannedCode(data);
     setLoading(true);
@@ -60,11 +60,13 @@ export default function QRScannerModal({ visible, onClose, onFoodFound }) {
           'This QR code was not found in FatSecret or OpenFoodFacts databases.',
           [
             { text: 'Close', style: 'cancel', onPress: onClose },
-            { text: 'Scan Again', onPress: () => {
-              setScanned(false);
-              setProductData(null);
-              setScannedCode(null);
-            }}
+            {
+              text: 'Scan Again', onPress: () => {
+                setScanned(false);
+                setProductData(null);
+                setScannedCode(null);
+              }
+            }
           ]
         );
         setLoading(false);
@@ -80,11 +82,13 @@ export default function QRScannerModal({ visible, onClose, onFoodFound }) {
         'Failed to lookup QR code. Please try again.',
         [
           { text: 'Cancel', style: 'cancel', onPress: onClose },
-          { text: 'Try Again', onPress: () => {
-            setScanned(false);
-            setProductData(null);
-            setScannedCode(null);
-          }}
+          {
+            text: 'Try Again', onPress: () => {
+              setScanned(false);
+              setProductData(null);
+              setScannedCode(null);
+            }
+          }
         ]
       );
       setLoading(false);
@@ -98,7 +102,7 @@ export default function QRScannerModal({ visible, onClose, onFoodFound }) {
     try {
       // ✅ Get user directly from supabase
       const { data: { user }, error: authError } = await supabase.auth.getUser();
-      
+
       if (authError || !user) {
         Alert.alert('Error', 'You must be logged in to add items');
         setAdding(false);
@@ -133,13 +137,13 @@ export default function QRScannerModal({ visible, onClose, onFoodFound }) {
 
   const determineCategory = (product) => {
     const name = product.food_name?.toLowerCase() || '';
-    
+
     if (name.includes('milk') || name.includes('cheese') || name.includes('yogurt')) return 'Dairy';
     if (name.includes('chicken') || name.includes('beef') || name.includes('pork') || name.includes('fish')) return 'Meat';
     if (name.includes('apple') || name.includes('banana') || name.includes('orange') || name.includes('berry')) return 'Fruit';
     if (name.includes('carrot') || name.includes('lettuce') || name.includes('spinach') || name.includes('broccoli')) return 'Vegetable';
     if (name.includes('bread') || name.includes('rice') || name.includes('pasta') || name.includes('cereal')) return 'Grain';
-    
+
     return 'Other';
   };
 
@@ -153,7 +157,7 @@ export default function QRScannerModal({ visible, onClose, onFoodFound }) {
       'Grain': 30,
       'Other': 14,
     };
-    
+
     now.setDate(now.getDate() + (daysToAdd[category] || 14));
     return now.toISOString().split('T')[0];
   };
@@ -237,7 +241,7 @@ export default function QRScannerModal({ visible, onClose, onFoodFound }) {
             <View style={styles.productHeader}>
               <Ionicons name="nutrition" size={48} color="#4CAF50" />
               <Text style={styles.productName}>{productData.food_name}</Text>
-              
+
               {/* Source Attribution Badge */}
               <View style={[styles.sourceBadge, { backgroundColor: source.iconColor + '20' }]}>
                 <Ionicons name={source.iconName} size={16} color={source.iconColor} />
@@ -287,13 +291,13 @@ export default function QRScannerModal({ visible, onClose, onFoodFound }) {
             <View style={styles.attributionCard}>
               <Text style={styles.attributionTitle}>Data Source</Text>
               <Text style={styles.attributionText}>{source.attribution}</Text>
-              
+
               {source.url && (
                 <TouchableOpacity onPress={() => Linking.openURL(source.url)}>
                   <Text style={styles.attributionLink}>Learn more →</Text>
                 </TouchableOpacity>
               )}
-              
+
               {source.license && (
                 <Text style={styles.licenseText}>License: {source.license}</Text>
               )}

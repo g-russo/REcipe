@@ -59,14 +59,14 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
       if (result.canceled || !result.assets?.[0]) return;
 
       const uri = result.assets[0].uri;
-      
+
       setScanning(true);
       setOcrProgress('Processing image...');
 
       console.log('📸 Processing gallery image for OCR...');
-      
+
       const ocrResult = await extractText(uri);
-      
+
       if (ocrResult?.success && ocrResult?.text) {
         const lines = ocrResult.text
           .split('\n')
@@ -90,7 +90,7 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
       console.error('❌ OCR gallery error:', error);
       Alert.alert(
         'Error',
-        error.message === 'No text detected' 
+        error.message === 'No text detected'
           ? 'No text was detected in the image. Please try again.'
           : 'Failed to process text. Please try again.',
         [{ text: 'OK' }]
@@ -103,22 +103,22 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
 
   const captureAndExtractText = async () => {
     if (scanning || !cameraRef.current) return;
-    
+
     setScanning(true);
     setOcrProgress('Capturing image...');
-    
+
     try {
       console.log('📷 Capturing image...');
-      
+
       const photo = await cameraRef.current.takePictureAsync({
         quality: 0.8,
       });
 
       console.log('✅ Image captured, starting OCR...');
       setOcrProgress('Extracting text...');
-      
+
       const ocrResult = await extractText(photo.uri);
-      
+
       if (ocrResult?.success && ocrResult?.text) {
         const lines = ocrResult.text
           .split('\n')
@@ -236,7 +236,7 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
                   <View style={[styles.corner, styles.topRight]} />
                   <View style={[styles.corner, styles.bottomLeft]} />
                   <View style={[styles.corner, styles.bottomRight]} />
-                  
+
                   {/* Scanning line animation */}
                   {scanning && <View style={styles.scanLine} />}
                   {scanning && (
@@ -250,7 +250,7 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
               <View style={styles.unfocusedBottom}>
                 <View style={styles.instructionContainer}>
                   <Text style={styles.instructionText}>
-                    {scanning 
+                    {scanning
                       ? ocrProgress
                       : 'Position text within the frame'}
                   </Text>
