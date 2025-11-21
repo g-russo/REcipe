@@ -342,6 +342,16 @@ const CookingSteps = () => {
     });
   };
 
+  const handleVisitSite = () => {
+    const url = recipe?.url || recipe?.sourceUrl;
+    if (url) {
+      Linking.openURL(url).catch(err => {
+        console.error('Failed to open URL:', err);
+        Alert.alert('Error', 'Could not open recipe site.');
+      });
+    }
+  };
+
   const currentInstruction = instructions[currentStep];
   const instructionText = typeof currentInstruction === 'string' 
     ? currentInstruction 
@@ -526,6 +536,12 @@ const CookingSteps = () => {
                 {/* Message */}
                 <Text style={styles.completeMessage}>{completionMessage}</Text>
 
+                {/* Fun & Author Text */}
+                <Text style={styles.funText}>Had fun cooking this recipe?</Text>
+                {recipe?.source && (
+                  <Text style={styles.authorText}>Recipe Made by: {recipe.source}</Text>
+                )}
+
                 {/* Recipe Name */}
                 <View style={styles.recipeNameContainer}>
                   <Ionicons name="restaurant" size={wp('4.5%')} color="#81A969" />
@@ -537,7 +553,7 @@ const CookingSteps = () => {
                 {/* Stats */}
                 <View style={styles.statsContainer}>
                   <View style={styles.statItem}>
-                    <Text style={styles.statNumber}>{recipe?.totalTime || 'N/A'}</Text>
+                    <Text style={styles.statNumber}>{recipe?.totalTime || '30'}</Text>
                     <Text style={styles.statLabel}>Minutes</Text>
                   </View>
                   <View style={styles.statItem}>
@@ -545,6 +561,14 @@ const CookingSteps = () => {
                     <Text style={styles.statLabel}>Steps</Text>
                   </View>
                 </View>
+
+                {/* Visit Site Button */}
+                {(recipe?.url || recipe?.sourceUrl) && (
+                  <TouchableOpacity style={styles.visitSiteButton} onPress={handleVisitSite}>
+                    <Text style={styles.visitSiteButtonText}>Visit Recipe Site</Text>
+                    <Ionicons name="open-outline" size={wp('5%')} color="#81A969" />
+                  </TouchableOpacity>
+                )}
 
                 {/* Done Button */}
                 <TouchableOpacity style={styles.doneButton} onPress={handleCloseModal}>
@@ -936,6 +960,44 @@ const styles = StyleSheet.create({
     fontSize: wp('4.5%'),
     fontWeight: 'bold',
     color: '#fff',
+  },
+  funText: {
+    fontSize: wp('4%'),
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: hp('0.5%'),
+    textAlign: 'center',
+  },
+  authorText: {
+    fontSize: wp('4.5%'),
+    color: '#2E7D32', // Darker green for better visibility
+    marginBottom: hp('2%'),
+    textAlign: 'center',
+    fontWeight: 'bold',
+    backgroundColor: '#F0F7ED',
+    paddingVertical: hp('1%'),
+    paddingHorizontal: wp('4%'),
+    borderRadius: wp('2%'),
+    overflow: 'hidden',
+  },
+  visitSiteButton: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    paddingVertical: hp('1.5%'),
+    paddingHorizontal: wp('6%'),
+    borderRadius: wp('4%'),
+    alignItems: 'center',
+    gap: wp('2%'),
+    borderWidth: 1.5,
+    borderColor: '#81A969',
+    marginBottom: hp('1.5%'),
+    width: '100%',
+    justifyContent: 'center',
+  },
+  visitSiteButtonText: {
+    fontSize: wp('4%'),
+    fontWeight: '600',
+    color: '#81A969',
   },
 });
 
