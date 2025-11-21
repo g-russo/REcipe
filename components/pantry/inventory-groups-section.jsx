@@ -10,21 +10,34 @@ import { useRouter } from 'expo-router';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const GROUP_CARD_WIDTH = Math.min(SCREEN_WIDTH * 0.5, 200);
 
-// MODIFIED: Updated map with 'soy-sauce'
+// Updated map with Filipino categories
 const categoryIconMap = {
-  'Fruits': 'food-apple-outline',
-  'Vegetables': 'carrot',
-  'Meat & Poultry': 'food-drumstick-outline',
-  'Seafood': 'fish',
-  'Dairy & Eggs': 'egg-outline',
-  'Grains & Pasta': 'pasta',
-  'Canned & Jarred': 'canned-food',
-  'Condiments & Sauces': 'soy-sauce', // CHANGED
-  'Spices & Herbs': 'mortar-pestle',
-  'Snacks': 'cookie-outline',
-  'Beverages': 'coffee-outline',
-  'Frozen': 'snowflake',
+  // Cooked/Prepared Food
+  'Rice': 'rice',
+  'Soup': 'bowl-mix',
+  'Leftovers': 'food-drumstick',
+  'Kakanin': 'food',
+  // Raw Ingredients
   'Baking': 'cake',
+  'Beverages': 'coffee-outline',
+  'Canned': 'canned-food',
+  'Jarred': 'jar-outline',
+  'Condiments': 'bottle-tonic',
+  'Sauces': 'soy-sauce',
+  'Dairy': 'cow',
+  'Eggs': 'egg-outline',
+  'Fruits': 'food-apple-outline',
+  'Frozen': 'snowflake',
+  'Grains': 'barley',
+  'Pasta': 'pasta',
+  'Noodles': 'noodles',
+  'Meat': 'food-steak',
+  'Poultry': 'food-drumstick-outline',
+  'Seafood': 'fish',
+  'Snacks': 'cookie-outline',
+  'Spices': 'shaker-outline',
+  'Herbs': 'leaf',
+  'Vegetables': 'carrot',
   'Other': 'help-circle-outline',
 };
 
@@ -116,6 +129,20 @@ const InventoryGroupsSection = forwardRef(({
         style={styles.categoriesScrollView}
         contentContainerStyle={{ paddingRight: 20 }}
       >
+        {/* Add New Group Card - Now First */}
+        <TouchableOpacity
+          style={[styles.categoryCard, styles.emptyCard, styles.addNewCard]}
+          onPress={onCreateGroup}
+        >
+          <View style={styles.addNewContent}>
+            <View style={styles.addIconContainer}>
+              <MaterialCommunityIcons name="plus-circle-outline" size={40} color="#777" />
+            </View>
+            <Text style={styles.addNewText}>Add New Group</Text>
+            <Text style={styles.addNewSubtext}>Organize your ingredients</Text>
+          </View>
+        </TouchableOpacity>
+
         {groups.map((group) => (
           <TouchableOpacity
             key={group.groupID}
@@ -147,20 +174,6 @@ const InventoryGroupsSection = forwardRef(({
             </View>
           </TouchableOpacity>
         ))}
-
-        {/* Add New Group Card */}
-        <TouchableOpacity
-          style={[styles.categoryCard, styles.emptyCard, styles.addNewCard]}
-          onPress={onCreateGroup}
-        >
-          <View style={styles.addNewContent}>
-            <View style={styles.addIconContainer}>
-              <MaterialCommunityIcons name="plus-circle-outline" size={40} color="#777" />
-            </View>
-            <Text style={styles.addNewText}>Add New Group</Text>
-            <Text style={styles.addNewSubtext}>Organize your ingredients</Text>
-          </View>
-        </TouchableOpacity>
       </ScrollView>
     </View>
   );

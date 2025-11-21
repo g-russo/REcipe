@@ -187,15 +187,14 @@ const PantryAlert = ({
                                         </AnimatedButton>
                                     )}
                                     {children}
-                                </View>
-                                {/* Floating circular close button below card */}
-                                <View style={styles.floatingCloseWrapper} pointerEvents="box-none">
-                                    <AnimatedButton
-                                        style={styles.floatingCloseButton}
+                                    {/* Cancel button */}
+                                    <TouchableOpacity
+                                        style={styles.cancelButton}
                                         onPress={handleClose}
+                                        activeOpacity={0.7}
                                     >
-                                        <Ionicons name="close" size={wp('6.5%')} color="#333" />
-                                    </AnimatedButton>
+                                        <Text style={styles.cancelButtonText}>Cancel</Text>
+                                    </TouchableOpacity>
                                 </View>
                             </View>
                         </Animated.View>
@@ -298,26 +297,18 @@ const styles = StyleSheet.create({
         fontSize: wp('4%'),
         letterSpacing: 0.3,
     },
-    floatingCloseWrapper: {
+    cancelButton: {
         width: '100%',
-        alignItems: 'center',
-        marginBottom: hp('2%'),
-    },
-    floatingCloseButton: {
-        marginTop: hp('1%'),
-        backgroundColor: '#fff',
-        width: wp('12%'),
-        height: wp('12%'),
-        borderRadius: wp('6%'),
+        paddingVertical: hp('1.6%'),
         alignItems: 'center',
         justifyContent: 'center',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.15,
-        shadowRadius: 6,
-        elevation: 6,
-        borderWidth: 2,
-        borderColor: '#f2f2f2',
+        marginTop: hp('0.5%'),
+    },
+    cancelButtonText: {
+        color: '#999',
+        fontWeight: '600',
+        fontSize: wp('4%'),
+        letterSpacing: 0.3,
     },
 });
 

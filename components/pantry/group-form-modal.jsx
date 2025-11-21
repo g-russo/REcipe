@@ -47,9 +47,12 @@ const GroupFormModal = ({
 
   // Simplified food categories (matching item categories)
   const foodCategories = [
-    'Fruits', 'Vegetables', 'Meat & Poultry', 'Seafood', 'Dairy & Eggs',
-    'Grains & Pasta', 'Canned & Jarred', 'Condiments & Sauces', 
-    'Spices & Herbs', 'Snacks', 'Beverages', 'Frozen', 'Baking', 'Other'
+    // Cooked/Prepared Food
+    'Rice', 'Soup', 'Leftovers', 'Kakanin',
+    // Raw Ingredients
+    'Baking', 'Beverages', 'Canned', 'Jarred', 'Condiments', 'Sauces', 'Dairy', 'Eggs',
+    'Fruits', 'Frozen', 'Grains', 'Pasta', 'Noodles', 'Meat', 'Poultry', 'Seafood',
+    'Snacks', 'Spices', 'Herbs', 'Vegetables', 'Other'
   ];
 
   // Available colors
