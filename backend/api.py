@@ -184,7 +184,7 @@ def call_gemini_vision(image: Image.Image):
     7. Provide top 5 possible identifications, sorted by confidence (highest first).
     8. Assign a realistic confidence score (0.0 to 0.99) for each prediction based on how certain you are. Do not default to 0.99 unless absolutely certain.
     9. Do NOT return generic cuisine names (e.g., "Italian Cuisine", "American Food") or meal types. Return ONLY specific dish names (e.g., "Carbonara", "Burger") or ingredient names.
-    
+    10. 
     Return strict JSON format:
     [
         {

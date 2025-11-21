@@ -53,19 +53,89 @@ const ItemFormModal = ({
   const [unitModalVisible, setUnitModalVisible] = useState(false);
   const [formErrors, setFormErrors] = useState({});
 
-  // Simplified food categories (matching group categories)
+  // SPLIT & REFINED FOOD CATEGORIES (No '&' or '/')
   const foodCategories = [
-    'Baking', 'Beverages','Canned & Jarred', 'Condiments & Sauces', 'Dairy & Eggs',
-    'Fruits', 'Frozen', 'Grains & Pasta', 'Meat & Poultry', 'Seafood', 'Snacks',
-    'Spices & Herbs', 'Vegetables', 'Other'
+    // Cooked/Prepared Food
+    'Rice', 'Soup', 'Leftovers', 'Kakanin',
+    // Raw Ingredients
+    'Baking', 'Beverages', 'Canned', 'Jarred', 'Condiments', 'Sauces', 'Dairy', 'Eggs',
+    'Fruits', 'Frozen', 'Grains', 'Pasta', 'Noodles', 'Meat', 'Poultry', 'Seafood',
+    'Snacks', 'Spices', 'Herbs', 'Vegetables', 'Other'
   ];
 
-  // Units
-  const unitOptions = [
-    'oz', 'lb', 'g', 'kg', 'ml', 'l', 'tsp', 'tbsp', 
-    'cup', 'pint', 'quart', 'gallon', 'each', 'bunch',
-    'slice', 'package', 'can', 'bottle', 'box'
-  ];
+  // --- 1. Master List of Units ---
+  const allUnits = {
+    // Cooked / Servings
+    serving: ['servings', 'container', 'tupperware', 'pieces', 'slices', 'bowls', 'tray', 'pot'],
+    // Weight (Solids)
+    weight: ['kg', 'g', 'lb', 'oz', 'pack', 'box', 'bag'],
+    // Volume (Liquids)
+    volume: ['l', 'ml', 'cup', 'pint', 'quart', 'gallon', 'bottle', 'can'],
+    // Kitchen / Small
+    small: ['tbsp', 'tsp', 'jar', 'dash', 'pinch'],
+    // Countable
+    count: ['each', 'pieces', 'bunch', 'head', 'tray', 'dozen']
+  };
+
+  // --- 2. Helper to Get Allowed Units per Category ---
+  const getAllowedUnits = (category) => {
+    if (!category) return Object.values(allUnits).flat(); // Return all if no category selected
+
+    switch (category) {
+      // Cooked Food
+      case 'Rice':
+      case 'Leftovers':
+      case 'Kakanin':
+        return [...allUnits.serving, 'g', 'kg']; 
+
+      // Liquidy Cooked Food
+      case 'Soup':
+        return [...allUnits.serving, ...allUnits.volume]; 
+
+      // Liquids
+      case 'Beverages':
+      case 'Sauces':
+      case 'Condiments':
+      case 'Dairy': 
+        return [...allUnits.volume, ...allUnits.small];
+
+      // Raw Meat / Seafood (Strictly Weight/Count)
+      case 'Meat':
+      case 'Poultry':
+      case 'Seafood':
+      case 'Frozen':
+        return [...allUnits.weight, 'pieces', 'each', 'tray']; 
+
+      // Baking / Grains / Spices (Weight + Vol + Small)
+      case 'Baking':
+      case 'Grains':
+      case 'Pasta':
+      case 'Noodles':
+      case 'Spices':
+      case 'Herbs':
+        return [...allUnits.weight, ...allUnits.small, 'cup', 'jar', 'can'];
+
+      // Produce
+      case 'Fruits':
+      case 'Vegetables':
+        return [...allUnits.weight, ...allUnits.count, 'cup'];
+
+      // Eggs
+      case 'Eggs':
+        return ['each', 'dozen', 'tray', 'pieces'];
+
+      // Canned Goods
+      case 'Canned':
+      case 'Jarred':
+        return ['can', 'jar', 'bottle', ...allUnits.weight];
+
+      default:
+        return Object.values(allUnits).flat();
+    }
+  };
+
+  // Get filtered unit options based on selected category
+  const unitOptions = getAllowedUnits(formData.itemCategory);
 
   const DRAFT_KEY = 'itemFormDraft';
 
@@ -192,6 +262,17 @@ const ItemFormModal = ({
 
   const updateField = (field, value) => {
     const next = { ...formData, [field]: value };
+    
+    // If category changed, validate that current unit is still allowed
+    if (field === 'itemCategory') {
+      const allowedUnits = getAllowedUnits(value);
+      if (next.unit && !allowedUnits.includes(next.unit)) {
+        // Clear unit if it's not allowed for the new category
+        next.unit = '';
+        setFieldError('unit', 'Unit cleared - select a valid unit for this category');
+      }
+    }
+    
     setFormData(next);
 
     if (fieldValidators[field]) {

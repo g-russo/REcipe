@@ -23,20 +23,17 @@ import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-nat
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import AuthGuard from '../../components/auth-guard';
+import ItemFormModal from '../../components/pantry/item-form-modal';
 
 const CONFIDENCE_THRESHOLD = 0.03; // 3% minimum confidence
 const DISPLAY_THRESHOLD = 0.60; // 60% minimum confidence for "Other Options" list
 
 // Category options for manual entry
 const CATEGORIES = [
-  'Fruits',
-  'Vegetables',
-  'Meat & Protein',
-  'Dairy',
-  'Grains',
-  'Beverages',
-  'Snacks',
-  'Other',
+  'Rice', 'Soup', 'Leftovers', 'Kakanin',
+  'Baking', 'Beverages', 'Canned', 'Jarred', 'Condiments', 'Sauces', 'Dairy', 'Eggs',
+  'Fruits', 'Frozen', 'Grains', 'Pasta', 'Noodles', 'Meat', 'Poultry', 'Seafood',
+  'Snacks', 'Spices', 'Herbs', 'Vegetables', 'Other'
 ];
 
 export default function FoodRecognitionResult() {
@@ -59,6 +56,11 @@ export default function FoodRecognitionResult() {
   const [manualQuantity, setManualQuantity] = useState('1');
   const [manualExpiryDays, setManualExpiryDays] = useState('7');
   const [addingToInventory, setAddingToInventory] = useState(false);
+
+  // Item Form Modal State
+  const [itemFormVisible, setItemFormVisible] = useState(false);
+  const [inventories, setInventories] = useState([]);
+  const [prefilledItemData, setPrefilledItemData] = useState(null);
 
   // Detailed Results Modal State
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
@@ -316,7 +318,7 @@ export default function FoodRecognitionResult() {
     if (/carrot|tomato|potato|onion|lettuce|cabbage|spinach|broccoli|pepper|cucumber|eggplant|squash|pumpkin/i.test(name))
       return 'Vegetables';
     if (/chicken|beef|pork|fish|salmon|tuna|egg|tofu|meat|steak|shrimp|lobster|crab/i.test(name))
-      return 'Meat & Protein';
+      return 'Meat';
     if (/milk|cheese|yogurt|butter|cream|dairy/i.test(name))
       return 'Dairy';
     if (/rice|bread|pasta|noodle|wheat|cereal|oat|quinoa|barley/i.test(name))
@@ -331,7 +333,7 @@ export default function FoodRecognitionResult() {
   const estimateExpiryDate = (category) => {
     const now = new Date();
     const expiryDays = {
-      'Fruits': 7, 'Vegetables': 7, 'Meat & Protein': 3,
+      'Fruits': 7, 'Vegetables': 7, 'Meat': 3, 'Poultry': 3, 'Seafood': 2,
       'Dairy': 7, 'Grains': 30, 'Beverages': 90, 'Snacks': 60, 'Other': 14
     };
     now.setDate(now.getDate() + (expiryDays[category] || 14));
@@ -344,12 +346,11 @@ export default function FoodRecognitionResult() {
       return;
     }
 
-    setAddingToInventory(true);
-
     try {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) {
-        throw new Error('You must be logged in to add items');
+        Alert.alert('Error', 'You must be logged in to add items');
+        return;
       }
 
       const { data: userData, error: userLookupError } = await supabase
@@ -359,62 +360,130 @@ export default function FoodRecognitionResult() {
         .single();
 
       if (userLookupError || !userData) {
-        throw new Error('Failed to find user in database. Please try logging out and back in.');
+        Alert.alert('Error', 'Failed to find user in database. Please try logging out and back in.');
+        return;
       }
 
       const numericUserID = userData.userID;
 
-      const { data: inventories, error: invError } = await supabase
+      // Fetch user's inventories
+      const { data: userInventories, error: invError } = await supabase
         .from('tbl_inventories')
         .select('*')
         .eq('userID', numericUserID)
-        .order('createdAt', { ascending: true })
-        .limit(1);
+        .order('createdAt', { ascending: true });
 
       if (invError) {
-        throw new Error(`Failed to fetch inventory: ${invError.message}`);
+        Alert.alert('Error', `Failed to fetch inventories: ${invError.message}`);
+        return;
       }
 
-      let inventoryID = inventories?.[0]?.inventoryID;
+      let inventoryList = userInventories || [];
 
-      if (!inventoryID) {
+      // Create default inventory if none exists
+      if (inventoryList.length === 0) {
         const newInventory = await PantryService.createInventory(numericUserID, {
           inventoryColor: '#8BC34A',
           maxItems: 100,
           inventoryTags: { name: 'My Pantry' },
         });
-        inventoryID = newInventory.inventoryID;
+        inventoryList = [newInventory];
       }
 
+      setInventories(inventoryList);
+
+      // Prepare prefilled data
       const category = determineFoodCategory(selectedFood.label);
       const expiryDate = estimateExpiryDate(category);
+      
+      // Smart unit suggestion based on category
+      const suggestUnit = (cat) => {
+        switch (cat) {
+          case 'Rice':
+          case 'Soup':
+          case 'Leftovers':
+          case 'Beverages':
+            return 'ml';
+          case 'Grains':
+          case 'Pasta':
+          case 'Noodles':
+          case 'Baking':
+          case 'Spices':
+          case 'Herbs':
+            return 'g';
+          case 'Meat':
+          case 'Poultry':
+          case 'Seafood':
+          case 'Dairy':
+          case 'Fruits':
+          case 'Vegetables':
+            return 'kg';
+          default:
+            return 'pcs';
+        }
+      };
 
-      const itemData = {
-        inventoryID: inventoryID,
+      setPrefilledItemData({
         itemName: selectedFood.label,
         itemCategory: category,
         quantity: 1,
-        unit: 'pcs',
+        unit: suggestUnit(category),
         itemExpiration: expiryDate,
         itemDescription: `Detected by ${selectedFood.source}`,
         imageURL: uri,
-        userID: numericUserID,
-      };
+        inventoryID: inventoryList[0].inventoryID,
+      });
 
-      await PantryService.createItem(itemData);
-
-      setAddedItemName(selectedFood.label);
-      setSuccessModalVisible(true);
+      // Open the item form modal
+      setItemFormVisible(true);
 
     } catch (error) {
-      console.error('❌ Add to inventory error:', error);
+      console.error('❌ Error preparing item form:', error);
       Alert.alert(
-        'Error Adding Item',
-        error.message || 'Failed to add item to pantry. Please try again.',
+        'Error',
+        error.message || 'Failed to open item form. Please try again.',
         [{ text: 'OK' }]
       );
-    } finally {
-      setAddingToInventory(false);
+    }
+  };
+
+  const handleSaveItem = async (itemData) => {
+    try {
+      // Ensure user session
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        throw new Error('You must be logged in');
+      }
+
+      // Resolve numeric user ID
+      const { data: userData, error: userLookupError } = await supabase
+        .from('tbl_users')
+        .select('userID')
+        .eq('userEmail', user.email)
+        .single();
+
+      if (userLookupError || !userData) {
+        throw new Error('Failed to find user in database');
+      }
+
+      const numericUserID = userData.userID;
+
+      // Create the item
+      const createdItem = await PantryService.createItem({
+        ...itemData,
+        userID: numericUserID,
+      });
+
+      // Close form and show success
+      setItemFormVisible(false);
+      setPrefilledItemData(null);
+      setAddedItemName(createdItem.itemName || itemData.itemName);
+      setSuccessModalVisible(true);
+
+      return { status: 'created', item: createdItem };
+    } catch (error) {
+      Alert.alert('Error', error.message || 'Failed to save item');
+      return { status: 'error', error };
     }
   };
 
@@ -637,21 +706,11 @@ export default function FoodRecognitionResult() {
                 {/* Primary Actions for Selected Food */}
                 <View style={styles.heroActions}>
                   <TouchableOpacity
-                    style={[
-                      styles.addButton,
-                      addingToInventory && styles.addButtonDisabled,
-                    ]}
+                    style={styles.addButton}
                     onPress={handleAddToInventory}
-                    disabled={addingToInventory}
                   >
-                    {addingToInventory ? (
-                      <ActivityIndicator size="small" color="#FFF" />
-                    ) : (
-                      <>
-                        <Ionicons name="add-circle" size={22} color="#FFF" />
-                        <Text style={styles.addButtonText}>Add to Pantry</Text>
-                      </>
-                    )}
+                    <Ionicons name="add-circle" size={22} color="#FFF" />
+                    <Text style={styles.addButtonText}>Add to Pantry</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
@@ -996,6 +1055,20 @@ export default function FoodRecognitionResult() {
           </View>
         </Modal>
       </View>
+
+      {/* Item Form Modal */}
+      {inventories.length > 0 && (
+        <ItemFormModal
+          visible={itemFormVisible}
+          onClose={() => {
+            setItemFormVisible(false);
+            setPrefilledItemData(null);
+          }}
+          onSave={handleSaveItem}
+          initialData={prefilledItemData}
+          inventories={inventories}
+        />
+      )}
     </AuthGuard>
   );
 }

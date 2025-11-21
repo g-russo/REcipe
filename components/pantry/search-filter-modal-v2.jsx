@@ -81,9 +81,12 @@ const SearchFilterModal = ({
 
   // All available categories (predefined list)
   const categories = [
-    'Fruits', 'Vegetables', 'Meat & Poultry', 'Seafood', 'Dairy & Eggs',
-    'Grains & Pasta', 'Canned & Jarred', 'Condiments & Sauces', 
-    'Spices & Herbs', 'Snacks', 'Beverages', 'Frozen', 'Baking', 'Other'
+    // Cooked/Prepared Food
+    'Rice', 'Soup', 'Leftovers', 'Kakanin',
+    // Raw Ingredients
+    'Baking', 'Beverages', 'Canned', 'Jarred', 'Condiments', 'Sauces', 'Dairy', 'Eggs',
+    'Fruits', 'Frozen', 'Grains', 'Pasta', 'Noodles', 'Meat', 'Poultry', 'Seafood',
+    'Snacks', 'Spices', 'Herbs', 'Vegetables', 'Other'
   ];
 
   // Check if any filters are active
@@ -223,19 +226,32 @@ const SearchFilterModal = ({
   // Get category icon
   const getCategoryIcon = (category) => {
     const iconMap = {
-      'Fruits': 'food-apple-outline',
-      'Vegetables': 'carrot',
-      'Meat & Poultry': 'food-drumstick-outline',
-      'Seafood': 'fish',
-      'Dairy & Eggs': 'egg-outline',
-      'Grains & Pasta': 'pasta',
-      'Canned & Jarred': 'cup-outline',
-      'Condiments & Sauces': 'soy-sauce',
-      'Spices & Herbs': 'mortar-pestle',
-      'Snacks': 'cookie-outline',
-      'Beverages': 'coffee-outline',
-      'Frozen': 'snowflake',
+      // Cooked/Prepared Food
+      'Rice': 'rice',
+      'Soup': 'bowl-mix',
+      'Leftovers': 'food-drumstick',
+      'Kakanin': 'food',
+      // Raw Ingredients
       'Baking': 'cake',
+      'Beverages': 'coffee-outline',
+      'Canned': 'canned-food',
+      'Jarred': 'jar-outline',
+      'Condiments': 'bottle-tonic',
+      'Sauces': 'soy-sauce',
+      'Dairy': 'cow',
+      'Eggs': 'egg-outline',
+      'Fruits': 'food-apple-outline',
+      'Frozen': 'snowflake',
+      'Grains': 'barley',
+      'Pasta': 'pasta',
+      'Noodles': 'noodles',
+      'Meat': 'food-steak',
+      'Poultry': 'food-drumstick-outline',
+      'Seafood': 'fish',
+      'Snacks': 'cookie-outline',
+      'Spices': 'shaker-outline',
+      'Herbs': 'leaf',
+      'Vegetables': 'carrot',
       'Other': 'help-circle-outline',
     };
     return iconMap[category] || 'help-circle-outline';

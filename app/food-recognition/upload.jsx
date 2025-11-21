@@ -31,26 +31,80 @@ export default function FoodRecognitionUpload() {
   const determineFoodCategory = (foodName) => {
     const name = foodName.toLowerCase();
 
-    if (/apple|banana|orange|grape|strawberry|mango|pineapple|watermelon|kiwi|berry/i.test(name)) {
-      return 'Fruits';
+    // Cooked/Prepared Categories
+    if (/adobo|sinigang|tinola|menudo|caldereta|kare-kare|lechon|sisig|lumpia|pancit|viand|ulam|leftover|left over/i.test(name)) {
+      return 'Leftovers';
     }
-    if (/carrot|tomato|potato|onion|lettuce|cabbage|spinach|broccoli|pepper|cucumber/i.test(name)) {
-      return 'Vegetables';
+    if (/kanin|rice|fried rice|sinangag|garlic rice|rice dish|paella|risotto|biryani|pilaf/i.test(name)) {
+      return 'Rice';
     }
-    if (/chicken|beef|pork|fish|salmon|tuna|egg|tofu|meat|steak/i.test(name)) {
-      return 'Meat & Protein';
+    if (/sabaw|soup|sinigang|bulalo|nilaga|tinola|broth|stew|chowder|bisque/i.test(name)) {
+      return 'Soup';
+    }
+    if (/bibingka|puto|kutsinta|sapin-sapin|suman|biko|kakanin/i.test(name)) {
+      return 'Kakanin';
+    }
+
+    // Raw Ingredients
+    if (/flour|baking powder|baking soda|yeast|sugar|brown sugar|vanilla|cocoa/i.test(name)) {
+      return 'Baking';
+    }
+    if (/juice|soda|coffee|tea|water|drink|beverage|smoothie/i.test(name)) {
+      return 'Beverages';
+    }
+    if (/canned|can of|tinned/i.test(name)) {
+      return 'Canned';
+    }
+    if (/jar|jarred|pickled|preserved/i.test(name)) {
+      return 'Jarred';
+    }
+    if (/sauce|ketchup|mayo|mustard|soy sauce|vinegar|patis|toyo|condiment/i.test(name)) {
+      return 'Condiments';
+    }
+    if (/gravy|salsa|dressing|marinade/i.test(name)) {
+      return 'Sauces';
     }
     if (/milk|cheese|yogurt|butter|cream|dairy/i.test(name)) {
       return 'Dairy';
     }
-    if (/rice|bread|pasta|noodle|wheat|cereal|oat/i.test(name)) {
+    if (/egg|itlog/i.test(name)) {
+      return 'Eggs';
+    }
+    if (/apple|banana|orange|grape|strawberry|mango|pineapple|watermelon|kiwi|berry|fruit/i.test(name)) {
+      return 'Fruits';
+    }
+    if (/frozen|freezer/i.test(name)) {
+      return 'Frozen';
+    }
+    if (/grain|wheat|oat|barley|quinoa|cereal/i.test(name)) {
       return 'Grains';
     }
-    if (/juice|soda|coffee|tea|water|drink|beverage/i.test(name)) {
-      return 'Beverages';
+    if (/pasta|spaghetti|macaroni|penne|linguine/i.test(name)) {
+      return 'Pasta';
     }
-    if (/chip|cookie|candy|chocolate|snack|cracker/i.test(name)) {
+    if (/noodle|ramen|udon|soba|pancit canton|misua/i.test(name)) {
+      return 'Noodles';
+    }
+    if (/beef|pork|lamb|steak|ground meat|bacon|ham|meat/i.test(name)) {
+      return 'Meat';
+    }
+    if (/chicken|poultry|duck|turkey/i.test(name)) {
+      return 'Poultry';
+    }
+    if (/fish|salmon|tuna|tilapia|bangus|shrimp|prawn|crab|seafood|shellfish/i.test(name)) {
+      return 'Seafood';
+    }
+    if (/chip|cookie|candy|chocolate|snack|cracker|chips/i.test(name)) {
       return 'Snacks';
+    }
+    if (/spice|pepper|salt|garlic powder|paprika|cumin|cinnamon/i.test(name)) {
+      return 'Spices';
+    }
+    if (/basil|oregano|thyme|rosemary|cilantro|parsley|herb/i.test(name)) {
+      return 'Herbs';
+    }
+    if (/carrot|tomato|potato|onion|lettuce|cabbage|spinach|broccoli|pepper|cucumber|vegetable/i.test(name)) {
+      return 'Vegetables';
     }
 
     return 'Other';
@@ -60,13 +114,32 @@ export default function FoodRecognitionUpload() {
   const estimateExpiryDate = (category) => {
     const now = new Date();
     const expiryDays = {
-      'Fruits': 7,
-      'Vegetables': 7,
-      'Meat & Protein': 3,
-      'Dairy': 7,
-      'Grains': 30,
+      // Cooked/Prepared
+      'Leftovers': 3,
+      'Rice': 2,
+      'Soup': 3,
+      'Kakanin': 3,
+      // Raw Ingredients
+      'Baking': 180,
       'Beverages': 90,
+      'Canned': 365,
+      'Jarred': 180,
+      'Condiments': 180,
+      'Sauces': 90,
+      'Dairy': 7,
+      'Eggs': 21,
+      'Fruits': 7,
+      'Frozen': 90,
+      'Grains': 180,
+      'Pasta': 365,
+      'Noodles': 180,
+      'Meat': 3,
+      'Poultry': 3,
+      'Seafood': 2,
       'Snacks': 60,
+      'Spices': 365,
+      'Herbs': 7,
+      'Vegetables': 7,
       'Other': 14
     };
 
