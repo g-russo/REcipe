@@ -206,8 +206,8 @@ export default function QRScannerModal({ visible, onClose, onFoodFound }) {
             <Text style={styles.permissionText}>
               Please allow camera access to scan QR codes
             </Text>
-            <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-              <Text style={styles.closeButtonText}>Close</Text>
+            <TouchableOpacity style={styles.permissionButton} onPress={onClose}>
+              <Text style={styles.permissionButtonText}>Close</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -349,7 +349,14 @@ export default function QRScannerModal({ visible, onClose, onFoodFound }) {
 
         {/* Scanning Overlay */}
         <View style={styles.overlay}>
-          <View style={styles.topOverlay} />
+          <View style={styles.topOverlay}>
+            <View style={styles.topHeader}>
+              <View style={styles.headerContent}>
+                <Ionicons name="qr-code-outline" size={32} color="#FFF" />
+                <Text style={styles.headerTitle}>Scan QR Code</Text>
+              </View>
+            </View>
+          </View>
           <View style={styles.middleRow}>
             <View style={styles.sideOverlay} />
             <View style={styles.scanArea}>
@@ -357,23 +364,25 @@ export default function QRScannerModal({ visible, onClose, onFoodFound }) {
               <View style={[styles.corner, styles.topRight]} />
               <View style={[styles.corner, styles.bottomLeft]} />
               <View style={[styles.corner, styles.bottomRight]} />
+              {scanned && (
+                <View style={styles.scanningIndicator}>
+                  <ActivityIndicator size="large" color="#2196F3" />
+                </View>
+              )}
             </View>
             <View style={styles.sideOverlay} />
           </View>
           <View style={styles.bottomOverlay}>
-            <Text style={styles.instructionText}>
-              {scanned ? 'Looking up product...' : 'Align QR code within the frame'}
-            </Text>
-            
-            {/* ✅ NEW: Gallery Button */}
-            <TouchableOpacity
-              style={styles.galleryButton}
-              onPress={pickImageFromGallery}
-              disabled={loading}
-            >
-              <Ionicons name="images-outline" size={24} color="#FFF" />
-              <Text style={styles.galleryButtonText}>Choose from Gallery</Text>
-            </TouchableOpacity>
+            <View style={styles.instructionContainer}>
+              <Text style={styles.instructionText}>
+                {scanned ? 'Looking up product...' : 'Align QR code within the frame'}
+              </Text>
+              {!scanned && (
+                <Text style={styles.instructionSubtext}>
+                  Position the QR code in the center
+                </Text>
+              )}
+            </View>
           </View>
         </View>
 
@@ -409,8 +418,24 @@ const styles = StyleSheet.create({
   },
   topOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.7)',
     width: '100%',
+    justifyContent: 'flex-start',
+  },
+  topHeader: {
+    paddingTop: 60,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+  },
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  headerTitle: {
+    color: '#FFF',
+    fontSize: 24,
+    fontWeight: '700',
   },
   middleRow: {
     flexDirection: 'row',
@@ -418,56 +443,84 @@ const styles = StyleSheet.create({
   },
   sideOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.7)',
   },
   scanArea: {
     width: 300,
     height: 300,
     position: 'relative',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   corner: {
     position: 'absolute',
-    width: 30,
-    height: 30,
+    width: 40,
+    height: 40,
     borderColor: '#2196F3',
   },
   topLeft: {
     top: 0,
     left: 0,
-    borderTopWidth: 4,
-    borderLeftWidth: 4,
+    borderTopWidth: 5,
+    borderLeftWidth: 5,
+    borderTopLeftRadius: 4,
   },
   topRight: {
     top: 0,
     right: 0,
-    borderTopWidth: 4,
-    borderRightWidth: 4,
+    borderTopWidth: 5,
+    borderRightWidth: 5,
+    borderTopRightRadius: 4,
   },
   bottomLeft: {
     bottom: 0,
     left: 0,
-    borderBottomWidth: 4,
-    borderLeftWidth: 4,
+    borderBottomWidth: 5,
+    borderLeftWidth: 5,
+    borderBottomLeftRadius: 4,
   },
   bottomRight: {
     bottom: 0,
     right: 0,
-    borderBottomWidth: 4,
-    borderRightWidth: 4,
+    borderBottomWidth: 5,
+    borderRightWidth: 5,
+    borderBottomRightRadius: 4,
+  },
+  scanningIndicator: {
+    position: 'absolute',
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    paddingVertical: 20,
+    paddingHorizontal: 40,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
   bottomOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.7)',
     width: '100%',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     alignItems: 'center',
-    paddingBottom: 40,
+    paddingTop: 40,
+  },
+  instructionContainer: {
+    alignItems: 'center',
+    paddingHorizontal: 40,
   },
   instructionText: {
     color: '#FFF',
-    fontSize: 16,
+    fontSize: 18,
+    fontWeight: '600',
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 8,
+  },
+  instructionSubtext: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 14,
+    textAlign: 'center',
   },
   galleryButton: {
     flexDirection: 'row',
@@ -497,14 +550,16 @@ const styles = StyleSheet.create({
   },
   closeButton: {
     position: 'absolute',
-    top: 50,
+    top: 60,
     right: 20,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: 20,
-    width: 40,
-    height: 40,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 25,
+    width: 50,
+    height: 50,
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.3)',
   },
   permissionContainer: {
     flex: 1,
@@ -531,13 +586,13 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 24,
   },
-  closeButton: {
+  permissionButton: {
     backgroundColor: '#2196F3',
     paddingHorizontal: 32,
     paddingVertical: 12,
     borderRadius: 8,
   },
-  closeButtonText: {
+  permissionButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
