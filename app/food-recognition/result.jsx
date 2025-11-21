@@ -12,6 +12,7 @@ import {
   TextInput,
   Animated,
   StatusBar,
+  Dimensions,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -609,7 +610,7 @@ export default function FoodRecognitionResult() {
             { useNativeDriver: true }
           )}
           scrollEventThrottle={16}
-          scrollEnabled={false}
+          scrollEnabled={true}
         >
           <View style={styles.parallaxSpacer} />
 
@@ -1128,6 +1129,8 @@ function ManualEntryModal({
   );
 }
 
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -1573,7 +1576,7 @@ const styles = StyleSheet.create({
   },
   heroHeader: {
     alignItems: 'center',
-    marginBottom: hp('2%'),
+    marginBottom: SCREEN_HEIGHT < 700 ? hp('4%') : hp('12%'),
   },
   heroLabel: {
     fontSize: wp('7%'),
@@ -1656,7 +1659,7 @@ const styles = StyleSheet.create({
   divider: {
     height: 1,
     backgroundColor: '#eee',
-    marginVertical: hp('2%'),
+    marginVertical: hp('4%'),
   },
   secondaryActions: {
     gap: 10,
