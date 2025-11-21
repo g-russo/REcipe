@@ -15,6 +15,8 @@ import {
 } from '../services/notification-service';
 import { supabase } from '../lib/supabase';
 import { useRouter } from 'expo-router';
+import { useNetInfo } from '@react-native-community/netinfo';
+import NoInternetModal from '../components/NoInternetModal';
 
 // Keep the splash screen visible while we initialize
 SplashScreen.preventAutoHideAsync();
@@ -123,6 +125,8 @@ export default function RootLayout() {
     };
   }, []);
 
+  const netInfo = useNetInfo();
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SupabaseProvider>
@@ -155,6 +159,7 @@ export default function RootLayout() {
           <Stack.Screen name="notifications" options={{ title: 'Notifications' }} />
         </Stack>
         <StatusBar style="auto" />
+        <NoInternetModal isVisible={netInfo.isConnected === false} />
       </SupabaseProvider>
     </GestureHandlerRootView>
   );
