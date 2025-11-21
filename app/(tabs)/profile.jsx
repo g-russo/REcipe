@@ -402,7 +402,7 @@ const Profile = () => {
           <View style={styles.favoriteRecipeMeta}>
             <Ionicons name="time-outline" size={12} color="#999" />
             <Text style={styles.favoriteRecipeMetaText}>
-              {recipe.cookTime || recipe.totalTime || 'N/A'} min
+              {recipe.cookTime || recipe.totalTime || '30'} min
             </Text>
           </View>
         </View>
