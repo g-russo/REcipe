@@ -18,6 +18,7 @@ import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import PantryAlert from './pantry-alert';
 
 const ITEM_NAME_REGEX = /^[a-zA-Z0-9\s'-]+$/;
 const ITEM_NAME_MIN_LENGTH = 2;
@@ -52,6 +53,7 @@ const ItemFormModal = ({
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
   const [unitModalVisible, setUnitModalVisible] = useState(false);
   const [formErrors, setFormErrors] = useState({});
+  const [imagePickerVisible, setImagePickerVisible] = useState(false);
 
   // SPLIT & REFINED FOOD CATEGORIES (No '&' or '/')
   const foodCategories = [
@@ -359,15 +361,7 @@ const ItemFormModal = ({
 
   // Show image picker options
   const showImagePickerOptions = () => {
-    Alert.alert(
-      'Select Image',
-      'Choose an option',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Take Photo', onPress: () => pickImage(true) },
-        { text: 'Choose from Library', onPress: () => pickImage(false) }
-      ]
-    );
+    setImagePickerVisible(true);
   };
 
   // Validate and save (preserve draft on invalid, clear on success)
@@ -710,6 +704,42 @@ const ItemFormModal = ({
           </View>
         </View>
       </Modal>
+
+      {/* Image Picker Alert */}
+      <PantryAlert
+        visible={imagePickerVisible}
+        type="info"
+        title="Add Photo"
+        message="Choose how you'd like to add a photo to your item"
+        onClose={() => setImagePickerVisible(false)}
+        cancelLabel="Return"
+        customIcon={
+          <Ionicons name="camera-outline" size={64} color="#81A969" />
+        }
+      >
+        <TouchableOpacity
+          style={imagePickerStyles.optionButton}
+          onPress={() => {
+            setImagePickerVisible(false);
+            pickImage(true);
+          }}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="camera" size={24} color="#fff" />
+          <Text style={imagePickerStyles.optionButtonText}>Take Photo</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={imagePickerStyles.optionButtonSecondary}
+          onPress={() => {
+            setImagePickerVisible(false);
+            pickImage(false);
+          }}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="images" size={24} color="#81A969" />
+          <Text style={imagePickerStyles.optionButtonTextSecondary}>Choose from Library</Text>
+        </TouchableOpacity>
+      </PantryAlert>
     </>
   );
 };
@@ -954,6 +984,50 @@ const styles = StyleSheet.create({
     marginTop: 4,
     marginBottom: 10,
     fontSize: 13,
+  },
+});
+
+const imagePickerStyles = StyleSheet.create({
+  optionButton: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#81A969',
+    paddingVertical: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  optionButtonText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 16,
+    letterSpacing: 0.3,
+    marginLeft: 12,
+  },
+  optionButtonSecondary: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+    borderWidth: 2,
+    borderColor: '#81A969',
+    paddingVertical: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  optionButtonTextSecondary: {
+    color: '#81A969',
+    fontWeight: '700',
+    fontSize: 16,
+    letterSpacing: 0.3,
+    marginLeft: 12,
   },
 });
 
