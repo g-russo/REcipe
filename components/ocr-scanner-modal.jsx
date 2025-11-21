@@ -198,8 +198,8 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
             <Text style={styles.permissionText}>
               Please allow camera access to scan text
             </Text>
-            <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-              <Text style={styles.closeButtonText}>Close</Text>
+            <TouchableOpacity style={styles.permissionButton} onPress={onClose}>
+              <Text style={styles.permissionButtonText}>Close</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -210,15 +210,6 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
   return (
     <Modal visible={visible} animationType="slide">
       <View style={styles.container}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={onClose} style={styles.closeIconButton}>
-            <Ionicons name="close" size={28} color="#fff" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Scan Text (OCR)</Text>
-          <View style={{ width: 28 }} />
-        </View>
-
         {/* Camera or Results */}
         {extractedLines.length === 0 ? (
           <View style={styles.cameraContainer}>
@@ -230,7 +221,14 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
 
             {/* Overlay */}
             <View style={styles.overlay}>
-              <View style={styles.unfocusedTop} />
+              <View style={styles.unfocusedTop}>
+                <View style={styles.topHeader}>
+                  <View style={styles.headerContent}>
+                    <Ionicons name="document-text-outline" size={32} color="#FFF" />
+                    <Text style={styles.headerTitleOverlay}>Scan Text</Text>
+                  </View>
+                </View>
+              </View>
               <View style={styles.middleRow}>
                 <View style={styles.unfocusedSide} />
                 <View style={styles.focusedFrame}>
@@ -240,26 +238,29 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
                   <View style={[styles.corner, styles.bottomRight]} />
                   
                   {/* Scanning line animation */}
-                  <View style={styles.scanLine} />
+                  {scanning && <View style={styles.scanLine} />}
+                  {scanning && (
+                    <View style={styles.scanningIndicator}>
+                      <ActivityIndicator size="large" color="#FF9800" />
+                    </View>
+                  )}
                 </View>
                 <View style={styles.unfocusedSide} />
               </View>
-              <View style={styles.unfocusedBottom} />
-            </View>
-
-            {/* Instructions */}
-            <View style={styles.instructionsContainer}>
-              <Ionicons name="document-text-outline" size={48} color="#fff" />
-              <Text style={styles.instructionsText}>
-                {scanning 
-                  ? ocrProgress
-                  : 'Position text within the frame'}
-              </Text>
-              <Text style={styles.instructionsSubtext}>
-                Only text inside the frame will be scanned
-              </Text>
-              
-              {scanning && <ActivityIndicator size="large" color="#fff" style={{ marginTop: 10 }} />}
+              <View style={styles.unfocusedBottom}>
+                <View style={styles.instructionContainer}>
+                  <Text style={styles.instructionText}>
+                    {scanning 
+                      ? ocrProgress
+                      : 'Position text within the frame'}
+                  </Text>
+                  {!scanning && (
+                    <Text style={styles.instructionSubtext}>
+                      Works best with clear, well-lit text
+                    </Text>
+                  )}
+                </View>
+              </View>
             </View>
 
             {/* Buttons Container */}
@@ -279,17 +280,32 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
                   style={styles.captureButton}
                   onPress={captureAndExtractText}
                 >
-                  <Ionicons name="camera" size={32} color="#fff" />
+                  <View style={styles.captureButtonInner}>
+                    <Ionicons name="scan" size={32} color="#fff" />
+                  </View>
                 </TouchableOpacity>
 
                 {/* Placeholder for symmetry */}
                 <View style={styles.galleryButton} />
               </View>
             )}
+
+            {/* Close Button */}
+            <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+              <Ionicons name="close" size={32} color="#FFF" />
+            </TouchableOpacity>
           </View>
         ) : (
           /* Results View */
           <View style={styles.resultsContainer}>
+            {/* Header for Results View */}
+            <View style={styles.header}>
+              <TouchableOpacity onPress={onClose} style={styles.closeIconButton}>
+                <Ionicons name="close" size={28} color="#fff" />
+              </TouchableOpacity>
+              <Text style={styles.headerTitle}>Scan Text (OCR)</Text>
+              <View style={{ width: 28 }} />
+            </View>
             <View style={styles.resultsHeader}>
               <Text style={styles.resultsTitle}>Select Text Lines</Text>
               <Text style={styles.resultsSubtitle}>
@@ -374,6 +390,195 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000',
   },
+  cameraContainer: {
+    flex: 1,
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  unfocusedTop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'flex-start',
+  },
+  topHeader: {
+    paddingTop: 60,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+  },
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  headerTitleOverlay: {
+    color: '#FFF',
+    fontSize: 24,
+    fontWeight: '700',
+  },
+  middleRow: {
+    flexDirection: 'row',
+    height: FRAME_HEIGHT,
+  },
+  unfocusedSide: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+  },
+  focusedFrame: {
+    width: FRAME_WIDTH,
+    height: FRAME_HEIGHT,
+    position: 'relative',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  unfocusedBottom: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    paddingTop: 40,
+  },
+  corner: {
+    position: 'absolute',
+    width: 40,
+    height: 40,
+    borderColor: '#FF9800',
+  },
+  topLeft: {
+    top: 0,
+    left: 0,
+    borderTopWidth: 5,
+    borderLeftWidth: 5,
+    borderTopLeftRadius: 4,
+  },
+  topRight: {
+    top: 0,
+    right: 0,
+    borderTopWidth: 5,
+    borderRightWidth: 5,
+    borderTopRightRadius: 4,
+  },
+  bottomLeft: {
+    bottom: 0,
+    left: 0,
+    borderBottomWidth: 5,
+    borderLeftWidth: 5,
+    borderBottomLeftRadius: 4,
+  },
+  bottomRight: {
+    bottom: 0,
+    right: 0,
+    borderBottomWidth: 5,
+    borderRightWidth: 5,
+    borderBottomRightRadius: 4,
+  },
+  scanningIndicator: {
+    position: 'absolute',
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    paddingVertical: 20,
+    paddingHorizontal: 40,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  scanLine: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 3,
+    backgroundColor: '#FF9800',
+    top: '50%',
+    shadowColor: '#FF9800',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 4,
+  },
+  instructionContainer: {
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  instructionText: {
+    color: '#FFF',
+    fontSize: 18,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  instructionSubtext: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  buttonsContainer: {
+    position: 'absolute',
+    bottom: 50,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  captureButton: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 4,
+    borderColor: '#FF9800',
+  },
+  captureButtonInner: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: '#FF9800',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#FF9800',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  galleryButton: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    backgroundColor: 'rgba(255, 152, 0, 0.3)',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 152, 0, 0.5)',
+  },
+  galleryButtonText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  closeButton: {
+    position: 'absolute',
+    top: 60,
+    right: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 25,
+    width: 50,
+    height: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  resultsContainer: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -390,140 +595,6 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '600',
     color: '#fff',
-  },
-  cameraContainer: {
-    flex: 1,
-  },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  unfocusedTop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-  },
-  middleRow: {
-    flexDirection: 'row',
-    height: FRAME_HEIGHT,
-  },
-  unfocusedSide: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-  },
-  focusedFrame: {
-    width: FRAME_WIDTH,
-    height: FRAME_HEIGHT,
-    position: 'relative',
-    borderWidth: 2,
-    borderColor: '#FF9800',
-  },
-  unfocusedBottom: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-  },
-  corner: {
-    position: 'absolute',
-    width: 30,
-    height: 30,
-    borderColor: '#FF9800',
-    borderWidth: 4,
-  },
-  topLeft: {
-    top: -2,
-    left: -2,
-    borderBottomWidth: 0,
-    borderRightWidth: 0,
-  },
-  topRight: {
-    top: -2,
-    right: -2,
-    borderBottomWidth: 0,
-    borderLeftWidth: 0,
-  },
-  bottomLeft: {
-    bottom: -2,
-    left: -2,
-    borderTopWidth: 0,
-    borderRightWidth: 0,
-  },
-  bottomRight: {
-    bottom: -2,
-    right: -2,
-    borderTopWidth: 0,
-    borderLeftWidth: 0,
-  },
-  scanLine: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    height: 2,
-    backgroundColor: '#FF9800',
-    top: '50%',
-  },
-  instructionsContainer: {
-    position: 'absolute',
-    bottom: 200,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    paddingHorizontal: 20,
-  },
-  instructionsText: {
-    color: '#fff',
-    fontSize: 16,
-    marginTop: 10,
-    textAlign: 'center',
-    fontWeight: '600',
-  },
-  instructionsSubtext: {
-    color: '#fff',
-    fontSize: 13,
-    marginTop: 4,
-    textAlign: 'center',
-    opacity: 0.8,
-  },
-  buttonsContainer: {
-    position: 'absolute',
-    bottom: 40,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    paddingHorizontal: 40,
-  },
-  captureButton: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: '#FF9800',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 4,
-    borderColor: '#fff',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  galleryButton: {
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: 'rgba(255, 152, 0, 0.8)',
-    borderRadius: 12,
-  },
-  galleryButtonText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
-    marginTop: 4,
-  },
-  resultsContainer: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
   },
   resultsHeader: {
     padding: 16,
@@ -666,13 +737,13 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 24,
   },
-  closeButton: {
+  permissionButton: {
     backgroundColor: '#FF9800',
     paddingHorizontal: 32,
     paddingVertical: 12,
     borderRadius: 8,
   },
-  closeButtonText: {
+  permissionButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
