@@ -16,6 +16,8 @@ import requests
 import torch
 import pytesseract
 import traceback
+import google.generativeai as genai
+from google.ai.generativelanguage import Content, Part
 
 # ✅ Load .env file FIRST
 load_dotenv()
@@ -27,6 +29,7 @@ pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
 FATSECRET_API_URL = "https://platform.fatsecret.com/rest/server.api"
 FATSECRET_KEY = os.getenv("FATSECRET_CLIENT_ID", "")
 FATSECRET_SECRET = os.getenv("FATSECRET_CLIENT_SECRET", "")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 def call_server_api(method: str, params: dict = None):
     timestamp = str(int(time.time()))
@@ -70,10 +73,27 @@ def call_server_api(method: str, params: dict = None):
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print(f"🔧 Using device: {device}")
 
-detector_model = YOLO('models/best.pt').to(device)
-food101_model = YOLO('models/food101_cls_best.pt').to(device)
-filipino_model = YOLO('models/filipino_cls_best.pt').to(device)
-ingredients_model = YOLO('models/ingredients_best.pt').to(device)
+# Get the directory where api.py is located to correctly find models
+BASE_DIR = Path(__file__).resolve().parent
+MODELS_DIR = BASE_DIR / "models"
+
+detector_model = YOLO(MODELS_DIR / 'best.pt').to(device)
+food101_model = YOLO(MODELS_DIR / 'food101_cls_best.pt').to(device)
+filipino_model = YOLO(MODELS_DIR / 'filipino_cls_best.pt').to(device)
+ingredients_model = YOLO(MODELS_DIR / 'ingredients_best.pt').to(device)
+
+# ✅ Configure Gemini
+gemini_model = None
+
+if GEMINI_API_KEY:
+    try:
+        genai.configure(api_key=GEMINI_API_KEY)
+        gemini_model = genai.GenerativeModel('gemini-2.0-flash')
+        print("✅ Gemini 2.0 Flash configured")
+    except Exception as e:
+        print(f"⚠️ Gemini configuration failed: {e}")
+else:
+    print("⚠️ Gemini API Key missing")
 
 print("✅ All models loaded successfully!")
 print(f"🔍 Tesseract path: {pytesseract.pytesseract.tesseract_cmd}")
@@ -112,6 +132,85 @@ def topk_from_probs(res, k: int):
     except Exception as e:
         print(f"❌ Error extracting predictions: {e}")
         return []
+
+# Rate Limiting for Gemini (Free Tier Protection)
+# Free tier allows ~15 RPM (Requests Per Minute). We set it to 10 to be safe.
+GEMINI_RPM_LIMIT = 10
+gemini_request_timestamps = []
+
+def check_gemini_rate_limit():
+    """
+    Checks if we are within the rate limit for Gemini API.
+    Returns True if allowed, False if limit reached.
+    """
+    global gemini_request_timestamps
+    now = time.time()
+    
+    # Remove timestamps older than 60 seconds
+    gemini_request_timestamps = [t for t in gemini_request_timestamps if now - t < 60]
+    
+    if len(gemini_request_timestamps) >= GEMINI_RPM_LIMIT:
+        print(f"⚠️ Gemini Rate Limit Reached ({len(gemini_request_timestamps)}/{GEMINI_RPM_LIMIT} RPM). Skipping.")
+        return False
+        
+    gemini_request_timestamps.append(now)
+    return True
+
+def call_gemini_vision(image: Image.Image):
+    """
+    Calls Gemini 2.0 Flash with the image to identify food.
+    Returns structured JSON.
+    """
+    print("✨ call_gemini_vision triggered")
+    
+    # ✅ Check Rate Limit
+    if not check_gemini_rate_limit():
+        return None
+
+    if not gemini_model:
+        print("❌ gemini_model is None")
+        return None
+
+    prompt = """
+    You are an expert in Filipino cuisine. Analyze this food image and identify the dish/ingredient.
+    
+    Key Instructions:
+    1. Prioritize Filipino dishes/ingredients. If the dish looks like a generic international dish (e.g., Spaghetti, Fried Chicken, Curry) but has Filipino characteristics (e.g., red hotdogs in spaghetti, gravy with chicken), identify it as the Filipino version.
+    2. Look for visual cues common in Filipino cooking: specific vegetables (eggplant, okra, kangkong), sauces (adobo, sinigang, kare-kare), or side dishes (rice, dipping sauces).
+    3. If it is a regional Filipino specialty, provide the specific local name.
+    4. If it is definitely NOT Filipino, identify it correctly as its international name.
+    5. If the image is NOT food (e.g., a person, car, landscape, blurry object), return "Not a Food" as the name.
+    6. If you cannot identify the food at all, return "Unknown Food" as the name.
+    7. Provide top 5 possible identifications, sorted by confidence (highest first).
+    8. Assign a realistic confidence score (0.0 to 0.99) for each prediction based on how certain you are. Do not default to 0.99 unless absolutely certain.
+    9. Do NOT return generic cuisine names (e.g., "Italian Cuisine", "American Food") or meal types. Return ONLY specific dish names (e.g., "Carbonara", "Burger") or ingredient names.
+
+    Return strict JSON format:
+    [
+        {
+            "name": "Dish or Ingredient Name",
+            "confidence": 0.6 to 0.99
+        },
+        {
+            "name": "Dish or Ingredient Name that may look similar",
+            "confidence": 0.6 to 0.99
+        }
+    ]
+    """
+    
+    try:
+        print("⏳ Sending request to Gemini...")
+        response = gemini_model.generate_content(
+            [prompt, image],
+            generation_config={"response_mime_type": "application/json"}
+        )
+        print(f"✅ Gemini Raw Response: {response.text}")
+        import json
+        return json.loads(response.text)
+    except Exception as e:
+        print(f"❌ Gemini Error: {e}")
+        traceback.print_exc()
+        return None
 
 @app.post("/recognize-food")
 async def recognize_food(file: UploadFile = File(...)):
@@ -192,6 +291,27 @@ async def recognize_food(file: UploadFile = File(...)):
             print(f"❌ Ingredients error: {ing_error}")
             traceback.print_exc()
             ingredient_predictions = []
+
+        # ✅ NEW: Hybrid Logic
+        max_conf = 0.0
+        
+        # Check Filipino model confidence
+        if filipino_predictions:
+            max_conf = max(max_conf, filipino_predictions[0]['confidence'])
+            
+        # Check Food101 model confidence
+        if food101_predictions:
+            max_conf = max(max_conf, food101_predictions[0]['confidence'])
+
+        gemini_result = None
+        
+        # Threshold: If confidence is lower (TEMPORARY FOR TESTING), ask Gemini
+        print(f"📊 Max confidence: {max_conf:.4f}")
+        if max_conf < 1.0:
+            print(f"📉 Low confidence ({max_conf:.2f}). Calling Gemini fallback...")
+            gemini_result = call_gemini_vision(img)
+        else:
+            print(f"✅ High confidence ({max_conf:.2f}). Skipping Gemini.")
         
         return {
             "success": True,
@@ -199,6 +319,7 @@ async def recognize_food(file: UploadFile = File(...)):
             "food101_predictions": food101_predictions,
             "filipino_predictions": filipino_predictions,
             "ingredient_predictions": ingredient_predictions,
+            "gemini_prediction": gemini_result,
             "detection_count": len(detections)
         }
     except HTTPException:
