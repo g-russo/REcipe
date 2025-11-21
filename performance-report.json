@@ -1,0 +1,78 @@
+{
+  "testName": "Performance Testing",
+  "timestamp": "2025-11-21T07:31:54.794Z",
+  "metrics": [
+    {
+      "name": "Dependencies",
+      "value": 41,
+      "unit": "count",
+      "status": "needs optimization",
+      "timestamp": "2025-11-21T07:31:54.798Z"
+    },
+    {
+      "name": "Dev Dependencies",
+      "value": 3,
+      "unit": "count",
+      "status": "info",
+      "timestamp": "2025-11-21T07:31:54.798Z"
+    },
+    {
+      "name": "Total Images",
+      "value": 11,
+      "unit": "count",
+      "status": "info",
+      "timestamp": "2025-11-21T07:31:54.805Z"
+    },
+    {
+      "name": "Large Images (>200KB)",
+      "value": 2,
+      "unit": "count",
+      "status": "needs optimization",
+      "timestamp": "2025-11-21T07:31:54.805Z"
+    },
+    {
+      "name": "Component Files",
+      "value": 76,
+      "unit": "count",
+      "status": "info",
+      "timestamp": "2025-11-21T07:31:54.817Z"
+    },
+    {
+      "name": "Large Files (>500 lines)",
+      "value": 24,
+      "unit": "count",
+      "status": "consider splitting",
+      "timestamp": "2025-11-21T07:31:54.817Z"
+    },
+    {
+      "name": "Cache Implementation",
+      "value": "Yes",
+      "unit": "boolean",
+      "status": "good",
+      "timestamp": "2025-11-21T07:31:54.817Z"
+    },
+    {
+      "name": "Memory Profile",
+      "value": "Optimized",
+      "unit": "status",
+      "status": "good",
+      "timestamp": "2025-11-21T07:31:54.818Z"
+    },
+    {
+      "name": "Render Optimization Rate",
+      "value": "1.89%",
+      "unit": "percentage",
+      "status": "consider more optimization",
+      "timestamp": "2025-11-21T07:31:54.823Z"
+    }
+  ],
+  "summary": {
+    "averageLoadTime": 0,
+    "totalAssets": 0,
+    "bundleSize": 0,
+    "performanceScore": "22.22",
+    "totalMetrics": 9,
+    "goodMetrics": 2,
+    "warningMetrics": 0
+  }
+}

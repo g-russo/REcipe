@@ -1,0 +1,43 @@
+appId: com.recipe.app
+---
+# Test: User can add item to pantry
+- launchApp
+- tapOn: "Pantry"
+- assertVisible: "My Pantry"
+
+# Add a new item
+- tapOn: 
+    id: "add-item-button"
+- assertVisible: "Add Item"
+
+# Fill in item details
+- tapOn:
+    id: "item-name-input"
+- inputText: "Test Milk"
+
+- tapOn:
+    id: "quantity-input"
+- inputText: "1"
+
+- tapOn:
+    id: "unit-picker"
+- tapOn: "liter"
+
+# Set expiration date
+- tapOn:
+    id: "expiration-date-picker"
+- tapOn:
+    text: "30" # Select 30th day
+
+- tapOn:
+    id: "save-button"
+
+# Verify item was added
+- assertVisible: "Test Milk"
+- assertVisible: "1 liter"
+
+# Clean up - delete the test item
+- longPressOn: "Test Milk"
+- tapOn: "Delete"
+- tapOn: "Confirm"
+- assertNotVisible: "Test Milk"

@@ -1,0 +1,75 @@
+{
+  "testName": "Accuracy Testing",
+  "timestamp": "2025-11-21T07:32:08.774Z",
+  "tests": [
+    {
+      "name": "Image Recognition Setup",
+      "passed": true,
+      "message": "Image recognition configured",
+      "accuracyPercent": 85,
+      "timestamp": "2025-11-21T07:32:08.778Z"
+    },
+    {
+      "name": "OCR Implementation",
+      "passed": true,
+      "message": "OCR functionality found",
+      "accuracyPercent": 80,
+      "timestamp": "2025-11-21T07:32:08.782Z"
+    },
+    {
+      "name": "Barcode Scanning",
+      "passed": true,
+      "message": "Barcode scanner implemented",
+      "accuracyPercent": 90,
+      "timestamp": "2025-11-21T07:32:08.786Z"
+    },
+    {
+      "name": "Recipe Search",
+      "passed": true,
+      "message": "Recipe search implemented",
+      "accuracyPercent": 88,
+      "timestamp": "2025-11-21T07:32:08.787Z"
+    },
+    {
+      "name": "Recipe Filters",
+      "passed": true,
+      "message": "Advanced filters available",
+      "accuracyPercent": 85,
+      "timestamp": "2025-11-21T07:32:08.787Z"
+    },
+    {
+      "name": "Nutrition Data",
+      "passed": true,
+      "message": "Nutrition tracking enabled",
+      "accuracyPercent": 92,
+      "timestamp": "2025-11-21T07:32:08.787Z"
+    },
+    {
+      "name": "Macronutrient Tracking",
+      "passed": true,
+      "message": "Macros tracked accurately",
+      "accuracyPercent": 90,
+      "timestamp": "2025-11-21T07:32:08.787Z"
+    },
+    {
+      "name": "Expiry Predictions",
+      "passed": false,
+      "message": "No expiry predictions",
+      "accuracyPercent": 0,
+      "timestamp": "2025-11-21T07:32:08.788Z"
+    },
+    {
+      "name": "AI Recipe Generation",
+      "passed": false,
+      "message": "OpenAI service not found",
+      "accuracyPercent": 0,
+      "timestamp": "2025-11-21T07:32:08.788Z"
+    }
+  ],
+  "summary": {
+    "total": 9,
+    "passed": 7,
+    "failed": 2,
+    "averageAccuracy": "67.78"
+  }
+}
