@@ -21,6 +21,7 @@ import BackgroundNotificationRefresh from '../../services/background-notificatio
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
+import { useTabContext } from '../../contexts/tab-context';
 
 // Components
 import PantryHeader from '../../components/pantry/pantry-header';
@@ -66,8 +67,10 @@ const Pantry = () => {
   const { user, customUserData } = useCustomAuth();
   const params = useLocalSearchParams();
   const scrollViewRef = useRef(null);
+  const inventoryGroupsRef = useRef(null);
   const router = useRouter();
-  
+  const { subscribe } = useTabContext();
+
   // State
   const [inventories, setInventories] = useState([]);
   const [groups, setGroups] = useState([]);
@@ -75,7 +78,7 @@ const Pantry = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [highlightedItemId, setHighlightedItemId] = useState(null);
-  
+
   // Modal states
   const [itemFormVisible, setItemFormVisible] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
@@ -84,7 +87,7 @@ const Pantry = () => {
   const [groupItemsModalVisible, setGroupItemsModalVisible] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [searchModalVisible, setSearchModalVisible] = useState(false);
-  
+
   // Selection mode
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedItems, setSelectedItems] = useState([]);
@@ -120,6 +123,36 @@ const Pantry = () => {
     initializeNotifications();
   }, []);
 
+  // Handle tab press events (scroll to top and cleanup)
+  useEffect(() => {
+    const unsubscribe = subscribe((event) => {
+      if (event.type === 'tabPress' && event.isAlreadyActive && event.route.includes('pantry')) {
+        // Scroll to top immediately
+        if (scrollViewRef.current) {
+          scrollViewRef.current.scrollTo({ y: 0, animated: true });
+        }
+
+        // Reset horizontal groups scroll
+        if (inventoryGroupsRef.current) {
+          inventoryGroupsRef.current.scrollToStart();
+        }
+
+        // Cleanup selection mode and modals with a tiny delay to allow scroll to start
+        // This ensures the "reset" animation happens while scrolling
+        setTimeout(() => {
+          setSelectionMode(false);
+          setSelectedItems([]);
+          setSearchModalVisible(false);
+          setItemFormVisible(false);
+          setGroupFormVisible(false);
+          setGroupItemsModalVisible(false);
+          setHighlightedItemId(null);
+        }, 50);
+      }
+    });
+    return unsubscribe;
+  }, [subscribe]);
+
   // Load data on mount
   useEffect(() => {
     if (customUserData?.userID) {
@@ -146,7 +179,7 @@ const Pantry = () => {
       // Entering selection mode
       setIsExitingSelection(false);
       setShowSelectionHeader(true);
-      
+
       // Hide main header - only fade, no translate
       Animated.timing(headerOpacity, {
         toValue: 0,
@@ -157,14 +190,14 @@ const Pantry = () => {
       // Exiting selection mode
       if (showSelectionHeader) {
         setIsExitingSelection(true);
-        
+
         // Wait for exit animation to complete before hiding
         setTimeout(() => {
           setShowSelectionHeader(false);
           setIsExitingSelection(false);
         }, 280);
       }
-      
+
       // Show main header - only fade, no translate
       Animated.timing(headerOpacity, {
         toValue: 1,
@@ -181,7 +214,7 @@ const Pantry = () => {
     if (shouldShow) {
       // Show FAB and start entrance animation
       setShowFAB(true);
-      
+
       // Entrance animation - fast and smooth with opacity
       Animated.parallel([
         Animated.spring(fabScale, {
@@ -220,7 +253,7 @@ const Pantry = () => {
       if (floatingAnimation.current) {
         floatingAnimation.current.stop();
       }
-      
+
       // Exit animation - scale down, slide down, and fade out
       Animated.parallel([
         Animated.spring(fabScale, {
@@ -260,12 +293,12 @@ const Pantry = () => {
     if (params?.highlightItemId && items.length > 0) {
       const itemId = parseInt(params.highlightItemId);
       console.log('🔍 Highlighting item from notification:', itemId);
-      
+
       // Check if item exists
       const itemExists = items.find(item => item.itemID === itemId);
       if (itemExists) {
         setHighlightedItemId(itemId);
-        
+
         // Clear highlight after 3 seconds
         setTimeout(() => {
           setHighlightedItemId(null);
@@ -284,10 +317,10 @@ const Pantry = () => {
         // Handle notification tap - could navigate to specific item
         console.log('Notification tapped:', notification);
       });
-      
+
       // Register background task for notification refresh
       await BackgroundNotificationRefresh.registerBackgroundNotificationRefresh();
-      
+
       // Cleanup listener on unmount
       return () => {
         if (listener) {
@@ -302,7 +335,7 @@ const Pantry = () => {
   // Schedule notifications for expiring items
   const scheduleExpirationNotifications = async () => {
     if (!customUserData?.userID) return;
-    
+
     try {
       // Only get expiring items for the banner display
       // Don't schedule notifications here - they're scheduled when items are created/updated
@@ -313,7 +346,7 @@ const Pantry = () => {
         daysUntilExpiry: ExpirationNotificationService.calculateDaysUntilExpiration(item.itemExpiration),
       }));
       setExpiringItems(itemsWithDays);
-      
+
       console.log('📊 Found', itemsWithDays.length, 'expiring items');
     } catch (error) {
       console.error('Error getting expiring items:', error);
@@ -334,21 +367,21 @@ const Pantry = () => {
         setLoading(true);
       }
       console.log('📥 Loading pantry data for user:', customUserData.userID);
-      
+
       const [inventoriesData, groupsData, itemsData] = await Promise.all([
         PantryService.getUserInventories(customUserData.userID),
         PantryService.getUserGroups(customUserData.userID),
         PantryService.getUserItems(customUserData.userID),
       ]);
-      
+
       console.log('📦 Inventories loaded:', inventoriesData);
       console.log('📁 Groups loaded:', groupsData.length, 'groups');
       console.log('📝 Items loaded:', itemsData.length, 'items');
-      
+
       setInventories(inventoriesData);
       setGroups(groupsData); // Groups now include groupCategory from database
       setItems(itemsData);
-      
+
       // If user has no inventory but is verified, create one automatically
       if (inventoriesData.length === 0) {
         console.log('📦 No inventory found, creating default...');
@@ -365,7 +398,7 @@ const Pantry = () => {
           console.log('⚠️ Could not auto-create inventory:', inventoryError.message);
         }
       }
-      
+
       // Schedule expiration notifications after loading items
       await scheduleExpirationNotifications();
     } catch (error) {
@@ -391,7 +424,7 @@ const Pantry = () => {
         return newInventory.inventoryID;
       } catch (error) {
         console.error('Error creating inventory:', error);
-        
+
         // Check if it's a verification error
         if (error.message && error.message.includes('verified')) {
           showAlert(
@@ -480,7 +513,7 @@ const Pantry = () => {
       const wasEditing = !!editingItem;
       const editingItemSnapshot = editingItem;
       let newlyCreatedItem = null;
-      
+
       if (editingItem) {
         // Update existing item
         console.log('📝 Updating existing item:', editingItem.itemID);
@@ -488,7 +521,7 @@ const Pantry = () => {
           ...itemData,
           userID: customUserData.userID, // For image upload
         });
-        
+
         // Schedule notification if item has expiration date
         if (itemData.itemExpiration) {
           const daysUntilExpiry = ExpirationNotificationService.calculateDaysUntilExpiration(itemData.itemExpiration);
@@ -500,7 +533,7 @@ const Pantry = () => {
             );
           }
         }
-        
+
         showAlert('success', 'Item updated successfully', 'Success', true);
       } else {
         // Create new item
@@ -544,7 +577,7 @@ const Pantry = () => {
 
         const createdItem = await PantryService.createItem(itemToCreate);
         console.log('✅ Item created successfully:', createdItem);
-        
+
         // Schedule notification if item has expiration date
         if (createdItem.itemExpiration) {
           const daysUntilExpiry = ExpirationNotificationService.calculateDaysUntilExpiration(createdItem.itemExpiration);
@@ -557,14 +590,14 @@ const Pantry = () => {
             );
           }
         }
-        
+
         // NEW: Check for matching category groups and prompt user
         await checkAndPromptForCategoryGroup(createdItem);
-        
+
         showAlert('success', 'Item added successfully', 'Success', true);
         newlyCreatedItem = createdItem;
       }
-      
+
       // Reload data
       console.log('🔄 Reloading pantry data...');
       await loadData();
@@ -633,7 +666,7 @@ const Pantry = () => {
         const message = context === 'after-duplicate-merge'
           ? `Merged with existing item. Add to a ${item.itemCategory} group?`
           : `You have ${matchingGroups.length} groups for ${item.itemCategory} items.\n\nAdd "${item.itemName}" to one?`;
-        
+
         setGroupSelectionAlert({
           visible: true,
           message,
@@ -679,7 +712,7 @@ const Pantry = () => {
   // Handle delete all expired items
   const handleDeleteAllExpired = async () => {
     const expiredItems = items.filter(item => isItemExpired(item));
-    
+
     if (expiredItems.length === 0) {
       showAlert('info', 'There are no expired items to delete.', 'No Expired Items', true);
       return;
@@ -694,16 +727,16 @@ const Pantry = () => {
       toggleItemSelection(item.itemID);
     } else {
       const expired = isItemExpired(item);
-      const daysUntilExpiry = item.itemExpiration 
+      const daysUntilExpiry = item.itemExpiration
         ? ExpirationNotificationService.calculateDaysUntilExpiration(item.itemExpiration)
         : null;
-      
+
       let expiryText = 'No expiry';
       if (item.itemExpiration) {
         if (expired) {
           const daysExpired = Math.abs(daysUntilExpiry);
-          expiryText = daysExpired === 0 
-            ? '⚠️ EXPIRED TODAY' 
+          expiryText = daysExpired === 0
+            ? '⚠️ EXPIRED TODAY'
             : `⚠️ EXPIRED ${daysExpired} day(s) ago`;
         } else if (daysUntilExpiry === 0) {
           expiryText = '⚠️ Expires TODAY';
@@ -715,7 +748,7 @@ const Pantry = () => {
           expiryText = item.itemExpiration;
         }
       }
-      
+
       // Show item details with custom category icon
       setItemMenuAlert({ visible: true, item });
     }
@@ -739,12 +772,12 @@ const Pantry = () => {
       const newSelectedItems = prev.includes(itemID)
         ? prev.filter(id => id !== itemID)
         : [...prev, itemID];
-      
+
       // 💡 If no items are selected, exit selection mode
       if (newSelectedItems.length === 0) {
         setSelectionMode(false);
       }
-      
+
       return newSelectedItems;
     });
   };
@@ -780,11 +813,11 @@ const Pantry = () => {
       onSelectGroup: async (group) => {
         try {
           console.log(`📂 Adding ${selectedItems.length} items to group ${group.groupID}`);
-          
+
           let addedCount = 0;
           let alreadyInGroupCount = 0;
           const alreadyInGroupItems = [];
-          
+
           // Add each selected item to the group
           for (const itemID of selectedItems) {
             try {
@@ -801,7 +834,7 @@ const Pantry = () => {
               }
             }
           }
-          
+
           // Show appropriate message
           if (alreadyInGroupCount === selectedItems.length) {
             // All items already in group
@@ -828,7 +861,7 @@ const Pantry = () => {
               true
             );
           }
-          
+
           // Exit selection mode and reload data
           exitSelectionMode();
           await loadData();
@@ -839,7 +872,7 @@ const Pantry = () => {
       },
     });
   };
-  
+
   // 💡 NEW: Handle deleting multiple selected items
   const handleDeleteSelectedItems = () => {
     if (selectedItems.length === 0) {
@@ -873,7 +906,7 @@ const Pantry = () => {
         await PantryService.createGroup(customUserData.userID, groupData);
         showAlert('success', 'Group created successfully', 'Success', true);
       }
-      
+
       await loadData();
       setEditingGroup(null);
     } catch (error) {
@@ -917,12 +950,12 @@ const Pantry = () => {
 
     // Exit selection mode first
     exitSelectionMode();
-    
+
     // Navigate to recipe search tab and trigger search
     try {
       // Navigate to the recipe-search tab
       router.push('/(tabs)/recipe-search');
-      
+
       // Wait a moment for the tab to load, then trigger the search
       setTimeout(() => {
         // The recipe-search screen will need to accept these params
@@ -950,7 +983,7 @@ const Pantry = () => {
         {/* 💡 Apply a new style to SafeAreaView */}
         <SafeAreaView style={styles.safeArea}>
           <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-          
+
           {/* CONDITIONAL HEADER */}
           {showSelectionHeader && (
             <SelectionModeHeader
@@ -987,7 +1020,7 @@ const Pantry = () => {
             >
               <PantryHeader onSearchPress={() => setSearchModalVisible(true)} />
             </Animated.View>
-            
+
             <ExpiringItemsBanner
               expiringItems={expiringItems}
               onItemPress={handleItemPress}
@@ -997,6 +1030,7 @@ const Pantry = () => {
 
             <View style={styles.groupsSectionSpacer}>
               <InventoryGroupsSection
+                ref={inventoryGroupsRef}
                 groups={groups}
                 onGroupPress={handleGroupPress}
                 onCreateGroup={handleCreateGroup}
@@ -1063,7 +1097,7 @@ const Pantry = () => {
             onDeleteGroup={() => handleDeleteGroup(selectedGroup)}
           />
         </SafeAreaView>
-        
+
         {/* 💡 FAB (FIXED) - Sibling to SafeAreaView, positioned by container */}
         {showFAB && (
           <View style={styles.fabContainer}>
@@ -1118,10 +1152,10 @@ const Pantry = () => {
         <View style={{ width: '100%', marginTop: 12, gap: 10 }}>
           {duplicateAlert.mergeAvailable && (
             <AnimatedButton
-              style={{ 
-                backgroundColor: '#81A969', 
-                paddingVertical: 12, 
-                borderRadius: 12, 
+              style={{
+                backgroundColor: '#81A969',
+                paddingVertical: 12,
+                borderRadius: 12,
                 shadowColor: '#000',
                 shadowOffset: { width: 0, height: 2 },
                 shadowOpacity: 0.1,
@@ -1137,11 +1171,11 @@ const Pantry = () => {
             </AnimatedButton>
           )}
           <AnimatedButton
-            style={{ 
+            style={{
               backgroundColor: duplicateAlert.mergeAvailable ? '#fff' : '#81A969',
               borderWidth: duplicateAlert.mergeAvailable ? 2 : 0,
               borderColor: '#81A969',
-              paddingVertical: 12, 
+              paddingVertical: 12,
               borderRadius: 12,
               shadowColor: '#000',
               shadowOffset: { width: 0, height: 2 },
@@ -1154,9 +1188,9 @@ const Pantry = () => {
               setDuplicateAlert({ visible: false, existingItem: null, incomingItem: null, mergeAvailable: false, resolve: null });
             }}
           >
-            <Text style={{ 
-              color: duplicateAlert.mergeAvailable ? '#81A969' : '#fff', 
-              textAlign: 'center', 
+            <Text style={{
+              color: duplicateAlert.mergeAvailable ? '#81A969' : '#fff',
+              textAlign: 'center',
               fontWeight: '700',
               fontSize: 16
             }}>Add Anyway</Text>
@@ -1175,9 +1209,9 @@ const Pantry = () => {
       >
         <View style={{ width: '100%', marginTop: 20, gap: 12 }}>
           <TouchableOpacity
-            style={{ 
-              backgroundColor: '#dc3545', 
-              paddingVertical: 16, 
+            style={{
+              backgroundColor: '#dc3545',
+              paddingVertical: 16,
               borderRadius: 12,
               shadowColor: '#dc3545',
               shadowOffset: { width: 0, height: 4 },
@@ -1220,9 +1254,9 @@ const Pantry = () => {
       >
         <View style={{ width: '100%', marginTop: 20, gap: 12 }}>
           <TouchableOpacity
-            style={{ 
-              backgroundColor: '#dc3545', 
-              paddingVertical: 16, 
+            style={{
+              backgroundColor: '#dc3545',
+              paddingVertical: 16,
               borderRadius: 12,
               shadowColor: '#dc3545',
               shadowOffset: { width: 0, height: 4 },
@@ -1260,9 +1294,9 @@ const Pantry = () => {
       >
         <View style={{ width: '100%', marginTop: 12, gap: 10 }}>
           <TouchableOpacity
-            style={{ 
-              backgroundColor: '#81A969', 
-              paddingVertical: 12, 
+            style={{
+              backgroundColor: '#81A969',
+              paddingVertical: 12,
               borderRadius: 12,
               shadowColor: '#000',
               shadowOffset: { width: 0, height: 2 },
@@ -1283,11 +1317,11 @@ const Pantry = () => {
             <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '700', fontSize: 16 }}>Add to Group</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={{ 
+            style={{
               backgroundColor: '#fff',
               borderWidth: 2,
               borderColor: '#81A969',
-              paddingVertical: 12, 
+              paddingVertical: 12,
               borderRadius: 12
             }}
             onPress={() => {
@@ -1300,11 +1334,11 @@ const Pantry = () => {
             <Text style={{ color: '#81A969', textAlign: 'center', fontWeight: '700', fontSize: 16 }}>Edit</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={{ 
+            style={{
               backgroundColor: '#fff',
               borderWidth: 2,
               borderColor: '#dc3545',
-              paddingVertical: 12, 
+              paddingVertical: 12,
               borderRadius: 12
             }}
             onPress={() => {
@@ -1329,9 +1363,9 @@ const Pantry = () => {
         <View style={{ width: '100%', marginTop: 20 }}>
           {groupSelectionAlert.groups?.length === 0 ? (
             <TouchableOpacity
-              style={{ 
-                backgroundColor: '#81A969', 
-                paddingVertical: 16, 
+              style={{
+                backgroundColor: '#81A969',
+                paddingVertical: 16,
                 borderRadius: 12,
                 shadowColor: '#000',
                 shadowOffset: { width: 0, height: 2 },
@@ -1352,9 +1386,9 @@ const Pantry = () => {
               {groupSelectionAlert.groups?.map((group, index) => (
                 <TouchableOpacity
                   key={group.groupID}
-                  style={{ 
-                    backgroundColor: '#81A969', 
-                    paddingVertical: 16, 
+                  style={{
+                    backgroundColor: '#81A969',
+                    paddingVertical: 16,
                     borderRadius: 12,
                     shadowColor: '#000',
                     shadowOffset: { width: 0, height: 2 },
@@ -1388,9 +1422,9 @@ const Pantry = () => {
       >
         <View style={{ width: '100%', marginTop: 20, gap: 12 }}>
           <TouchableOpacity
-            style={{ 
-              backgroundColor: '#81A969', 
-              paddingVertical: 16, 
+            style={{
+              backgroundColor: '#81A969',
+              paddingVertical: 16,
               borderRadius: 12,
               shadowColor: '#000',
               shadowOffset: { width: 0, height: 2 },
@@ -1414,9 +1448,9 @@ const Pantry = () => {
             <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '700', fontSize: 16 }}>Delete Group Only (Keep Items)</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={{ 
-              backgroundColor: '#dc3545', 
-              paddingVertical: 16, 
+            style={{
+              backgroundColor: '#dc3545',
+              paddingVertical: 16,
               borderRadius: 12,
               shadowColor: '#dc3545',
               shadowOffset: { width: 0, height: 4 },
@@ -1472,7 +1506,7 @@ const styles = StyleSheet.create({
   fabContainer: {
     position: 'absolute',
     bottom: 130, // Moved higher
-    right: 20,   
+    right: 20,
     pointerEvents: 'box-none',
     zIndex: 1000,
   },

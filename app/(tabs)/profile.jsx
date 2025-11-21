@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-nat
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useCustomAuth } from '../../hooks/use-custom-auth';
+import { useTabContext } from '../../contexts/tab-context';
 import RecipeMatcherService from '../../services/recipe-matcher-service';
 import RecipeHistoryService from '../../services/recipe-history-service';
 import RecipeSchedulingService from '../../services/recipe-scheduling-service';
@@ -59,6 +60,24 @@ const Profile = () => {
     history: false,
     scheduled: false,
   });
+
+  const scrollViewRef = useRef(null);
+  const { subscribe } = useTabContext();
+
+  // Handle tab press events (scroll to top)
+  useEffect(() => {
+    const unsubscribe = subscribe((event) => {
+      if (event.type === 'tabPress' && event.isAlreadyActive && event.route.includes('profile')) {
+        // Use a small timeout to ensure the scroll happens after any potential layout updates
+        setTimeout(() => {
+          if (scrollViewRef.current) {
+            scrollViewRef.current.scrollTo({ y: 0, animated: true });
+          }
+        }, 10);
+      }
+    });
+    return unsubscribe;
+  }, [subscribe]);
 
   useEffect(() => {
     // Update profile data if user information is available
@@ -464,6 +483,7 @@ const Profile = () => {
         <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
 
         <ScrollView
+          ref={scrollViewRef}
           style={styles.scrollView}
           contentContainerStyle={styles.scrollViewContent}
           refreshControl={
