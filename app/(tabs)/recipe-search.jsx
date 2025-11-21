@@ -29,11 +29,15 @@ import recipeImageCacheService from '../../services/recipe-image-cache-service';
 import CachedImage from '../../components/common/cached-image';
 import AuthGuard from '../../components/auth-guard';
 import { useCustomAuth } from '../../hooks/use-custom-auth';
+import { useTabContext } from '../../contexts/tab-context';
 
 const RecipeSearch = () => {
   const router = useRouter();
   const { user } = useCustomAuth();
+  const { subscribe } = useTabContext();
   const params = useLocalSearchParams(); // Add this to receive params
+  const scrollViewRef = useRef(null);
+  const popularRecipesRef = useRef(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [recipes, setRecipes] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -107,6 +111,24 @@ const RecipeSearch = () => {
   // Timeout refs for 7-second loading limits
   const searchTimeoutRef = useRef(null);
   const popularTimeoutRef = useRef(null);
+
+  // Handle tab press events (scroll to top and reset horizontal scrolls)
+  useEffect(() => {
+    const unsubscribe = subscribe((event) => {
+      if (event.type === 'tabPress' && event.isAlreadyActive && event.route.includes('recipe-search')) {
+        // Scroll vertical list to top
+        if (scrollViewRef.current) {
+          scrollViewRef.current.scrollTo({ y: 0, animated: true });
+        }
+        
+        // Reset horizontal scroll views
+        if (popularRecipesRef.current) {
+          popularRecipesRef.current.scrollTo({ x: 0, animated: true });
+        }
+      }
+    });
+    return unsubscribe;
+  }, [subscribe]);
 
   useEffect(() => {
     // Load popular recipes on component mount using cache service
@@ -1358,6 +1380,7 @@ const RecipeSearch = () => {
         )}
 
         <ScrollView
+          ref={scrollViewRef}
           style={styles.content}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: hp('12%') }}
@@ -1539,7 +1562,12 @@ const RecipeSearch = () => {
                   </Text>
                 </View>
               ) : (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.popularRecipesContainer}>
+                <ScrollView 
+                  ref={popularRecipesRef}
+                  horizontal 
+                  showsHorizontalScrollIndicator={false} 
+                  style={styles.popularRecipesContainer}
+                >
                   {popularRecipes.map((recipe, index) => (
                     <TouchableOpacity
                       key={recipe.id}
