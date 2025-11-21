@@ -29,14 +29,6 @@ import PantryAlert from '../../components/pantry/pantry-alert';
 const CONFIDENCE_THRESHOLD = 0.03; // 3% minimum confidence
 const DISPLAY_THRESHOLD = 0.60; // 60% minimum confidence for "Other Options" list
 
-// Category options for manual entry
-const CATEGORIES = [
-  'Rice', 'Soup', 'Leftovers', 'Kakanin',
-  'Baking', 'Beverages', 'Canned', 'Jarred', 'Condiments', 'Sauces', 'Dairy', 'Eggs',
-  'Fruits', 'Frozen', 'Grains', 'Pasta', 'Noodles', 'Meat', 'Poultry', 'Seafood',
-  'Snacks', 'Spices', 'Herbs', 'Vegetables', 'Other'
-];
-
 export default function FoodRecognitionResult() {
   // ✅ FIX: Get params correctly
   const params = useLocalSearchParams();
@@ -50,12 +42,7 @@ export default function FoodRecognitionResult() {
   const [showOtherOptions, setShowOtherOptions] = useState(false);
   const [optionsModalVisible, setOptionsModalVisible] = useState(false); // ✅ NEW: Options Modal State
 
-  // Manual entry modal state
-  const [manualEntryVisible, setManualEntryVisible] = useState(false);
-  const [manualItemName, setManualItemName] = useState('');
-  const [manualCategory, setManualCategory] = useState('Other');
-  const [manualQuantity, setManualQuantity] = useState('1');
-  const [manualExpiryDays, setManualExpiryDays] = useState('7');
+  // Manual entry - now uses ItemFormModal directly
   const [addingToInventory, setAddingToInventory] = useState(false);
 
   // Item Form Modal State
@@ -415,6 +402,11 @@ export default function FoodRecognitionResult() {
       // Prepare prefilled data
       const category = determineFoodCategory(selectedFood.label);
       const expiryDate = estimateExpiryDate(category);
+      const formattedExpiry = new Date(expiryDate).toLocaleDateString('en-US', {
+        month: 'numeric',
+        day: 'numeric',
+        year: 'numeric'
+      }).replace(/\//g, '/');
       
       // Smart unit suggestion based on category
       const suggestUnit = (cat) => {
@@ -446,9 +438,9 @@ export default function FoodRecognitionResult() {
       setPrefilledItemData({
         itemName: selectedFood.label,
         itemCategory: category,
-        quantity: 1,
+        quantity: '1',
         unit: suggestUnit(category),
-        itemExpiration: expiryDate,
+        itemExpiration: formattedExpiry,
         itemDescription: `Detected by ${selectedFood.source}`,
         imageURL: uri,
         inventoryID: inventoryList[0].inventoryID,
@@ -656,17 +648,9 @@ export default function FoodRecognitionResult() {
   };
 
   const handleManualEntry = async () => {
-    if (!manualItemName.trim()) {
-      Alert.alert('Missing Information', 'Please enter an item name');
-      return;
-    }
-
-    setAddingToInventory(true);
-
     try {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) {
-        setAddingToInventory(false);
         Alert.alert('Error', 'You must be logged in to add items');
         return;
       }
@@ -678,7 +662,6 @@ export default function FoodRecognitionResult() {
         .single();
 
       if (userLookupError || !userData) {
-        setAddingToInventory(false);
         Alert.alert('Error', 'Failed to find user in database. Please try logging out and back in.');
         return;
       }
@@ -693,7 +676,6 @@ export default function FoodRecognitionResult() {
         .order('createdAt', { ascending: true });
 
       if (invError) {
-        setAddingToInventory(false);
         Alert.alert('Error', `Failed to fetch inventories: ${invError.message}`);
         return;
       }
@@ -712,63 +694,26 @@ export default function FoodRecognitionResult() {
 
       setInventories(inventoryList);
 
-      // Calculate expiry date
+      // Calculate expiry date (7 days from now as default)
       const expiryDate = new Date();
-      expiryDate.setDate(expiryDate.getDate() + parseInt(manualExpiryDays || '7'));
+      expiryDate.setDate(expiryDate.getDate() + 7);
+      const formattedExpiry = `${expiryDate.getMonth() + 1}/${expiryDate.getDate()}/${expiryDate.getFullYear()}`;
 
-      // Smart unit suggestion based on category
-      const suggestUnit = (cat) => {
-        switch (cat) {
-          case 'Rice':
-          case 'Soup':
-          case 'Leftovers':
-          case 'Beverages':
-            return 'ml';
-          case 'Grains':
-          case 'Pasta':
-          case 'Noodles':
-          case 'Baking':
-          case 'Spices':
-          case 'Herbs':
-            return 'g';
-          case 'Meat':
-          case 'Poultry':
-          case 'Seafood':
-          case 'Dairy':
-          case 'Fruits':
-          case 'Vegetables':
-            return 'kg';
-          default:
-            return 'pieces';
-        }
-      };
-
-      // Prepare prefilled data for the item form
+      // Open item form modal with minimal prefilled data for manual entry
       setPrefilledItemData({
-        itemName: manualItemName.trim(),
-        itemCategory: manualCategory,
-        quantity: parseInt(manualQuantity) || 1,
-        unit: suggestUnit(manualCategory),
-        itemExpiration: expiryDate.toISOString(),
+        itemName: '',
+        itemCategory: 'Other',
+        quantity: '1',
+        unit: 'pieces',
+        itemExpiration: formattedExpiry,
         itemDescription: 'Added manually from food recognition',
         imageURL: uri,
         inventoryID: inventoryList[0].inventoryID,
       });
 
-      // Close manual entry modal and open item form modal
-      setManualEntryVisible(false);
       setItemFormVisible(true);
-
-      // Reset manual entry form
-      setManualItemName('');
-      setManualCategory('Other');
-      setManualQuantity('1');
-      setManualExpiryDays('7');
-
     } catch (error) {
       Alert.alert('Error', error.message || 'Failed to prepare item form');
-    } finally {
-      setAddingToInventory(false);
     }
   };
 
@@ -803,7 +748,7 @@ export default function FoodRecognitionResult() {
         </Text>
         <TouchableOpacity
           style={styles.manualEntryButton}
-          onPress={() => setManualEntryVisible(true)}
+          onPress={handleManualEntry}
         >
           <Ionicons name="create-outline" size={20} color="#FFF" />
           <Text style={styles.manualEntryButtonText}>Add Manually</Text>
@@ -957,7 +902,7 @@ export default function FoodRecognitionResult() {
             <View style={styles.secondaryActions}>
               <TouchableOpacity
                 style={styles.manualButton}
-                onPress={() => setManualEntryVisible(true)}
+                onPress={handleManualEntry}
               >
                 <Ionicons name="create-outline" size={20} color="#81A969" />
                 <Text style={styles.manualButtonText}>Manual Entry</Text>
@@ -1042,23 +987,6 @@ export default function FoodRecognitionResult() {
             </View>
           </Animated.View>
         </Modal>
-
-        {/* Manual Entry Modal */}
-        <ManualEntryModal
-          visible={manualEntryVisible}
-          onClose={() => setManualEntryVisible(false)}
-          imageUri={uri}
-          itemName={manualItemName}
-          setItemName={setManualItemName}
-          category={manualCategory}
-          setCategory={setManualCategory}
-          quantity={manualQuantity}
-          setQuantity={setManualQuantity}
-          expiryDays={manualExpiryDays}
-          setExpiryDays={setManualExpiryDays}
-          onSubmit={handleManualEntry}
-          loading={addingToInventory}
-        />
 
         {/* Detailed Results Modal */}
         <Modal
@@ -1302,135 +1230,6 @@ export default function FoodRecognitionResult() {
         }
       />
     </AuthGuard>
-  );
-}
-
-// Manual Entry Modal Component
-function ManualEntryModal({
-  visible,
-  onClose,
-  imageUri,
-  itemName,
-  setItemName,
-  category,
-  setCategory,
-  quantity,
-  setQuantity,
-  expiryDays,
-  setExpiryDays,
-  onSubmit,
-  loading,
-}) {
-  return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      transparent={true}
-      onRequestClose={onClose}
-    >
-      <TouchableOpacity
-        style={modalStyles.overlay}
-        activeOpacity={1}
-        onPress={onClose}
-      >
-        <TouchableOpacity
-          style={modalStyles.container}
-          activeOpacity={1}
-          onPress={(e) => e.stopPropagation()}
-        >
-          <View style={modalStyles.header}>
-            <Text style={modalStyles.headerTitle}>Add Item Manually</Text>
-            <TouchableOpacity onPress={onClose} style={modalStyles.closeButton}>
-              <Ionicons name="close" size={24} color="#333" />
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView style={modalStyles.content}>
-            {imageUri && (
-              <View style={modalStyles.imagePreview}>
-                <Image source={{ uri: imageUri }} style={modalStyles.previewImage} />
-                <Text style={modalStyles.imageNote}>Reference image</Text>
-              </View>
-            )}
-
-            <View style={modalStyles.field}>
-              <Text style={modalStyles.label}>Item Name *</Text>
-              <TextInput
-                style={modalStyles.input}
-                value={itemName}
-                onChangeText={setItemName}
-                placeholder="e.g., Fresh Apples"
-                placeholderTextColor="#999"
-              />
-            </View>
-
-            <View style={modalStyles.field}>
-              <Text style={modalStyles.label}>Category *</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <View style={modalStyles.categoryContainer}>
-                  {CATEGORIES.map((cat) => (
-                    <TouchableOpacity
-                      key={cat}
-                      style={[
-                        modalStyles.categoryChip,
-                        category === cat && modalStyles.categoryChipSelected,
-                      ]}
-                      onPress={() => setCategory(cat)}
-                    >
-                      <Text
-                        style={[
-                          modalStyles.categoryChipText,
-                          category === cat && modalStyles.categoryChipTextSelected,
-                        ]}
-                      >
-                        {cat}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </ScrollView>
-            </View>
-
-            <View style={modalStyles.row}>
-              <View style={[modalStyles.field, { flex: 1, marginRight: 10 }]}>
-                <Text style={modalStyles.label}>Quantity</Text>
-                <TextInput
-                  style={modalStyles.input}
-                  value={quantity}
-                  onChangeText={setQuantity}
-                  keyboardType="numeric"
-                  placeholder="1"
-                  placeholderTextColor="#999"
-                />
-              </View>
-              <View style={[modalStyles.field, { flex: 1 }]}>
-                <Text style={modalStyles.label}>Expires in (days)</Text>
-                <TextInput
-                  style={modalStyles.input}
-                  value={expiryDays}
-                  onChangeText={setExpiryDays}
-                  keyboardType="numeric"
-                  placeholder="7"
-                  placeholderTextColor="#999"
-                />
-              </View>
-            </View>
-
-            <TouchableOpacity
-              style={[modalStyles.submitButton, loading && modalStyles.submitButtonDisabled]}
-              onPress={onSubmit}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator color="#FFF" />
-              ) : (
-                <Text style={modalStyles.submitButtonText}>Add to Pantry</Text>
-              )}
-            </TouchableOpacity>
-          </ScrollView>
-        </TouchableOpacity>
-      </TouchableOpacity>
-    </Modal>
   );
 }
 
@@ -2008,187 +1807,6 @@ const styles = StyleSheet.create({
     color: "white",
     fontWeight: "bold",
     textAlign: "center"
-  },
-});
-
-const modalStyles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  container: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: hp('80%'),
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: wp('5%'),
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  headerTitle: {
-    fontSize: wp('5%'),
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  closeButton: {
-    padding: 4,
-  },
-  content: {
-    padding: wp('5%'),
-  },
-  imagePreview: {
-    alignItems: 'center',
-    marginBottom: hp('2%'),
-  },
-  previewImage: {
-    width: '100%',
-    height: hp('20%'),
-    borderRadius: 12,
-    resizeMode: 'cover',
-  },
-  imageNote: {
-    fontSize: wp('3%'),
-    color: '#999',
-    marginTop: 8,
-  },
-  field: {
-    marginBottom: hp('2%'),
-  },
-  label: {
-    fontSize: wp('4%'),
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 8,
-  },
-  input: {
-    backgroundColor: '#f8f8f8',
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    borderRadius: 8,
-    paddingHorizontal: wp('4%'),
-    paddingVertical: hp('1.5%'),
-    fontSize: wp('4%'),
-    color: '#333',
-  },
-  categoryContainer: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  categoryChip: {
-    paddingHorizontal: wp('4%'),
-    paddingVertical: hp('1%'),
-    borderRadius: 20,
-    backgroundColor: '#f0f0f0',
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-  },
-  categoryChipSelected: {
-    backgroundColor: '#81A969',
-    borderColor: '#81A969',
-  },
-  categoryChipText: {
-    fontSize: wp('3.5%'),
-    color: '#666',
-  },
-  categoryChipTextSelected: {
-    color: '#fff',
-    fontWeight: 'bold',
-  },
-  row: {
-    flexDirection: 'row',
-  },
-  submitButton: {
-    backgroundColor: '#81A969',
-    paddingVertical: hp('2%'),
-    borderRadius: 12,
-    alignItems: 'center',
-    marginTop: hp('2%'),
-  },
-  submitButtonDisabled: {
-    backgroundColor: '#ccc',
-  },
-  submitButtonText: {
-    color: '#fff',
-    fontSize: wp('4.5%'),
-    fontWeight: 'bold',
-  },
-});
-
-const successModalStyles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: wp('5%'),
-  },
-  container: {
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: wp('6%'),
-    width: '100%',
-    maxWidth: 400,
-    alignItems: 'center',
-  },
-  iconContainer: {
-    marginBottom: hp('2%'),
-  },
-  title: {
-    fontSize: wp('6%'),
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: hp('1%'),
-  },
-  message: {
-    fontSize: wp('4%'),
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: hp('3%'),
-  },
-  buttonContainer: {
-    width: '100%',
-    gap: 12,
-  },
-  button: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: hp('1.5%'),
-    borderRadius: 12,
-  },
-  primaryButton: {
-    backgroundColor: '#81A969',
-  },
-  primaryButtonText: {
-    color: '#fff',
-    fontSize: wp('4%'),
-    fontWeight: 'bold',
-    marginLeft: 8,
-  },
-  secondaryButton: {
-    backgroundColor: '#fff',
-    borderWidth: 2,
-    borderColor: '#81A969',
-  },
-  secondaryButtonText: {
-    color: '#81A969',
-    fontSize: wp('4%'),
-    fontWeight: 'bold',
-    marginLeft: 8,
-  },
-  cancelButton: {
-    backgroundColor: '#f0f0f0',
-  },
-  cancelButtonText: {
-    color: '#666',
-    fontSize: wp('4%'),
-    fontWeight: '600',
   },
 });
 
