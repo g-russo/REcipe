@@ -73,13 +73,18 @@ class IngredientSubstitutionService {
 
       const inventoryIDs = inventories.map(inv => inv.inventoryID);
 
+      const today = new Date().toISOString().split('T')[0];
+
       const { data: items, error } = await supabase
         .from('tbl_items')
         .select('*')
         .in('"inventoryID"', inventoryIDs)
-        .gt('quantity', 0); // Only items with quantity > 0
+        .gt('quantity', 0) // Only items with quantity > 0
+        .or(`itemExpiration.is.null,itemExpiration.gte.${today}`); // Exclude expired items
 
       if (error) throw error;
+      
+      console.log(`📦 Fetched ${items?.length || 0} valid pantry items (expired items excluded)`);
       return items || [];
     } catch (error) {
       console.error('Error fetching pantry items:', error);
@@ -153,6 +158,75 @@ class IngredientSubstitutionService {
     if (foundDescriptors.length > 0) {
       console.log(`📋 Found descriptors in "${text}": [${foundDescriptors.join(', ')}]`);
       console.log(`📋 Cleaned text: "${lowerText}"`);
+    }
+    
+    // 🔥 PRIORITY #1: Check if ingredient exists in pantry and use PANTRY's unit
+    // This overrides ANY unit from the recipe (cups, tbsp, etc.)
+    if (pantryItems && pantryItems.length > 0) {
+      const normalizedIngredient = this.normalizeIngredientName(text);
+      
+      // Try multiple matching strategies
+      let matchingPantryItem = pantryItems.find(item => {
+        const normalizedPantryName = this.normalizeIngredientName(item.itemName);
+        // Strategy 1: Substring match (both ways)
+        if (normalizedIngredient.includes(normalizedPantryName) || 
+            normalizedPantryName.includes(normalizedIngredient)) {
+          return true;
+        }
+        // Strategy 2: Word overlap (e.g., "fryer" matches "chicken" via category)
+        return false;
+      });
+      
+      // Strategy 3: Check common food synonyms
+      if (!matchingPantryItem) {
+        const foodSynonyms = {
+          'fryer': ['chicken'],
+          'broiler': ['chicken'],
+          'hen': ['chicken'],
+          'roaster': ['chicken'],
+          'stewing chicken': ['chicken'],
+          'scallion': ['green onion', 'spring onion'],
+          'coriander': ['cilantro'],
+          'ground meat': ['beef', 'pork', 'chicken'],
+        };
+        
+        for (const [synonym, matches] of Object.entries(foodSynonyms)) {
+          if (normalizedIngredient.includes(synonym)) {
+            matchingPantryItem = pantryItems.find(item => {
+              const normalizedPantryName = this.normalizeIngredientName(item.itemName);
+              return matches.some(match => normalizedPantryName.includes(match));
+            });
+            if (matchingPantryItem) break;
+          }
+        }
+      }
+      
+      if (matchingPantryItem) {
+        // Extract just the quantity from recipe text
+        const quantityMatch = lowerText.match(/^(\d+(?:\.\d+)?(?:\s+\d+\/\d+)?)/);
+        let value = 1;
+        
+        if (quantityMatch) {
+          const qtyStr = quantityMatch[1].trim();
+          // Handle mixed fractions like "3 1/2"
+          const parts = qtyStr.split(/\s+/);
+          if (parts.length === 2 && parts[1].includes('/')) {
+            const whole = parseFloat(parts[0]);
+            const [num, denom] = parts[1].split('/');
+            value = whole + (parseFloat(num) / parseFloat(denom));
+          } else {
+            value = parseFloat(qtyStr);
+          }
+        }
+        
+        console.log(`📊 Parsed quantity from "${text}": ${value} ${matchingPantryItem.unit} (🔥 USING PANTRY'S UNIT from "${matchingPantryItem.itemName}", ignoring recipe unit) [descriptors: ${foundDescriptors.join(', ') || 'none'}]`);
+        return { 
+          value, 
+          unit: matchingPantryItem.unit, 
+          descriptors: foundDescriptors,
+          fromPantry: true 
+        };
+      }
     }
     
     // Special handling: If no quantity specified for certain ingredients, assume 1/2 tbsp
@@ -441,9 +515,11 @@ class IngredientSubstitutionService {
     return name
       .toLowerCase()
       .replace(/[^a-z\s]/g, '') // Remove non-alphabetic characters (numbers, punctuation)
+      .replace(/\b(to|or|and|about|approximately|approx)\b/g, '') // Remove quantity connectors
       .replace(/\b(fresh|dried|chopped|minced|sliced|diced|ground|whole|organic|frozen|raw|cooked)\b/g, '') // Remove descriptors
       .replace(/\b(g|kg|lb|lbs|oz|ounce|ounces|ml|l|liter|liters|cup|cups|tbsp|tsp|tablespoon|tablespoons|teaspoon|teaspoons|pcs|pieces|piece|pc)\b/g, '') // Remove measurement units
       .replace(/\b(handful|handfuls|pinch|pinches|dash|dashes|splash|splashes|drizzle|bunch|bunches)\b/g, '') // Remove vague units
+      .replace(/\b(pound|pounds|gram|grams|kilogram|kilograms|ounce|ounces|liter|liters|milliliter|milliliters)\b/g, '') // Remove spelled-out units
       .replace(/\s+/g, ' ') // Collapse multiple spaces
       .trim();
   }
@@ -513,53 +589,63 @@ class IngredientSubstitutionService {
 
   /**
    * Get AI-powered substitutions for a missing ingredient
-   * Uses OpenAI GPT-4o-mini to suggest intelligent substitutes from pantry
+   * Uses OpenAI GPT-4o-mini (SousChef) to suggest intelligent substitutes from pantry
    * @param {string} missingIngredient - The ingredient to substitute
    * @param {Array} pantryItems - User's pantry items
    * @param {string} recipeName - Name of the recipe (for context)
    * @param {string} cookingMethod - Cooking method (e.g., "baking", "frying", "boiling")
+   * @param {string} originalIngredientText - Original ingredient text for unit detection
    * @returns {Promise<Array>} Array of suggested substitutes with reasoning
    */
-  async getAISubstitutions(missingIngredient, pantryItems, recipeName = '', cookingMethod = '') {
+  async getAISubstitutions(missingIngredient, pantryItems, recipeName = '', cookingMethod = '', originalIngredientText = '') {
     try {
-      console.log('🤖 Getting AI substitutions for:', missingIngredient);
+      console.log('🤖 SousChef AI: Getting substitutions for:', missingIngredient);
       console.log('📦 Available pantry items:', pantryItems.length);
 
-      // Format pantry items for AI
-      const pantryList = pantryItems.map(item => 
-        `${item.itemName} (${item.quantity} ${item.unit || 'pcs'})`
-      ).join(', ');
+      if (pantryItems.length === 0) {
+        console.log('❌ No pantry items available for substitution');
+        return [];
+      }
 
-      const prompt = `You are a professional chef assistant. A user is cooking "${recipeName}" and needs to substitute "${missingIngredient}".
+      // Format pantry items for AI with clear structure
+      const pantryList = pantryItems.map((item, index) => 
+        `${index + 1}. ${item.itemName} - ${item.quantity} ${item.unit || 'pcs'}`
+      ).join('\n');
 
-Available pantry items:
+      const prompt = `You are SousChef, a professional culinary AI assistant specializing in ingredient substitutions.
+
+RECIPE CONTEXT:
+- Recipe: "${recipeName || 'General cooking'}"
+- Missing ingredient: "${missingIngredient}"
+- Cooking method: ${cookingMethod || 'not specified'}
+
+AVAILABLE PANTRY ITEMS:
 ${pantryList}
 
-Cooking method: ${cookingMethod || 'not specified'}
+TASK:
+Analyze the available pantry items and suggest the BEST substitutes for "${missingIngredient}". 
 
-Provide the TOP 5 BEST substitutes from the pantry items listed above. Consider:
-- Flavor profile compatibility
-- Cooking method (${cookingMethod})
-- Texture and consistency
-- Filipino and international cuisines
-- Nutritional similarity
-- Common substitution ratios
+IMPORTANT RULES:
+1. ONLY suggest items from the pantry list above
+2. Use the EXACT item names as written in the pantry list
+3. Consider flavor profile, texture, cooking method, and nutritional value
+4. Prioritize items with compatible measurement units (weight for weight, volume for volume)
+5. Provide practical substitution ratios (e.g., "1:1", "2:1 by weight")
+6. Include culturally appropriate suggestions (Filipino and international cuisine knowledge)
 
-Respond in JSON format:
+RESPONSE FORMAT (valid JSON):
 {
   "substitutes": [
     {
-      "name": "exact pantry item name",
-      "reason": "why this works",
-      "ratio": "substitution ratio (e.g., 1:1, 2:1)",
-      "quantity": 1.0,
-      "unit": "unit from pantry",
+      "pantryItemName": "exact name from pantry list",
+      "reason": "brief explanation why this substitute works",
+      "ratio": "substitution ratio",
       "confidence": 0.95
     }
   ]
 }
 
-Only suggest items that are ACTUALLY in the pantry list above. Return empty array if no good substitutes exist.`;
+If no suitable substitutes exist, return: {"substitutes": []}`;
 
       // Get API key (try EXPO_PUBLIC first, fallback to regular)
       const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
@@ -569,85 +655,167 @@ Only suggest items that are ACTUALLY in the pantry list above. Return empty arra
         throw new Error('OpenAI API key not configured');
       }
 
-      console.log('⏱️ Starting AI substitution request...');
+      console.log('⏱️ SousChef AI: Analyzing pantry items...');
       const startTime = Date.now();
 
-      // Create abort controller for timeout
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+      // Retry mechanism with exponential backoff
+      const maxRetries = 2;
+      let response;
+      
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          console.log(`   Attempt ${attempt}/${maxRetries}...`);
+          
+          // Create abort controller for timeout
+          const controller = new AbortController();
+          const timeoutDuration = 30000 + (attempt - 1) * 10000; // 30s, 40s, 50s
+          const timeoutId = setTimeout(() => {
+            console.log(`   ⏱️ Timeout reached (${timeoutDuration/1000}s), aborting...`);
+            controller.abort();
+          }, timeoutDuration);
 
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
-        },
-        signal: controller.signal,
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are a professional chef and ingredient substitution expert. You understand both Filipino and international ingredients. Always respond in valid JSON format.'
+          response = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${apiKey}`
             },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          temperature: 0.3,
-          max_tokens: 500, // Reduced from 800 for faster response
-          response_format: { type: 'json_object' }
-        })
-      });
+            signal: controller.signal,
+            body: JSON.stringify({
+              model: 'gpt-4o-mini',
+              messages: [
+                {
+                  role: 'system',
+                  content: 'You are SousChef, an expert culinary AI assistant specializing in ingredient substitutions. You understand Filipino, Asian, and international cuisines. Always respond in valid JSON format with exact pantry item names.'
+                },
+                {
+                  role: 'user',
+                  content: prompt
+                }
+              ],
+              temperature: 0.2, // Lower for more consistent responses
+              max_tokens: 800,
+              response_format: { type: 'json_object' }
+            })
+          });
 
-      clearTimeout(timeoutId);
-      const endTime = Date.now();
-      console.log(`✅ AI response received in ${endTime - startTime}ms`);
+          clearTimeout(timeoutId);
+          
+          // Success - break retry loop
+          if (response.ok) {
+            const endTime = Date.now();
+            console.log(`✅ SousChef AI responded in ${endTime - startTime}ms (attempt ${attempt})`);
+            break;
+          }
+          
+          // HTTP error - check if we should retry
+          const errorText = await response.text();
+          console.error(`   ❌ HTTP ${response.status}: ${errorText}`);
+          
+          if (attempt < maxRetries && (response.status === 429 || response.status >= 500)) {
+            // Rate limit or server error - wait and retry
+            const waitTime = Math.pow(2, attempt) * 1000; // 2s, 4s
+            console.log(`   ⏳ Waiting ${waitTime/1000}s before retry...`);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            continue;
+          }
+          
+          throw new Error(`OpenAI API error: ${response.status}`);
+          
+        } catch (fetchError) {
+          if (attempt < maxRetries && (fetchError.name === 'AbortError' || fetchError.message?.includes('network'))) {
+            console.error(`   ⚠️ Attempt ${attempt} failed: ${fetchError.message}`);
+            const waitTime = Math.pow(2, attempt) * 1000;
+            console.log(`   ⏳ Waiting ${waitTime/1000}s before retry...`);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            continue;
+          }
+          throw fetchError;
+        }
+      }
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ OpenAI API error response:', errorText);
-        throw new Error(`OpenAI API error: ${response.status}`);
+      if (!response || !response.ok) {
+        throw new Error(`SousChef AI request failed after ${maxRetries} attempts`);
       }
 
       const data = await response.json();
       const result = JSON.parse(data.choices[0].message.content);
 
-      console.log('✅ AI suggested', result.substitutes?.length || 0, 'substitutes');
+      console.log('✅ SousChef suggested', result.substitutes?.length || 0, 'substitutes');
 
-      // Match AI suggestions with actual pantry items to get full data
+      // Match AI suggestions with actual pantry items
       const matchedSubstitutes = [];
       for (const suggestion of result.substitutes || []) {
-        const pantryItem = pantryItems.find(item => 
-          this.normalizeIngredientName(item.itemName) === 
-          this.normalizeIngredientName(suggestion.name)
+        const suggestionName = suggestion.pantryItemName || suggestion.name;
+        console.log(`\n🔍 Matching: "${suggestionName}"`);
+        
+        // Method 1: Direct name match (case-insensitive)
+        let pantryItem = pantryItems.find(item => 
+          item.itemName.toLowerCase().trim() === suggestionName.toLowerCase().trim()
         );
 
+        // Method 2: Normalized match
+        if (!pantryItem) {
+          const normalizedSuggestion = this.normalizeIngredientName(suggestionName);
+          pantryItem = pantryItems.find(item => {
+            const normalizedPantry = this.normalizeIngredientName(item.itemName);
+            return normalizedPantry === normalizedSuggestion;
+          });
+        }
+
+        // Method 3: Fuzzy match (substring)
+        if (!pantryItem) {
+          const normalizedSuggestion = this.normalizeIngredientName(suggestionName);
+          pantryItem = pantryItems.find(item => {
+            const normalizedPantry = this.normalizeIngredientName(item.itemName);
+            return this.fuzzyMatch(normalizedPantry, normalizedSuggestion);
+          });
+        }
+
         if (pantryItem) {
+          console.log(`   ✅ Matched to: "${pantryItem.itemName}" (${pantryItem.quantity} ${pantryItem.unit})`);
           matchedSubstitutes.push({
             name: pantryItem.itemName,
             quantity: pantryItem.quantity,
             unit: pantryItem.unit || 'pcs',
             category: pantryItem.itemCategory || 'general',
-            reason: suggestion.reason,
-            ratio: suggestion.ratio,
-            confidence: suggestion.confidence,
-            itemID: pantryItem.itemID
+            reason: suggestion.reason || 'Good substitute based on flavor and texture',
+            ratio: suggestion.ratio || '1:1',
+            confidence: suggestion.confidence || 0.8,
+            itemID: pantryItem.itemID,
+            // Store original pantry info for accurate subtraction
+            originalQuantityInPantry: pantryItem.quantity,
+            originalUnitInPantry: pantryItem.unit,
+            requiresUserInput: true
           });
+        } else {
+          console.log(`   ❌ Not found in pantry: "${suggestionName}"`);
         }
       }
 
-      return matchedSubstitutes;
+      console.log(`\n📊 SousChef AI: ${matchedSubstitutes.length}/${result.substitutes?.length || 0} substitutes matched`);
+      
+      if (matchedSubstitutes.length > 0) {
+        return matchedSubstitutes;
+      }
+      
+      // If AI gave suggestions but none matched, fall back to rule-based
+      console.log('⚠️ AI suggestions did not match pantry items, using rule-based fallback');
+      return this.findSubstitutes(missingIngredient, pantryItems, originalIngredientText);
     } catch (error) {
       if (error.name === 'AbortError') {
-        console.error('⏱️ AI substitution timeout after 15 seconds');
+        console.error('⏱️ SousChef AI timeout - using fallback');
+      } else if (error.message?.includes('Network request failed')) {
+        console.error('❌ Network error - using fallback:', error.message);
+      } else if (error.message?.includes('API key')) {
+        console.error('❌ OpenAI API key issue - using fallback');
       } else {
-        console.error('❌ AI substitution error:', error.message);
+        console.error('❌ SousChef AI error:', error.message);
       }
-      // Fallback to rule-based substitution
-      console.log('⚠️ Falling back to rule-based substitution');
-      return this.findSubstitutes(missingIngredient, pantryItems);
+      
+      // ALWAYS provide a fallback - never return empty
+      console.log('⚠️ SousChef AI unavailable, using rule-based substitution engine');
+      return this.findSubstitutes(missingIngredient, pantryItems, originalIngredientText);
     }
   }
 
@@ -683,9 +851,12 @@ Only suggest items that are ACTUALLY in the pantry list above. Return empty arra
     const substitutionRules = this.getSubstitutionRules();
     const suggestions = [];
 
-    // Parse the original ingredient to check if it uses a vague unit
+    // Parse the original ingredient to check if it uses a vague unit and detect required unit type
     let preferredSystem = 'none';
     let hasVagueUnit = false;
+    let recipeRequiresWeight = false;
+    let recipeRequiresVolume = false;
+    let recipeRequiresCount = false;
     
     if (originalIngredientText) {
       const parsedOriginal = this.parseQuantityFromText(originalIngredientText, pantryItems);
@@ -696,6 +867,18 @@ Only suggest items that are ACTUALLY in the pantry list above. Return empty arra
         if (parsedOriginal.unit && !hasVagueUnit) {
           preferredSystem = this.detectMeasurementSystem(parsedOriginal.unit);
           console.log(`🌍 Recipe prefers "${preferredSystem}" system (from "${originalIngredientText}")`);
+          
+          // Determine what type of measurement the recipe requires
+          const weightUnits = ['kg', 'g', 'gram', 'grams', 'kilogram', 'kilograms', 'lb', 'lbs', 'pound', 'pounds', 'oz', 'ounce', 'ounces'];
+          const volumeUnits = ['l', 'liter', 'liters', 'ml', 'milliliter', 'milliliters', 'cup', 'cups', 'tbsp', 'tsp', 'tablespoon', 'tablespoons', 'teaspoon', 'teaspoons'];
+          const countUnits = ['pcs', 'pc', 'piece', 'pieces', 'whole', 'each', 'count'];
+          
+          const unitLower = parsedOriginal.unit.toLowerCase();
+          recipeRequiresWeight = weightUnits.includes(unitLower);
+          recipeRequiresVolume = volumeUnits.includes(unitLower);
+          recipeRequiresCount = countUnits.includes(unitLower);
+          
+          console.log(`📊 Recipe unit type: weight=${recipeRequiresWeight}, volume=${recipeRequiresVolume}, count=${recipeRequiresCount}`);
         }
       }
     }
@@ -703,17 +886,64 @@ Only suggest items that are ACTUALLY in the pantry list above. Return empty arra
     // Check predefined substitution rules
     for (const [category, items] of Object.entries(substitutionRules)) {
       if (items.some(item => ingredientName.includes(item.toLowerCase()))) {
+        console.log(`\n🔍 Recipe ingredient "${ingredientName}" matches category "${category}"`);
+        console.log(`   Checking ${pantryItems.length} pantry items...`);
+        
         // Find pantry items in the same category
-        const categorySubstitutes = pantryItems.filter(pantryItem => 
-          items.some(item => 
-            this.normalizeIngredientName(pantryItem.itemName).includes(item.toLowerCase())
-          )
-        );
+        const categorySubstitutes = pantryItems.filter(pantryItem => {
+          const normalizedPantryName = this.normalizeIngredientName(pantryItem.itemName);
+          const matchesCategory = items.some(item => 
+            normalizedPantryName.includes(item.toLowerCase())
+          );
+          
+          if (!matchesCategory) {
+            console.log(`   ⏭️  "${pantryItem.itemName}" - not in category`);
+            return false;
+          }
+          
+          console.log(`   🎯 "${pantryItem.itemName}" matches category! Checking unit compatibility...`);
+          
+          // ✅ KEY FIX: Check unit compatibility - don't suggest kg chicken when recipe needs pcs chicken
+          // ONLY filter if the recipe has a specific unit requirement
+          if (recipeRequiresWeight || recipeRequiresVolume || recipeRequiresCount) {
+            const pantryUnit = pantryItem.unit?.toLowerCase() || 'pcs';
+            const weightUnits = ['kg', 'g', 'gram', 'grams', 'kilogram', 'kilograms', 'lb', 'lbs', 'pound', 'pounds', 'oz', 'ounce', 'ounces'];
+            const volumeUnits = ['l', 'liter', 'liters', 'ml', 'milliliter', 'milliliters', 'cup', 'cups', 'tbsp', 'tsp', 'tablespoon', 'tablespoons', 'teaspoon', 'teaspoons'];
+            const countUnits = ['pcs', 'pc', 'piece', 'pieces', 'whole', 'each', 'count', ''];
+            
+            const pantryHasWeight = weightUnits.includes(pantryUnit);
+            const pantryHasVolume = volumeUnits.includes(pantryUnit);
+            const pantryHasCount = countUnits.includes(pantryUnit);
+            
+            console.log(`      Recipe requires: weight=${recipeRequiresWeight}, volume=${recipeRequiresVolume}, count=${recipeRequiresCount}`);
+            console.log(`      Pantry has: "${pantryUnit}" (weight=${pantryHasWeight}, volume=${pantryHasVolume}, count=${pantryHasCount})`);
+            
+            // Only allow substitution if unit types match
+            if (recipeRequiresWeight && !pantryHasWeight) {
+              console.log(`      ❌ REJECTED: recipe needs weight, pantry has ${pantryHasVolume ? 'volume' : 'count'}`);
+              return false;
+            }
+            if (recipeRequiresVolume && !pantryHasVolume) {
+              console.log(`      ❌ REJECTED: recipe needs volume, pantry has ${pantryHasWeight ? 'weight' : 'count'}`);
+              return false;
+            }
+            if (recipeRequiresCount && !pantryHasCount) {
+              console.log(`      ❌ REJECTED: recipe needs count, pantry has ${pantryHasWeight ? 'weight' : 'volume'}`);
+              return false;
+            }
+            
+            console.log(`      ✅ ACCEPTED: unit types are compatible!`);
+          } else {
+            console.log(`      ℹ️  No specific unit requirement, accepting all units`);
+          }
+          
+          return true;
+        });
 
         suggestions.push(...categorySubstitutes.map(item => {
           // ✅ ALWAYS honor pantry's original unit of measurement
           // Don't convert or use "pcs" - use exactly what's in the user's inventory
-          console.log(`   📦 Using pantry's unit "${item.unit}" for "${item.itemName}"`);
+          console.log(`   ✅ Using pantry's unit "${item.unit}" for "${item.itemName}" (unit type matches recipe requirement)`);
           
           return {
             name: item.itemName,
@@ -737,11 +967,34 @@ Only suggest items that are ACTUALLY in the pantry list above. Return empty arra
       const similar = pantryItems
         .filter(item => {
           const itemName = this.normalizeIngredientName(item.itemName);
-          return itemName.length > 3 && ingredientName.includes(itemName.substring(0, 3));
+          const matchesSimilar = itemName.length > 3 && ingredientName.includes(itemName.substring(0, 3));
+          
+          if (!matchesSimilar) return false;
+          
+          // ✅ Apply same unit compatibility check for similar items
+          if (recipeRequiresWeight || recipeRequiresVolume || recipeRequiresCount) {
+            const pantryUnit = item.unit?.toLowerCase() || 'pcs';
+            const weightUnits = ['kg', 'g', 'gram', 'grams', 'kilogram', 'kilograms', 'lb', 'lbs', 'pound', 'pounds', 'oz', 'ounce', 'ounces'];
+            const volumeUnits = ['l', 'liter', 'liters', 'ml', 'milliliter', 'milliliters', 'cup', 'cups', 'tbsp', 'tsp', 'tablespoon', 'tablespoons', 'teaspoon', 'teaspoons'];
+            const countUnits = ['pcs', 'pc', 'piece', 'pieces', 'whole', 'each', 'count', ''];
+            
+            const pantryHasWeight = weightUnits.includes(pantryUnit);
+            const pantryHasVolume = volumeUnits.includes(pantryUnit);
+            const pantryHasCount = countUnits.includes(pantryUnit);
+            
+            if ((recipeRequiresWeight && !pantryHasWeight) ||
+                (recipeRequiresVolume && !pantryHasVolume) ||
+                (recipeRequiresCount && !pantryHasCount)) {
+              console.log(`   ❌ Skipping similar item "${item.itemName}" (${pantryUnit}): unit type incompatible`);
+              return false;
+            }
+          }
+          
+          return true;
         })
         .map(item => {
           // ✅ ALWAYS honor pantry's original unit for similar items too
-          console.log(`   📦 Using pantry's unit "${item.unit}" for similar item "${item.itemName}"`);
+          console.log(`   ✅ Using pantry's unit "${item.unit}" for similar item "${item.itemName}" (unit type matches)`);
           
           return {
             name: item.itemName,
@@ -903,14 +1156,173 @@ Only suggest items that are ACTUALLY in the pantry list above. Return empty arra
   }
 
   /**
-   * Subtract used ingredients from pantry
+   * Use SousChef AI to categorize ingredients for smart subtraction
+   * AI determines: auto-subtract (solid weight items) vs needs confirmation (condiments/liquids)
+   * @param {Array} usedIngredients - Ingredients used in cooking
+   * @param {Array} pantryItems - User's pantry items
+   * @returns {Promise<Object>} Categorization result
+   */
+  async categorizeIngredientsForSubtraction(usedIngredients, pantryItems) {
+    try {
+      console.log('🤖 SousChef AI: Categorizing ingredients for subtraction...');
+      
+      // Format ingredients for AI
+      const ingredientsList = usedIngredients.map((ing, index) => 
+        `${index + 1}. ${ing.name || ing.text} - ${ing.quantity || 1} ${ing.unit || 'pcs'}`
+      ).join('\n');
+
+      const prompt = `You are SousChef, an AI assistant managing kitchen pantry subtraction.
+
+USED INGREDIENTS:
+${ingredientsList}
+
+TASK: Categorize each ingredient into two groups:
+
+1. AUTO-SUBTRACT: Solid food items measured by WEIGHT (kg, g, lb, oz)
+   - Examples: chicken, beef, pork, vegetables, fruits, rice, pasta
+   - These can be accurately tracked by weight
+
+2. NEEDS CONFIRMATION: Condiments, liquids, seasonings, oils
+   - Examples: salt, pepper, soy sauce, vinegar, oil, butter, milk, sugar, spices
+   - User should confirm if fully consumed or still has some left
+
+RULES:
+- Only weight-based solid foods (kg, g, lb, oz) go to AUTO-SUBTRACT
+- ALL condiments, liquids, seasonings, oils go to NEEDS CONFIRMATION
+- Small measurement items (tbsp, tsp, cup, ml, pinch) always need confirmation
+- When in doubt, prefer NEEDS CONFIRMATION for user control
+
+RESPONSE FORMAT (valid JSON):
+{
+  "autoSubtract": [
+    {"ingredientIndex": 0, "reason": "solid food with weight measurement"}
+  ],
+  "needsConfirmation": [
+    {"ingredientIndex": 1, "reason": "condiment/seasoning"}
+  ]
+}`;
+
+      const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+      
+      if (!apiKey) {
+        console.warn('⚠️ OpenAI API key not found, using fallback categorization');
+        return this.fallbackCategorization(usedIngredients);
+      }
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 20000);
+
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are SousChef, an expert culinary AI assistant specializing in kitchen pantry management. Always respond in valid JSON format.'
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          temperature: 0.2,
+          max_tokens: 500,
+          response_format: { type: 'json_object' }
+        })
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`SousChef AI error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const result = JSON.parse(data.choices[0].message.content);
+
+      console.log('✅ SousChef categorization complete');
+      console.log(`   Auto-subtract: ${result.autoSubtract?.length || 0} items`);
+      console.log(`   Needs confirmation: ${result.needsConfirmation?.length || 0} items`);
+
+      // Map indices back to actual ingredients
+      const needsConfirmation = (result.needsConfirmation || []).map(item => {
+        const ing = usedIngredients[item.ingredientIndex];
+        return {
+          name: ing.name || ing.text,
+          quantity: ing.quantity || 1,
+          unit: ing.unit || 'pcs',
+          reason: item.reason
+        };
+      });
+
+      return {
+        autoSubtractIndices: (result.autoSubtract || []).map(item => item.ingredientIndex),
+        needsConfirmation
+      };
+
+    } catch (error) {
+      console.error('❌ SousChef categorization error:', error.message);
+      console.log('⚠️ Using fallback categorization');
+      return this.fallbackCategorization(usedIngredients);
+    }
+  }
+
+  /**
+   * Fallback categorization when AI is unavailable
+   * @param {Array} usedIngredients - Ingredients used
+   * @returns {Object} Categorization result
+   */
+  fallbackCategorization(usedIngredients) {
+    const weightUnits = ['kg', 'g', 'gram', 'grams', 'kilogram', 'kilograms', 
+                         'lb', 'lbs', 'pound', 'pounds', 'oz', 'ounce', 'ounces'];
+    
+    const condimentKeywords = ['salt', 'pepper', 'oil', 'sauce', 'vinegar', 'butter', 
+                                'milk', 'cream', 'sugar', 'honey', 'syrup', 'spice',
+                                'seasoning', 'condiment', 'mayo', 'ketchup', 'mustard'];
+
+    const autoSubtractIndices = [];
+    const needsConfirmation = [];
+
+    usedIngredients.forEach((ing, index) => {
+      const unit = (ing.unit || '').toLowerCase().trim();
+      const name = (ing.name || ing.text || '').toLowerCase();
+      
+      const isWeightBased = weightUnits.includes(unit);
+      const isCondiment = condimentKeywords.some(keyword => name.includes(keyword));
+
+      if (isWeightBased && !isCondiment) {
+        autoSubtractIndices.push(index);
+      } else {
+        needsConfirmation.push({
+          name: ing.name || ing.text,
+          quantity: ing.quantity || 1,
+          unit: ing.unit || 'pcs',
+          reason: isCondiment ? 'condiment/seasoning' : 'non-weight measurement'
+        });
+      }
+    });
+
+    console.log(`📊 Fallback categorization: ${autoSubtractIndices.length} auto-subtract, ${needsConfirmation.length} needs confirmation`);
+
+    return { autoSubtractIndices, needsConfirmation };
+  }
+
+  /**
+   * Subtract used ingredients from pantry using SousChef AI
+   * AI determines which items should be auto-subtracted (weight-based) vs need confirmation (condiments)
    * @param {number} userID - User's ID
    * @param {Array} usedIngredients - Ingredients used (with quantities and units)
-   * @returns {Promise<Object>} Update result
+   * @returns {Promise<Object>} Update result with items needing confirmation
    */
   async subtractIngredientsFromPantry(userID, usedIngredients) {
     try {
-      console.log('🔄 Starting pantry subtraction...');
+      console.log('🔄 Starting SousChef AI pantry subtraction...');
       console.log('📦 Ingredients to subtract:', usedIngredients.map(i => ({
         name: i.name,
         quantity: i.quantity,
@@ -919,11 +1331,17 @@ Only suggest items that are ACTUALLY in the pantry list above. Return empty arra
       
       const pantryItems = await this.getUserPantryItems(userID);
       console.log(`📋 Found ${pantryItems.length} pantry items`);
+      
+      // Use SousChef AI to categorize ingredients for smart subtraction
+      const categorization = await this.categorizeIngredientsForSubtraction(usedIngredients, pantryItems);
+      
       const updates = [];
+      const needsConfirmation = categorization.needsConfirmation || [];
 
-      for (const ingredient of usedIngredients) {
+      for (let index = 0; index < usedIngredients.length; index++) {
+        const ingredient = usedIngredients[index];
         const ingredientName = this.normalizeIngredientName(ingredient.text || ingredient.name);
-        console.log(`\n🔍 Processing ingredient: "${ingredient.text || ingredient.name}"`);
+        console.log(`\n🔍 Processing ingredient ${index + 1}: "${ingredient.text || ingredient.name}"`);
         console.log(`   Normalized name: "${ingredientName}"`);
         console.log(`   Quantity: ${ingredient.quantity || 1}, Unit: "${ingredient.unit || 'none'}"`);
         
@@ -931,10 +1349,21 @@ Only suggest items that are ACTUALLY in the pantry list above. Return empty arra
         const pantryItem = pantryItems.find(item => 
           this.fuzzyMatch(this.normalizeIngredientName(item.itemName), ingredientName)
         );
+        
+        // Check if SousChef AI marked this for auto-subtraction
+        const shouldAutoSubtract = categorization.autoSubtractIndices.includes(index);
+        console.log(`   SousChef decision: ${shouldAutoSubtract ? '✅ Auto-subtract' : '⚠️ Needs confirmation'}`);
 
         if (pantryItem) {
           console.log(`   ✓ Found in pantry: "${pantryItem.itemName}"`);
           console.log(`   Pantry quantity: ${pantryItem.quantity}, Unit: "${pantryItem.unit || 'none'}"`);
+          
+          // If AI says needs confirmation, skip auto-subtraction
+          if (!shouldAutoSubtract) {
+            console.log(`   ⚠️ SousChef AI: Item needs user confirmation before removal`);
+            // Already added to needsConfirmation by AI
+            continue;
+          }
           
           let quantityToSubtract = ingredient.quantity || 1;
           let conversionApplied = false;
@@ -1056,16 +1485,22 @@ Only suggest items that are ACTUALLY in the pantry list above. Return empty arra
         }
       }
 
+      console.log(`\n📊 Subtraction summary:`);
+      console.log(`   ✅ Auto-subtracted: ${updates.length} items (weight-based)`);
+      console.log(`   ⚠️ Needs confirmation: ${needsConfirmation.length} items (condiments/liquids)`);
+      
       return {
         success: true,
         updatedCount: updates.length,
-        updates: updates
+        updates: updates,
+        needsConfirmation: needsConfirmation // Items requiring user to confirm if consumed
       };
     } catch (error) {
       console.error('Error subtracting ingredients:', error);
       return {
         success: false,
-        error: error.message
+        error: error.message,
+        needsConfirmation: []
       };
     }
   }
