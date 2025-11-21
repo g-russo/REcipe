@@ -1,0 +1,67 @@
+# Device matrix for Firebase Test Lab testing
+# Tests on multiple Android devices and versions
+
+# Portability Testing - Multiple Android Versions
+- model: Pixel2
+  version: 26 # Android 8.0
+  locale: en
+  orientation: portrait
+
+- model: Pixel2
+  version: 28 # Android 9.0
+  locale: en
+  orientation: portrait
+
+- model: Pixel3
+  version: 29 # Android 10
+  locale: en
+  orientation: portrait
+
+- model: Pixel4
+  version: 30 # Android 11
+  locale: en
+  orientation: portrait
+
+- model: Pixel5
+  version: 31 # Android 12
+  locale: en
+  orientation: portrait
+
+- model: Pixel6
+  version: 33 # Android 13
+  locale: en
+  orientation: portrait
+
+- model: Pixel6
+  version: 34 # Android 14
+  locale: en
+  orientation: portrait
+
+# Accessibility Testing - Different Screen Sizes
+- model: Nexus5
+  version: 28 # Small screen (5")
+  locale: en
+  orientation: portrait
+
+- model: Pixel4
+  version: 30 # Medium screen (5.7")
+  locale: en
+  orientation: portrait
+
+- model: Pixel6Pro
+  version: 33 # Large screen (6.7")
+  locale: en
+  orientation: portrait
+
+# Performance Testing - Latest devices
+- model: Pixel6
+  version: 33
+  locale: en
+  orientation: portrait
+  performance-metrics: true
+
+# Landscape orientation test
+- model: Pixel4
+  version: 30
+  locale: en
+  orientation: landscape

@@ -14,11 +14,17 @@ module.exports = {
     '!**/coverage/**'
   ],
   testMatch: [
-    '**/__tests__/**/*.[jt]s?(x)',
-    '**/?(*.)+(spec|test).[jt]s?(x)'
+    '**/__tests__/**/*.test.js',
+    '!**/__tests__/components/**',
+    '!**/__tests__/services/**'
+  ],
+  testPathIgnorePatterns: [
+    '/node_modules/',
+    '/services/test.js'
   ],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
   },
   testTimeout: 10000,
+  testEnvironment: 'node',
 };

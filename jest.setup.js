@@ -1,5 +1,16 @@
 import '@testing-library/jest-native/extend-expect';
 
+// Mock global.import.meta for Expo
+global.import = {
+  meta: {
+    url: 'file:///test',
+    env: {},
+  },
+};
+
+// Mock __ExpoImportMetaRegistry
+global.__ExpoImportMetaRegistry = new Map();
+
 // Mock Expo modules
 jest.mock('expo-router', () => ({
   useRouter: jest.fn(() => ({
@@ -25,9 +36,6 @@ jest.mock('expo-asset', () => ({
     loadAsync: jest.fn(),
   },
 }));
-
-// Mock React Native modules
-jest.mock('react-native/Libraries/Animated/NativeAnimatedHelper');
 
 // Mock AsyncStorage
 jest.mock('@react-native-async-storage/async-storage', () =>
@@ -56,16 +64,32 @@ jest.mock('./lib/supabase', () => ({
   },
 }));
 
-// Mock environment variables
-process.env.EXPO_PUBLIC_SUPABASE_URL = 'https://test.supabase.co';
-process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key';
-process.env.EXPO_PUBLIC_OPENAI_API_KEY = 'test-openai-key';
-process.env.EXPO_PUBLIC_EDAMAM_APP_ID = 'test-app-id';
-process.env.EXPO_PUBLIC_EDAMAM_APP_KEY = 'test-app-key';
+// Mock environment variables (use Object.defineProperty to avoid babel issues)
+Object.defineProperty(process.env, 'EXPO_PUBLIC_SUPABASE_URL', {
+  value: 'https://test.supabase.co',
+  writable: true
+});
+Object.defineProperty(process.env, 'EXPO_PUBLIC_SUPABASE_ANON_KEY', {
+  value: 'test-anon-key',
+  writable: true
+});
+Object.defineProperty(process.env, 'EXPO_PUBLIC_OPENAI_API_KEY', {
+  value: 'test-openai-key',
+  writable: true
+});
+Object.defineProperty(process.env, 'EXPO_PUBLIC_EDAMAM_APP_ID', {
+  value: 'test-app-id',
+  writable: true
+});
+Object.defineProperty(process.env, 'EXPO_PUBLIC_EDAMAM_APP_KEY', {
+  value: 'test-app-key',
+  writable: true
+});
 
 // Suppress console warnings during tests
+const originalConsole = global.console;
 global.console = {
-  ...console,
+  ...originalConsole,
   warn: jest.fn(),
   error: jest.fn(),
 };
