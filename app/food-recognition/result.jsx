@@ -24,17 +24,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import AuthGuard from '../../components/auth-guard';
 import ItemFormModal from '../../components/pantry/item-form-modal';
+import PantryAlert from '../../components/pantry/pantry-alert';
 
 const CONFIDENCE_THRESHOLD = 0.03; // 3% minimum confidence
 const DISPLAY_THRESHOLD = 0.60; // 60% minimum confidence for "Other Options" list
-
-// Category options for manual entry
-const CATEGORIES = [
-  'Rice', 'Soup', 'Leftovers', 'Kakanin',
-  'Baking', 'Beverages', 'Canned', 'Jarred', 'Condiments', 'Sauces', 'Dairy', 'Eggs',
-  'Fruits', 'Frozen', 'Grains', 'Pasta', 'Noodles', 'Meat', 'Poultry', 'Seafood',
-  'Snacks', 'Spices', 'Herbs', 'Vegetables', 'Other'
-];
 
 export default function FoodRecognitionResult() {
   // ✅ FIX: Get params correctly
@@ -49,18 +42,32 @@ export default function FoodRecognitionResult() {
   const [showOtherOptions, setShowOtherOptions] = useState(false);
   const [optionsModalVisible, setOptionsModalVisible] = useState(false); // ✅ NEW: Options Modal State
 
-  // Manual entry modal state
-  const [manualEntryVisible, setManualEntryVisible] = useState(false);
-  const [manualItemName, setManualItemName] = useState('');
-  const [manualCategory, setManualCategory] = useState('Other');
-  const [manualQuantity, setManualQuantity] = useState('1');
-  const [manualExpiryDays, setManualExpiryDays] = useState('7');
+  // Manual entry - now uses ItemFormModal directly
   const [addingToInventory, setAddingToInventory] = useState(false);
 
   // Item Form Modal State
   const [itemFormVisible, setItemFormVisible] = useState(false);
   const [inventories, setInventories] = useState([]);
   const [prefilledItemData, setPrefilledItemData] = useState(null);
+
+  // Group Selection Alert State
+  const [groupSelectionAlert, setGroupSelectionAlert] = useState({
+    visible: false,
+    message: '',
+    groups: [],
+    onSelectGroup: null,
+    singleGroupMode: false
+  });
+
+  // Duplicate Alert State
+  const [duplicateAlert, setDuplicateAlert] = useState({
+    visible: false,
+    itemData: null,
+    duplicateItem: null,
+    canMerge: false,
+    numericUserID: null,
+    resolve: null
+  });
 
   // Detailed Results Modal State
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
@@ -395,6 +402,11 @@ export default function FoodRecognitionResult() {
       // Prepare prefilled data
       const category = determineFoodCategory(selectedFood.label);
       const expiryDate = estimateExpiryDate(category);
+      const formattedExpiry = new Date(expiryDate).toLocaleDateString('en-US', {
+        month: 'numeric',
+        day: 'numeric',
+        year: 'numeric'
+      }).replace(/\//g, '/');
       
       // Smart unit suggestion based on category
       const suggestUnit = (cat) => {
@@ -419,16 +431,16 @@ export default function FoodRecognitionResult() {
           case 'Vegetables':
             return 'kg';
           default:
-            return 'pcs';
+            return 'pieces';
         }
       };
 
       setPrefilledItemData({
         itemName: selectedFood.label,
         itemCategory: category,
-        quantity: 1,
+        quantity: '1',
         unit: suggestUnit(category),
-        itemExpiration: expiryDate,
+        itemExpiration: formattedExpiry,
         itemDescription: `Detected by ${selectedFood.source}`,
         imageURL: uri,
         inventoryID: inventoryList[0].inventoryID,
@@ -468,11 +480,46 @@ export default function FoodRecognitionResult() {
 
       const numericUserID = userData.userID;
 
-      // Create the item
+      // Check for duplicate items in the same inventory
+      const { data: existingItems, error: itemsError } = await supabase
+        .from('tbl_items')
+        .select('*')
+        .eq('inventoryID', itemData.inventoryID);
+
+      if (!itemsError && existingItems) {
+        const normalizedNewName = itemData.itemName.trim().toLowerCase();
+        const duplicateItem = existingItems.find(
+          item => item.itemName.trim().toLowerCase() === normalizedNewName
+        );
+
+        if (duplicateItem) {
+          // Check if merge is possible (same unit)
+          const canMerge = 
+            duplicateItem.unit?.trim().toLowerCase() === itemData.unit?.trim().toLowerCase() &&
+            !isNaN(Number(duplicateItem.quantity)) &&
+            !isNaN(Number(itemData.quantity));
+
+          return new Promise((resolve) => {
+            setDuplicateAlert({
+              visible: true,
+              itemData,
+              duplicateItem,
+              canMerge,
+              numericUserID,
+              resolve
+            });
+          });
+        }
+      }
+
+      // No duplicate found - create the item
       const createdItem = await PantryService.createItem({
         ...itemData,
         userID: numericUserID,
       });
+
+      // Check for matching groups
+      await checkAndAddToMatchingGroup(createdItem, itemData.inventoryID);
 
       // Close form and show success
       setItemFormVisible(false);
@@ -487,18 +534,125 @@ export default function FoodRecognitionResult() {
     }
   };
 
-  const handleManualEntry = async () => {
-    if (!manualItemName.trim()) {
-      Alert.alert('Missing Information', 'Please enter an item name');
-      return;
+  // Check for groups with matching category and add item
+  const checkAndAddToMatchingGroup = async (item, inventoryID) => {
+    if (!item.itemCategory) return;
+
+    try {
+      // Get all groups for this inventory with matching category
+      const { data: groups, error: groupsError } = await supabase
+        .from('tbl_groups')
+        .select('*')
+        .eq('inventoryID', inventoryID)
+        .eq('groupCategory', item.itemCategory);
+
+      if (groupsError || !groups || groups.length === 0) return;
+
+      // If there's exactly one matching group, add automatically with PantryAlert
+      if (groups.length === 1) {
+        const group = groups[0];
+        setGroupSelectionAlert({
+          visible: true,
+          message: `"${item.itemName}" will be added to your ${group.groupTitle} group.`,
+          groups: [group],
+          onSelectGroup: async () => {
+            try {
+              await PantryService.addItemToGroup(item.itemID, group.groupID);
+              console.log(`✅ Added item to group "${group.groupTitle}"`);
+            } catch (error) {
+              if (!error.message?.includes('already in this group')) {
+                console.error('Error adding to group:', error);
+              }
+            }
+            setGroupSelectionAlert({ visible: false, message: '', groups: [], onSelectGroup: null, singleGroupMode: false });
+          },
+          singleGroupMode: true
+        });
+      } else if (groups.length > 1) {
+        // Multiple matching groups - show selection with PantryAlert
+        setGroupSelectionAlert({
+          visible: true,
+          message: `You have ${groups.length} groups for ${item.itemCategory} items.\n\nChoose one to add "${item.itemName}" to:`,
+          groups: groups.slice(0, 3),
+          onSelectGroup: async (selectedGroup) => {
+            try {
+              await PantryService.addItemToGroup(item.itemID, selectedGroup.groupID);
+              console.log(`✅ Added item to group "${selectedGroup.groupTitle}"`);
+            } catch (error) {
+              if (!error.message?.includes('already in this group')) {
+                console.error('Error adding to group:', error);
+              }
+            }
+            setGroupSelectionAlert({ visible: false, message: '', groups: [], onSelectGroup: null, singleGroupMode: false });
+          },
+          singleGroupMode: false
+        });
+      }
+    } catch (error) {
+      console.error('Error checking for matching groups:', error);
     }
+  };
 
-    setAddingToInventory(true);
+  // Handle duplicate alert actions
+  const handleDuplicateMerge = async () => {
+    const { duplicateItem, itemData, numericUserID, resolve } = duplicateAlert;
+    try {
+      const mergedQty = Number(duplicateItem.quantity) + Number(itemData.quantity);
+      await PantryService.updateItem(duplicateItem.itemID, {
+        quantity: mergedQty,
+        userID: numericUserID,
+      });
 
+      // Check for matching groups
+      await checkAndAddToMatchingGroup(duplicateItem, itemData.inventoryID);
+
+      setItemFormVisible(false);
+      setPrefilledItemData(null);
+      setAddedItemName(duplicateItem.itemName);
+      setSuccessModalVisible(true);
+      setDuplicateAlert({ visible: false, itemData: null, duplicateItem: null, canMerge: false, numericUserID: null, resolve: null });
+      if (resolve) resolve({ status: 'duplicate-merged', item: duplicateItem });
+    } catch (error) {
+      Alert.alert('Error', error.message || 'Failed to merge items');
+      if (resolve) resolve({ status: 'error', error });
+    }
+  };
+
+  const handleDuplicateCreate = async () => {
+    const { itemData, numericUserID, resolve } = duplicateAlert;
+    try {
+      const createdItem = await PantryService.createItem({
+        ...itemData,
+        userID: numericUserID,
+      });
+
+      // Check for matching groups
+      await checkAndAddToMatchingGroup(createdItem, itemData.inventoryID);
+
+      setItemFormVisible(false);
+      setPrefilledItemData(null);
+      setAddedItemName(createdItem.itemName);
+      setSuccessModalVisible(true);
+      setDuplicateAlert({ visible: false, itemData: null, duplicateItem: null, canMerge: false, numericUserID: null, resolve: null });
+      if (resolve) resolve({ status: 'created', item: createdItem });
+    } catch (error) {
+      Alert.alert('Error', error.message || 'Failed to save item');
+      if (resolve) resolve({ status: 'error', error });
+    }
+  };
+
+  const handleDuplicateCancel = () => {
+    const { resolve } = duplicateAlert;
+    setDuplicateAlert({ visible: false, itemData: null, duplicateItem: null, canMerge: false, numericUserID: null, resolve: null });
+    if (resolve) resolve({ status: 'duplicate-cancelled' });
+  };
+
+  const handleManualEntry = async () => {
     try {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) {
-        throw new Error('You must be logged in');
+        Alert.alert('Error', 'You must be logged in to add items');
+        return;
       }
 
       const { data: userData, error: userLookupError } = await supabase
@@ -508,62 +662,58 @@ export default function FoodRecognitionResult() {
         .single();
 
       if (userLookupError || !userData) {
-        throw new Error('Failed to find user in database');
+        Alert.alert('Error', 'Failed to find user in database. Please try logging out and back in.');
+        return;
       }
 
       const numericUserID = userData.userID;
 
-      const { data: inventories, error: invError } = await supabase
+      // Fetch user's inventories
+      const { data: userInventories, error: invError } = await supabase
         .from('tbl_inventories')
         .select('*')
         .eq('userID', numericUserID)
-        .limit(1);
+        .order('createdAt', { ascending: true });
 
       if (invError) {
-        throw new Error(`Failed to fetch inventory: ${invError.message}`);
+        Alert.alert('Error', `Failed to fetch inventories: ${invError.message}`);
+        return;
       }
 
-      let inventoryID = inventories?.[0]?.inventoryID;
+      let inventoryList = userInventories || [];
 
-      if (!inventoryID) {
+      // Create default inventory if none exists
+      if (inventoryList.length === 0) {
         const newInventory = await PantryService.createInventory(numericUserID, {
           inventoryColor: '#8BC34A',
           maxItems: 100,
           inventoryTags: { name: 'My Pantry' },
         });
-        inventoryID = newInventory.inventoryID;
+        inventoryList = [newInventory];
       }
 
-      const expiryDate = new Date();
-      expiryDate.setDate(expiryDate.getDate() + parseInt(manualExpiryDays || '7'));
+      setInventories(inventoryList);
 
-      const itemData = {
-        inventoryID: inventoryID,
-        itemName: manualItemName.trim(),
-        itemCategory: manualCategory,
-        quantity: parseInt(manualQuantity) || 1,
-        unit: 'pcs',
-        itemExpiration: expiryDate.toISOString(),
+      // Calculate expiry date (7 days from now as default)
+      const expiryDate = new Date();
+      expiryDate.setDate(expiryDate.getDate() + 7);
+      const formattedExpiry = `${expiryDate.getMonth() + 1}/${expiryDate.getDate()}/${expiryDate.getFullYear()}`;
+
+      // Open item form modal with minimal prefilled data for manual entry
+      setPrefilledItemData({
+        itemName: '',
+        itemCategory: 'Other',
+        quantity: '1',
+        unit: 'pieces',
+        itemExpiration: formattedExpiry,
         itemDescription: 'Added manually from food recognition',
         imageURL: uri,
-        userID: numericUserID,
-      };
+        inventoryID: inventoryList[0].inventoryID,
+      });
 
-      await PantryService.createItem(itemData);
-
-      setAddedItemName(manualItemName);
-      setSuccessModalVisible(true);
-
-      setManualItemName('');
-      setManualCategory('Other');
-      setManualQuantity('1');
-      setManualExpiryDays('7');
-      setManualEntryVisible(false);
-
+      setItemFormVisible(true);
     } catch (error) {
-      Alert.alert('Error', error.message || 'Failed to add item');
-    } finally {
-      setAddingToInventory(false);
+      Alert.alert('Error', error.message || 'Failed to prepare item form');
     }
   };
 
@@ -598,7 +748,7 @@ export default function FoodRecognitionResult() {
         </Text>
         <TouchableOpacity
           style={styles.manualEntryButton}
-          onPress={() => setManualEntryVisible(true)}
+          onPress={handleManualEntry}
         >
           <Ionicons name="create-outline" size={20} color="#FFF" />
           <Text style={styles.manualEntryButtonText}>Add Manually</Text>
@@ -752,7 +902,7 @@ export default function FoodRecognitionResult() {
             <View style={styles.secondaryActions}>
               <TouchableOpacity
                 style={styles.manualButton}
-                onPress={() => setManualEntryVisible(true)}
+                onPress={handleManualEntry}
               >
                 <Ionicons name="create-outline" size={20} color="#81A969" />
                 <Text style={styles.manualButtonText}>Manual Entry</Text>
@@ -837,23 +987,6 @@ export default function FoodRecognitionResult() {
             </View>
           </Animated.View>
         </Modal>
-
-        {/* Manual Entry Modal */}
-        <ManualEntryModal
-          visible={manualEntryVisible}
-          onClose={() => setManualEntryVisible(false)}
-          imageUri={uri}
-          itemName={manualItemName}
-          setItemName={setManualItemName}
-          category={manualCategory}
-          setCategory={setManualCategory}
-          quantity={manualQuantity}
-          setQuantity={setManualQuantity}
-          expiryDays={manualExpiryDays}
-          setExpiryDays={setManualExpiryDays}
-          onSubmit={handleManualEntry}
-          loading={addingToInventory}
-        />
 
         {/* Detailed Results Modal */}
         <Modal
@@ -1002,58 +1135,6 @@ export default function FoodRecognitionResult() {
             </ScrollView>
           </View>
         </Modal>
-
-        {/* Success Modal */}
-        <Modal
-          visible={successModalVisible}
-          animationType="fade"
-          transparent={true}
-          onRequestClose={() => setSuccessModalVisible(false)}
-        >
-          <View style={successModalStyles.overlay}>
-            <View style={successModalStyles.container}>
-              <View style={successModalStyles.iconContainer}>
-                <Ionicons name="checkmark-circle" size={80} color="#81A969" />
-              </View>
-
-              <Text style={successModalStyles.title}>Added Successfully!</Text>
-              <Text style={successModalStyles.message}>
-                {addedItemName} has been added to your pantry.
-              </Text>
-
-              <View style={successModalStyles.buttonContainer}>
-                <TouchableOpacity
-                  style={[successModalStyles.button, successModalStyles.primaryButton]}
-                  onPress={() => {
-                    setSuccessModalVisible(false);
-                    router.push('/(tabs)/pantry');
-                  }}
-                >
-                  <Ionicons name="basket-outline" size={20} color="#FFF" />
-                  <Text style={successModalStyles.primaryButtonText}>View Pantry</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[successModalStyles.button, successModalStyles.secondaryButton]}
-                  onPress={() => {
-                    setSuccessModalVisible(false);
-                    router.replace('/food-recognition/upload');
-                  }}
-                >
-                  <Ionicons name="camera-outline" size={20} color="#81A969" />
-                  <Text style={successModalStyles.secondaryButtonText}>Scan Another</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[successModalStyles.button, successModalStyles.cancelButton]}
-                  onPress={() => setSuccessModalVisible(false)}
-                >
-                  <Text style={successModalStyles.cancelButtonText}>Confirm</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </Modal>
       </View>
 
       {/* Item Form Modal */}
@@ -1069,136 +1150,86 @@ export default function FoodRecognitionResult() {
           inventories={inventories}
         />
       )}
-    </AuthGuard>
-  );
-}
 
-// Manual Entry Modal Component
-function ManualEntryModal({
-  visible,
-  onClose,
-  imageUri,
-  itemName,
-  setItemName,
-  category,
-  setCategory,
-  quantity,
-  setQuantity,
-  expiryDays,
-  setExpiryDays,
-  onSubmit,
-  loading,
-}) {
-  return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      transparent={true}
-      onRequestClose={onClose}
-    >
-      <TouchableOpacity
-        style={modalStyles.overlay}
-        activeOpacity={1}
-        onPress={onClose}
+      {/* Group Selection Alert */}
+      <PantryAlert
+        visible={groupSelectionAlert.visible}
+        type="info"
+        title={groupSelectionAlert.singleGroupMode ? "Add to Group" : "Select Group"}
+        message={groupSelectionAlert.message}
+        onClose={() => setGroupSelectionAlert({ visible: false, message: '', groups: [], onSelectGroup: null, singleGroupMode: false })}
+        cancelLabel={groupSelectionAlert.singleGroupMode ? "Cancel" : "Skip"}
+        customIcon={
+          <Ionicons name="albums-outline" size={wp('15%')} color="#81A969" />
+        }
+      >
+        {groupSelectionAlert.groups.map((group, index) => (
+          <TouchableOpacity
+            key={group.groupID}
+            style={groupSelectionAlertStyles.groupButton}
+            onPress={() => {
+              if (groupSelectionAlert.onSelectGroup) {
+                groupSelectionAlert.onSelectGroup(groupSelectionAlert.singleGroupMode ? undefined : group);
+              }
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={groupSelectionAlertStyles.groupButtonText}>
+              {groupSelectionAlert.singleGroupMode 
+                ? `Add to ${group.groupTitle}`
+                : `${group.groupTitle} (${group.itemCount || 0} ${(group.itemCount || 0) === 1 ? 'item' : 'items'})`}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </PantryAlert>
+
+      {/* Duplicate Alert */}
+      <PantryAlert
+        visible={duplicateAlert.visible}
+        type="info"
+        title="Duplicate Item"
+        message={
+          duplicateAlert.itemData
+            ? `"${duplicateAlert.itemData.itemName}" already exists in your pantry. How would you like to proceed?`
+            : ''
+        }
+        onClose={handleDuplicateCancel}
+        cancelLabel="Return"
+        customIcon={
+          <Ionicons name="alert-circle-outline" size={wp('15%')} color="#FF9800" />
+        }
       >
         <TouchableOpacity
-          style={modalStyles.container}
-          activeOpacity={1}
-          onPress={(e) => e.stopPropagation()}
+          style={duplicateAlertStyles.addToExistingButton}
+          onPress={handleDuplicateMerge}
+          activeOpacity={0.7}
         >
-          <View style={modalStyles.header}>
-            <Text style={modalStyles.headerTitle}>Add Item Manually</Text>
-            <TouchableOpacity onPress={onClose} style={modalStyles.closeButton}>
-              <Ionicons name="close" size={24} color="#333" />
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView style={modalStyles.content}>
-            {imageUri && (
-              <View style={modalStyles.imagePreview}>
-                <Image source={{ uri: imageUri }} style={modalStyles.previewImage} />
-                <Text style={modalStyles.imageNote}>Reference image</Text>
-              </View>
-            )}
-
-            <View style={modalStyles.field}>
-              <Text style={modalStyles.label}>Item Name *</Text>
-              <TextInput
-                style={modalStyles.input}
-                value={itemName}
-                onChangeText={setItemName}
-                placeholder="e.g., Fresh Apples"
-                placeholderTextColor="#999"
-              />
-            </View>
-
-            <View style={modalStyles.field}>
-              <Text style={modalStyles.label}>Category *</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <View style={modalStyles.categoryContainer}>
-                  {CATEGORIES.map((cat) => (
-                    <TouchableOpacity
-                      key={cat}
-                      style={[
-                        modalStyles.categoryChip,
-                        category === cat && modalStyles.categoryChipSelected,
-                      ]}
-                      onPress={() => setCategory(cat)}
-                    >
-                      <Text
-                        style={[
-                          modalStyles.categoryChipText,
-                          category === cat && modalStyles.categoryChipTextSelected,
-                        ]}
-                      >
-                        {cat}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </ScrollView>
-            </View>
-
-            <View style={modalStyles.row}>
-              <View style={[modalStyles.field, { flex: 1, marginRight: 10 }]}>
-                <Text style={modalStyles.label}>Quantity</Text>
-                <TextInput
-                  style={modalStyles.input}
-                  value={quantity}
-                  onChangeText={setQuantity}
-                  keyboardType="numeric"
-                  placeholder="1"
-                  placeholderTextColor="#999"
-                />
-              </View>
-              <View style={[modalStyles.field, { flex: 1 }]}>
-                <Text style={modalStyles.label}>Expires in (days)</Text>
-                <TextInput
-                  style={modalStyles.input}
-                  value={expiryDays}
-                  onChangeText={setExpiryDays}
-                  keyboardType="numeric"
-                  placeholder="7"
-                  placeholderTextColor="#999"
-                />
-              </View>
-            </View>
-
-            <TouchableOpacity
-              style={[modalStyles.submitButton, loading && modalStyles.submitButtonDisabled]}
-              onPress={onSubmit}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator color="#FFF" />
-              ) : (
-                <Text style={modalStyles.submitButtonText}>Add to Pantry</Text>
-              )}
-            </TouchableOpacity>
-          </ScrollView>
+          <Ionicons name="layers-outline" size={wp('5%')} color="#fff" />
+          <Text style={duplicateAlertStyles.addToExistingButtonText}>Add to Existing</Text>
         </TouchableOpacity>
-      </TouchableOpacity>
-    </Modal>
+        <TouchableOpacity
+          style={duplicateAlertStyles.addAnywayButton}
+          onPress={handleDuplicateCreate}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="add-circle-outline" size={wp('5%')} color="#81A969" />
+          <Text style={duplicateAlertStyles.addAnywayButtonText}>Add Anyway</Text>
+        </TouchableOpacity>
+      </PantryAlert>
+
+      {/* Success Modal */}
+      <PantryAlert
+        visible={successModalVisible}
+        type="success"
+        title="Success!"
+        message={`"${addedItemName}" has been successfully added to your pantry.`}
+        onClose={() => setSuccessModalVisible(false)}
+        cancelLabel="Return"
+        customIcon={
+          <Ionicons name="checkmark-circle" size={wp('15%')} color="#81A969" />
+        }
+      />
+    </AuthGuard>
   );
 }
 
@@ -1779,183 +1810,70 @@ const styles = StyleSheet.create({
   },
 });
 
-const modalStyles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  container: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: hp('80%'),
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: wp('5%'),
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  headerTitle: {
-    fontSize: wp('5%'),
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  closeButton: {
-    padding: 4,
-  },
-  content: {
-    padding: wp('5%'),
-  },
-  imagePreview: {
-    alignItems: 'center',
-    marginBottom: hp('2%'),
-  },
-  previewImage: {
+const groupSelectionAlertStyles = StyleSheet.create({
+  groupButton: {
     width: '100%',
-    height: hp('20%'),
-    borderRadius: 12,
-    resizeMode: 'cover',
-  },
-  imageNote: {
-    fontSize: wp('3%'),
-    color: '#999',
-    marginTop: 8,
-  },
-  field: {
-    marginBottom: hp('2%'),
-  },
-  label: {
-    fontSize: wp('4%'),
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 8,
-  },
-  input: {
-    backgroundColor: '#f8f8f8',
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    borderRadius: 8,
-    paddingHorizontal: wp('4%'),
-    paddingVertical: hp('1.5%'),
-    fontSize: wp('4%'),
-    color: '#333',
-  },
-  categoryContainer: {
     flexDirection: 'row',
-    gap: 8,
-  },
-  categoryChip: {
-    paddingHorizontal: wp('4%'),
-    paddingVertical: hp('1%'),
-    borderRadius: 20,
-    backgroundColor: '#f0f0f0',
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-  },
-  categoryChipSelected: {
-    backgroundColor: '#81A969',
-    borderColor: '#81A969',
-  },
-  categoryChipText: {
-    fontSize: wp('3.5%'),
-    color: '#666',
-  },
-  categoryChipTextSelected: {
-    color: '#fff',
-    fontWeight: 'bold',
-  },
-  row: {
-    flexDirection: 'row',
-  },
-  submitButton: {
-    backgroundColor: '#81A969',
-    paddingVertical: hp('2%'),
-    borderRadius: 12,
     alignItems: 'center',
-    marginTop: hp('2%'),
+    justifyContent: 'center',
+    backgroundColor: '#81A969',
+    paddingVertical: hp('1.6%'),
+    borderRadius: wp('2.5%'),
+    marginBottom: hp('1%'),
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  submitButtonDisabled: {
-    backgroundColor: '#ccc',
-  },
-  submitButtonText: {
+  groupButtonText: {
     color: '#fff',
-    fontSize: wp('4.5%'),
-    fontWeight: 'bold',
+    fontWeight: '700',
+    fontSize: wp('4%'),
+    letterSpacing: 0.3,
   },
 });
 
-const successModalStyles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: wp('5%'),
-  },
-  container: {
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: wp('6%'),
+const duplicateAlertStyles = StyleSheet.create({
+  addToExistingButton: {
     width: '100%',
-    maxWidth: 400,
-    alignItems: 'center',
-  },
-  iconContainer: {
-    marginBottom: hp('2%'),
-  },
-  title: {
-    fontSize: wp('6%'),
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: hp('1%'),
-  },
-  message: {
-    fontSize: wp('4%'),
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: hp('3%'),
-  },
-  buttonContainer: {
-    width: '100%',
-    gap: 12,
-  },
-  button: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: hp('1.5%'),
-    borderRadius: 12,
-  },
-  primaryButton: {
     backgroundColor: '#81A969',
+    paddingVertical: hp('1.6%'),
+    borderRadius: wp('2.5%'),
+    marginBottom: hp('1%'),
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  primaryButtonText: {
+  addToExistingButtonText: {
     color: '#fff',
+    fontWeight: '700',
     fontSize: wp('4%'),
-    fontWeight: 'bold',
-    marginLeft: 8,
+    letterSpacing: 0.3,
+    marginLeft: wp('2%'),
   },
-  secondaryButton: {
+  addAnywayButton: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: '#fff',
     borderWidth: 2,
     borderColor: '#81A969',
+    paddingVertical: hp('1.6%'),
+    borderRadius: wp('2.5%'),
+    marginBottom: hp('1%'),
   },
-  secondaryButtonText: {
+  addAnywayButtonText: {
     color: '#81A969',
+    fontWeight: '700',
     fontSize: wp('4%'),
-    fontWeight: 'bold',
-    marginLeft: 8,
-  },
-  cancelButton: {
-    backgroundColor: '#f0f0f0',
-  },
-  cancelButtonText: {
-    color: '#666',
-    fontSize: wp('4%'),
-    fontWeight: '600',
+    letterSpacing: 0.3,
+    marginLeft: wp('2%'),
   },
 });
