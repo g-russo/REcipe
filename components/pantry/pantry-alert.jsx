@@ -3,41 +3,6 @@ import { Animated, Text, View, StyleSheet, TouchableOpacity, Modal, Easing, Touc
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { Ionicons } from '@expo/vector-icons';
 
-// Animated button component with press feedback
-export const AnimatedButton = ({ children, onPress, style, activeOpacity = 0.85 }) => {
-    const scaleAnim = useRef(new Animated.Value(1)).current;
-
-    const handlePressIn = () => {
-        Animated.spring(scaleAnim, {
-            toValue: 0.92,
-            friction: 4,
-            tension: 120,
-            useNativeDriver: true,
-        }).start();
-    };
-
-    const handlePressOut = () => {
-        Animated.spring(scaleAnim, {
-            toValue: 1,
-            friction: 4,
-            tension: 120,
-            useNativeDriver: true,
-        }).start();
-    };
-
-    return (
-        <TouchableWithoutFeedback
-            onPress={onPress}
-            onPressIn={handlePressIn}
-            onPressOut={handlePressOut}
-        >
-            <Animated.View style={[style, { transform: [{ scale: scaleAnim }] }]}>
-                {children}
-            </Animated.View>
-        </TouchableWithoutFeedback>
-    );
-};
-
 // Modal Alert component (no auto-dismiss)
 // props: visible (bool), type: 'success' | 'error' | 'info', message (string), onClose (fn)
 const PantryAlert = ({
@@ -54,6 +19,7 @@ const PantryAlert = ({
     children = null,
     // Optional: provide a custom icon React element to override default
     customIcon = null,
+    cancelLabel = 'Return',
 }) => {
     const [show, setShow] = useState(visible);
     const opacity = useRef(new Animated.Value(0)).current;
@@ -179,21 +145,24 @@ const PantryAlert = ({
                                 {/* Actions */}
                                 <View style={[styles.modalActions, children && styles.modalActionsVertical]}>
                                     {actionable && (
-                                        <AnimatedButton
+                                        <TouchableOpacity
                                             style={[styles.modalButton, styles.primaryButton, children && styles.fullWidthButton, { backgroundColor: '#81A969' }]}
                                             onPress={handleAction}
+                                            activeOpacity={0.7}
                                         >
                                             <Text style={styles.modalButtonText}>{actionLabel}</Text>
-                                        </AnimatedButton>
+                                        </TouchableOpacity>
                                     )}
                                     {children}
-                                    {/* Cancel button */}
+                                    {/* Return button */}
                                     <TouchableOpacity
-                                        style={styles.cancelButton}
+                                        style={styles.returnButton}
                                         onPress={handleClose}
                                         activeOpacity={0.7}
                                     >
-                                        <Text style={styles.cancelButtonText}>Cancel</Text>
+                                        <Text style={styles.returnButtonText}>
+                                            {cancelLabel}
+                                        </Text>
                                     </TouchableOpacity>
                                 </View>
                             </View>
@@ -291,22 +260,18 @@ const styles = StyleSheet.create({
         fontSize: wp('4%'),
         letterSpacing: 0.3,
     },
-    secondaryButtonText: {
-        color: '#81A969',
-        fontWeight: '700',
-        fontSize: wp('4%'),
-        letterSpacing: 0.3,
-    },
-    cancelButton: {
+    returnButton: {
         width: '100%',
         paddingVertical: hp('1.6%'),
         alignItems: 'center',
         justifyContent: 'center',
         marginTop: hp('0.5%'),
+        backgroundColor: '#81A969',
+        borderRadius: wp('2.5%'),
     },
-    cancelButtonText: {
-        color: '#999',
-        fontWeight: '600',
+    returnButtonText: {
+        color: '#fff',
+        fontWeight: '700',
         fontSize: wp('4%'),
         letterSpacing: 0.3,
     },
