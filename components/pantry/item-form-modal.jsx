@@ -22,7 +22,7 @@ import PantryAlert from './pantry-alert';
 
 const ITEM_NAME_REGEX = /^[a-zA-Z0-9\s'-]+$/;
 const ITEM_NAME_MIN_LENGTH = 2;
-const ITEM_NAME_MAX_LENGTH = 60;
+const ITEM_NAME_MAX_LENGTH = 50;
 
 /**
  * Item Form Modal Component
@@ -54,6 +54,7 @@ const ItemFormModal = ({
   const [unitModalVisible, setUnitModalVisible] = useState(false);
   const [formErrors, setFormErrors] = useState({});
   const [imagePickerVisible, setImagePickerVisible] = useState(false);
+  const [validationAlert, setValidationAlert] = useState({ visible: false, message: '' });
 
   // SPLIT & REFINED FOOD CATEGORIES (No '&' or '/')
   const foodCategories = [
@@ -371,7 +372,10 @@ const ItemFormModal = ({
     if (!isValid) {
       console.log('❌ Validation failed: Missing required fields');
       await saveDraft();
-      Alert.alert('Missing Information', 'Please complete all required fields. Item description is optional.');
+      setValidationAlert({ 
+        visible: true, 
+        message: 'Please complete all required fields. Item description is optional.' 
+      });
       return;
     }
 
@@ -404,7 +408,10 @@ const ItemFormModal = ({
     } catch (e) {
       // If save fails, keep draft
       await saveDraft();
-      Alert.alert('Error', e.message || 'Save failed');
+      setValidationAlert({ 
+        visible: true, 
+        message: e.message || 'Failed to save item. Please try again.' 
+      });
     }
   };
 
@@ -739,6 +746,15 @@ const ItemFormModal = ({
           <Text style={imagePickerStyles.optionButtonTextSecondary}>Choose from Library</Text>
         </TouchableOpacity>
       </PantryAlert>
+
+      {/* Validation Error Alert */}
+      <PantryAlert
+        visible={validationAlert.visible}
+        type="error"
+        title="Missing Information"
+        message={validationAlert.message}
+        onClose={() => setValidationAlert({ visible: false, message: '' })}
+      />
     </>
   );
 };
