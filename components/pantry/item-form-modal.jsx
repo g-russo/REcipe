@@ -88,17 +88,17 @@ const ItemFormModal = ({
       case 'Rice':
       case 'Leftovers':
       case 'Kakanin':
-        return [...allUnits.serving, 'g', 'kg']; 
+        return [...allUnits.serving, 'g', 'kg'];
 
       // Liquidy Cooked Food
       case 'Soup':
-        return [...allUnits.serving, ...allUnits.volume]; 
+        return [...allUnits.serving, ...allUnits.volume];
 
       // Liquids
       case 'Beverages':
       case 'Sauces':
       case 'Condiments':
-      case 'Dairy': 
+      case 'Dairy':
         return [...allUnits.volume, ...allUnits.small];
 
       // Raw Meat / Seafood (Strictly Weight/Count)
@@ -106,7 +106,7 @@ const ItemFormModal = ({
       case 'Poultry':
       case 'Seafood':
       case 'Frozen':
-        return [...allUnits.weight, 'pieces', 'each', 'tray']; 
+        return [...allUnits.weight, 'pieces', 'each', 'tray'];
 
       // Baking / Grains / Spices (Weight + Vol + Small)
       case 'Baking':
@@ -147,14 +147,14 @@ const ItemFormModal = ({
       if (visible && !initialData) {
         try {
           const draftString = await AsyncStorage.getItem(DRAFT_KEY);
-            if (draftString) {
-              const draft = JSON.parse(draftString);
-              setFormData(prev => ({
-                ...prev,
-                ...draft,
-                inventoryID: draft.inventoryID || inventories[0]?.inventoryID || null
-              }));
-            }
+          if (draftString) {
+            const draft = JSON.parse(draftString);
+            setFormData(prev => ({
+              ...prev,
+              ...draft,
+              inventoryID: draft.inventoryID || inventories[0]?.inventoryID || null
+            }));
+          }
         } catch (e) {
           console.log('Draft load error', e);
         }
@@ -264,7 +264,7 @@ const ItemFormModal = ({
 
   const updateField = (field, value) => {
     const next = { ...formData, [field]: value };
-    
+
     // If category changed, validate that current unit is still allowed
     if (field === 'itemCategory') {
       const allowedUnits = getAllowedUnits(value);
@@ -274,7 +274,7 @@ const ItemFormModal = ({
         setFieldError('unit', 'Unit cleared - select a valid unit for this category');
       }
     }
-    
+
     setFormData(next);
 
     if (fieldValidators[field]) {
@@ -306,7 +306,7 @@ const ItemFormModal = ({
   const parseDate = (dateString) => {
     if (!dateString) return new Date();
     if (dateString instanceof Date) return dateString;
-    
+
     const parts = dateString.split('/');
     if (parts.length === 3) {
       return new Date(parts[2], parts[0] - 1, parts[1]);
@@ -468,9 +468,9 @@ const ItemFormModal = ({
         onRequestClose={handleClose}
       >
         <SafeAreaView style={styles.modalContainer}>
-          <KeyboardAvoidingView 
+          <KeyboardAvoidingView
             behavior={Platform.OS === "ios" ? "padding" : "height"}
-            style={{flex: 1}}
+            style={{ flex: 1 }}
           >
             {/* Header */}
             <View style={styles.modalHeader}>
@@ -482,21 +482,21 @@ const ItemFormModal = ({
               </TouchableOpacity>
             </View>
 
-            <ScrollView 
+            <ScrollView
               style={styles.modalScrollView}
               contentContainerStyle={styles.modalContentContainer}
               showsVerticalScrollIndicator={false}
             >
               <View style={styles.modalContent}>
                 {/* Image Upload */}
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.imageUploadArea}
                   onPress={showImagePickerOptions}
                 >
                   {formData.imageURL ? (
-                    <Image 
-                      source={{ uri: formData.imageURL }} 
-                      style={styles.uploadedImage} 
+                    <Image
+                      source={{ uri: formData.imageURL }}
+                      style={styles.uploadedImage}
                     />
                   ) : (
                     <View style={styles.uploadPlaceholder}>
@@ -505,9 +505,9 @@ const ItemFormModal = ({
                     </View>
                   )}
                 </TouchableOpacity>
-                
+
                 {/* Item Name */}
-                <TextInput 
+                <TextInput
                   style={styles.input}
                   placeholder="Item Name *"
                   placeholderTextColor="#999"
@@ -518,9 +518,9 @@ const ItemFormModal = ({
                 {!!formErrors.itemName && (
                   <Text style={styles.errorText}>{formErrors.itemName}</Text>
                 )}
-                
+
                 {/* Category */}
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.dropdownInput}
                   onPress={() => setCategoryModalVisible(true)}
                 >
@@ -532,12 +532,12 @@ const ItemFormModal = ({
                 {!!formErrors.itemCategory && (
                   <Text style={styles.errorText}>{formErrors.itemCategory}</Text>
                 )}
-                
+
                 {/* Quantity and Unit Row */}
                 <View style={styles.formRow}>
                   <View style={styles.formColumn}>
                     <Text style={styles.columnLabel}>Quantity:</Text>
-                    <TextInput 
+                    <TextInput
                       style={styles.smallInput}
                       placeholder="0"
                       placeholderTextColor="#999"
@@ -549,10 +549,10 @@ const ItemFormModal = ({
                       <Text style={styles.errorText}>{formErrors.quantity}</Text>
                     )}
                   </View>
-                  
+
                   <View style={styles.formColumn}>
                     <Text style={styles.columnLabel}>Unit:</Text>
-                    <TouchableOpacity 
+                    <TouchableOpacity
                       style={styles.smallDropdown}
                       onPress={() => setUnitModalVisible(true)}
                     >
@@ -566,19 +566,19 @@ const ItemFormModal = ({
                     )}
                   </View>
                 </View>
-                
+
                 {/* Date Section */}
-                <View style={styles.dateSection}>            
+                <View style={styles.dateSection}>
                   <View style={styles.formRow}>
                     <Text style={styles.formLabel}>Date Added:</Text>
                     <View style={[styles.dateInput, styles.disabledInput]}>
                       <Text style={styles.dateDisplayText}>{getCurrentDate()}</Text>
                     </View>
                   </View>
-                  
+
                   <View style={styles.formRow}>
                     <Text style={styles.formLabel}>Expiration Date:</Text>
-                    <TouchableOpacity 
+                    <TouchableOpacity
                       style={styles.dateInput}
                       onPress={() => setShowDatePicker(true)}
                     >
@@ -592,7 +592,7 @@ const ItemFormModal = ({
                     <Text style={styles.errorText}>{formErrors.itemExpiration}</Text>
                   )}
                 </View>
-                
+
                 {showDatePicker && (
                   <DateTimePicker
                     value={formData.itemExpiration ? parseDate(formData.itemExpiration) : new Date()}
@@ -602,7 +602,7 @@ const ItemFormModal = ({
                     minimumDate={new Date()}
                   />
                 )}
-                
+
                 {/* Description */}
                 <Text style={styles.formLabel}>Item Description:</Text>
                 <TextInput
@@ -614,10 +614,10 @@ const ItemFormModal = ({
                   value={formData.itemDescription}
                   onChangeText={(text) => updateField('itemDescription', text)}
                 />
-                
+
                 {/* Action Buttons */}
                 <View style={styles.buttonContainer}>
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={styles.saveButton}
                     onPress={handleSave}
                   >
@@ -625,8 +625,8 @@ const ItemFormModal = ({
                       {isEditMode ? 'Update' : 'Save'}
                     </Text>
                   </TouchableOpacity>
-                  
-                  <TouchableOpacity 
+
+                  <TouchableOpacity
                     style={styles.cancelButton}
                     onPress={handleCancel} // CHANGED (was handleClose)
                   >
@@ -712,7 +712,6 @@ const ItemFormModal = ({
         title="Add Photo"
         message="Choose how you'd like to add a photo to your item"
         onClose={() => setImagePickerVisible(false)}
-        cancelLabel="Return"
         customIcon={
           <Ionicons name="camera-outline" size={64} color="#81A969" />
         }
@@ -913,16 +912,15 @@ const styles = StyleSheet.create({
   },
   buttonContainer: {
     marginTop: 8,
-    flexDirection: 'row',
+    flexDirection: 'column',
     gap: 12,
-    justifyContent: 'space-between',
   },
   saveButton: {
     backgroundColor: '#81A969',
     paddingVertical: 13,
     borderRadius: 8,
     alignItems: 'center',
-    flex: 1,
+    width: '100%',
   },
   saveButtonText: {
     color: '#fff',
@@ -930,14 +928,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   cancelButton: {
-    backgroundColor: '#f5f5f5',
+    backgroundColor: 'transparent',
     paddingVertical: 13,
-    borderRadius: 8,
     alignItems: 'center',
-    flex: 1,
+    width: '100%',
   },
   cancelButtonText: {
-    color: '#555',
+    color: '#888',
     fontSize: 16,
     fontWeight: '600',
   },
