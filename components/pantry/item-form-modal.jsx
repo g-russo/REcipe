@@ -20,7 +20,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import PantryAlert from './pantry-alert';
 
-const ITEM_NAME_REGEX = /^[a-zA-Z0-9\s'-]+$/;
+// Updated Regex (No numbers)
+const ITEM_NAME_REGEX = /^[a-zA-Z\s'-]+$/;
 const ITEM_NAME_MIN_LENGTH = 2;
 const ITEM_NAME_MAX_LENGTH = 50;
 

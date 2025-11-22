@@ -17,6 +17,7 @@ import { supabase } from '../lib/supabase';
 import { useRouter } from 'expo-router';
 import { useNetInfo } from '@react-native-community/netinfo';
 import NoInternetModal from '../components/NoInternetModal';
+import AnimatedSplashScreen from '../components/SplashScreen';
 
 // Keep the splash screen visible while we initialize
 SplashScreen.preventAutoHideAsync();
@@ -126,6 +127,7 @@ export default function RootLayout() {
   }, []);
 
   const netInfo = useNetInfo();
+  const [isSplashAnimationFinished, setIsSplashAnimationFinished] = useState(false);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -157,6 +159,11 @@ export default function RootLayout() {
           <Stack.Screen name="food-recognition/result" options={{ title: 'Result' }} />
           <Stack.Screen name="notifications" options={{ title: 'Notifications' }} />
         </Stack>
+        
+        {!isSplashAnimationFinished && (
+          <AnimatedSplashScreen onFinish={() => setIsSplashAnimationFinished(true)} />
+        )}
+        
         <StatusBar style="auto" />
         <NoInternetModal isVisible={netInfo.isConnected === false} />
       </SupabaseProvider>
