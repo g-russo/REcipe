@@ -74,23 +74,9 @@ const IngredientSubstitutionModal = ({
     setSelectedIngredient(ingredient);
   };
 
-  // Parse quantity and unit from ingredient string using the service
-  const parseIngredientQuantity = (ingredient) => {
-    const text = typeof ingredient === 'string' ? ingredient : (ingredient.text || ingredient);
-    
-    // Use the service's parseQuantityFromText which has priority-based measurement parsing
-    // Pass pantryItems for better unit detection (prioritizes pantry's unit over pcs)
-    const parsed = IngredientSubstitutionService.parseQuantityFromText(text, pantryItems);
-    
-    if (parsed) {
-      return { 
-        quantity: parsed.value, 
-        unit: parsed.unit,
-        isVague: parsed.isVague || false
-      };
-    }
-    
-    return { quantity: 1, unit: 'pcs', isVague: false };
+  // Extract ingredient name for display
+  const getIngredientName = (ingredient) => {
+    return typeof ingredient === 'string' ? ingredient : (ingredient.text || ingredient);
   };
 
   // Handle "Continue" from ingredient selection
@@ -221,10 +207,9 @@ const IngredientSubstitutionModal = ({
             ) : (
               <>
                 <SubstituteSelector
-                  originalIngredient={selectedIngredient}
-                  originalQuantity={parseIngredientQuantity(selectedIngredient).quantity}
-                  originalUnit={parseIngredientQuantity(selectedIngredient).unit}
-                  isVagueUnit={parseIngredientQuantity(selectedIngredient).isVague}
+                  originalIngredient={getIngredientName(selectedIngredient)}
+                  originalQuantity={IngredientSubstitutionService.parseQuantityFromText(getIngredientName(selectedIngredient), pantryItems)?.value || 1}
+                  originalUnit={IngredientSubstitutionService.parseQuantityFromText(getIngredientName(selectedIngredient), pantryItems)?.unit || ''}
                   substitutes={substitutes}
                   selectedSubstitute={selectedSubstitute}
                   onSelectSubstitute={setSelectedSubstitute}
