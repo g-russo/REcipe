@@ -563,13 +563,26 @@ const Pantry = () => {
 
         const resolvedInventoryID = itemData.inventoryID || ensuredInventoryID;
         const potentialDuplicate = findDuplicateItem(itemData.itemName, resolvedInventoryID);
-        if (potentialDuplicate) {
+        
+        // Check for duplicate without forceSave flag
+        if (potentialDuplicate && !itemData.forceSave) {
+          console.log('⚠️ Duplicate found:', potentialDuplicate);
           const mergeAvailable = canMergeDuplicateItems(potentialDuplicate, itemData);
-          const duplicateAction = await promptDuplicateResolution(potentialDuplicate, itemData, mergeAvailable);
-          if (duplicateAction === 'cancel') {
-            console.log('⚠️ Duplicate detected - user cancelled save');
-            return { status: 'duplicate-cancelled' };
-          }
+          // Return duplicate status to modal instead of showing alert here
+          return {
+            status: 'duplicate-detected',
+            existingItem: potentialDuplicate,
+            incomingItem: itemData,
+            mergeAvailable: mergeAvailable
+          };
+        }
+
+        // Handle forced save after duplicate resolution
+        if (potentialDuplicate && itemData.forceSave) {
+          console.log('⚠️ Duplicate found but forceSave is true');
+          const mergeAvailable = canMergeDuplicateItems(potentialDuplicate, itemData);
+          const duplicateAction = itemData.duplicateAction || 'cancel';
+          
           if (duplicateAction === 'merge' && mergeAvailable) {
             await mergeDuplicateItem(potentialDuplicate, itemData);
             await loadData();
