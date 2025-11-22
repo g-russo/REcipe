@@ -30,13 +30,13 @@ export default function InstructionsTab({
           {instructionsSource === 'scraped' && (
             <View style={styles.sourceIndicator}>
               <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
-              <Text style={styles.sourceText}>Instructions extracted from original recipe</Text>
+              <Text style={styles.sourceText}>Instructions from original recipe.</Text>
             </View>
           )}
           {instructionsSource === 'cached' && (
             <View style={styles.sourceIndicator}>
               <Ionicons name="flash" size={16} color="#2196F3" />
-              <Text style={styles.sourceText}>Instructions loaded instantly from cache</Text>
+              <Text style={styles.sourceText}>Instructions loaded instantly.</Text>
             </View>
           )}
           {instructionsSource === 'fallback' && (
@@ -61,7 +61,7 @@ export default function InstructionsTab({
       {recipeUrl && (
         <TouchableOpacity style={styles.viewRecipeButton} onPress={onOpenUrl}>
           <Text style={styles.viewRecipeText}>View Original Recipe</Text>
-          <Ionicons name="arrow-forward" size={16} color="#4CAF50" />
+          <Ionicons name="arrow-forward" size={16} color="#81A969" />
         </TouchableOpacity>
       )}
     </View>
@@ -113,7 +113,7 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: '#4CAF50',
+    backgroundColor: '#81A969',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
