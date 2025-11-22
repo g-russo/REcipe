@@ -3,10 +3,10 @@ import Constants from 'expo-constants';
 
 // ✅ Add detailed logging
 // TEMPORARY: For Local Testing
-// const API_BASE_URL = 'http://YOUR_IP_ADDRESS:8000'; // ✅ Include http:// protocol
+const API_BASE_URL = 'http://192.168.1.4:8000'; // ✅ Include http:// protocol
 
 //original backend server
-const API_BASE_URL = Constants.expoConfig?.extra?.foodApiUrl || process.env.EXPO_PUBLIC_FOOD_API_URL || 'http://54.153.205.43:8000';
+// const API_BASE_URL = Constants.expoConfig?.extra?.foodApiUrl || process.env.EXPO_PUBLIC_FOOD_API_URL || 'http://54.153.205.43:8000';
 
 console.log('🔧 ===== API CONFIGURATION =====');
 console.log('📍 API_BASE_URL:', API_BASE_URL);
