@@ -443,14 +443,14 @@ const UploadModal = () => {
     return (
         <View style={styles.modalContainer} pointerEvents="box-none">
             <TouchableWithoutFeedback onPress={hideUploadModal}>
-                <Animated.View 
-                    style={[styles.backdrop, { opacity: fadeAnim }]} 
+                <Animated.View
+                    style={[styles.backdrop, { opacity: fadeAnim }]}
                     pointerEvents={isUploadModalVisible ? 'auto' : 'none'}
                 />
             </TouchableWithoutFeedback>
 
-            <View 
-                style={styles.contentContainer} 
+            <View
+                style={styles.contentContainer}
                 pointerEvents={isUploadModalVisible ? 'box-none' : 'none'}
             >
                 <RenderOption
