@@ -72,7 +72,7 @@ export default {
         origin: false
       },
       eas: {
-        projectId: "5f5dd904-b1b3-436d-8cc7-3cfd6566fa95"
+        projectId: "6a6de2c8-84d3-46ea-b8e4-aea9ba57b8f3" // Cairos nagtry mag package
       },
       supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,
       supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
