@@ -54,9 +54,9 @@ const categoryIconMap = {
  * Group Items Modal Component
  * Displays all items within a group with images and details
  */
-const GroupItemsModal = ({ 
-  visible, 
-  onClose, 
+const GroupItemsModal = ({
+  visible,
+  onClose,
   group,
   onItemPress,
   onEditGroup,
@@ -119,15 +119,15 @@ const GroupItemsModal = ({
 
   // NEW: Helper function to render icon or letter
   const renderGroupIcon = (groupData) => {
-    const targetGroup = groupData || group; 
+    const targetGroup = groupData || group;
     const iconName = categoryIconMap[targetGroup?.groupCategory];
 
     if (iconName) {
       return (
-        <MaterialCommunityIcons 
-          name={iconName} 
-          size={24} 
-          color="#fff" 
+        <MaterialCommunityIcons
+          name={iconName}
+          size={24}
+          color="#fff"
         />
       );
     }
@@ -152,12 +152,12 @@ const GroupItemsModal = ({
           {/* Header */}
           <View style={[styles.modalHeader, { backgroundColor: group.groupColor || '#8ac551' }]}>
             <View style={styles.headerLeft}>
-              
+
               {/* MODIFIED: Use renderGroupIcon */}
               <View style={styles.groupIconContainer}>
                 {renderGroupIcon(group)}
               </View>
-              
+
               <View>
                 <Text style={styles.modalTitle}>{group.groupTitle}</Text>
                 <Text style={styles.itemCount}>{items.length} {items.length === 1 ? 'item' : 'items'}</Text>
@@ -171,7 +171,7 @@ const GroupItemsModal = ({
 
           {/* Action Buttons - Edit and Delete only */}
           <View style={styles.actionButtons}>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.actionButton}
               onPress={() => {
                 onClose();
@@ -182,8 +182,8 @@ const GroupItemsModal = ({
               <MaterialCommunityIcons name="pencil-outline" size={20} color="#8BC34A" />
               <Text style={styles.actionButtonText}>Edit Group</Text>
             </TouchableOpacity>
-            
-            <TouchableOpacity 
+
+            <TouchableOpacity
               style={[styles.actionButton, styles.deleteButton]}
               onPress={() => {
                 onClose();
@@ -197,7 +197,7 @@ const GroupItemsModal = ({
           </View>
 
           {/* Items List */}
-          <ScrollView 
+          <ScrollView
             style={styles.scrollView}
             showsVerticalScrollIndicator={false}
           >
@@ -230,8 +230,8 @@ const GroupItemsModal = ({
                     {/* Item Image */}
                     <View style={styles.itemImageContainer}>
                       {item.imageURL ? (
-                        <Image 
-                          source={{ uri: item.imageURL }} 
+                        <Image
+                          source={{ uri: item.imageURL }}
                           style={styles.itemImage}
                           resizeMode="cover"
                         />
@@ -248,7 +248,7 @@ const GroupItemsModal = ({
                       <Text style={styles.itemName} numberOfLines={2}>
                         {item.itemName}
                       </Text>
-                      
+
                       <View style={styles.itemMeta}>
                         <Text style={styles.itemQuantity}>
                           {item.quantity} {item.unit}
@@ -280,7 +280,7 @@ const GroupItemsModal = ({
           {/* Find Recipe Button - Fixed at bottom */}
           {items.length > 0 && (
             <View style={styles.bottomButtonContainer}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.findRecipeButton}
                 onPress={handleFindRecipe}
               >
@@ -299,7 +299,7 @@ const GroupItemsModal = ({
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
     justifyContent: 'flex-end',
   },
   modalContent: {

@@ -19,7 +19,7 @@ const PantryAlert = ({
     children = null,
     // Optional: provide a custom icon React element to override default
     customIcon = null,
-    cancelLabel = 'Return',
+    cancelLabel = null,
 }) => {
     const [show, setShow] = useState(visible);
     const opacity = useRef(new Animated.Value(0)).current;
@@ -98,9 +98,26 @@ const PantryAlert = ({
     };
 
     const getIcon = () => {
-        if (type === 'success') return { name: 'checkmark-circle', color: '#81A969' };
-        if (type === 'error') return { name: 'alert-circle', color: '#E74C3C' };
-        return { name: 'information-circle', color: '#81A969' };
+        if (customIcon) return customIcon;
+
+        let iconName = 'information-circle';
+        let iconColor = '#81A969';
+
+        if (type === 'success') {
+            iconName = 'checkmark-circle';
+        } else if (type === 'error') {
+            iconName = 'alert-circle';
+            iconColor = '#E74C3C';
+        }
+
+        return <Ionicons name={iconName} size={64} color={iconColor} />;
+    };
+
+    const getCancelText = () => {
+        if (cancelLabel) return cancelLabel;
+        if (type === 'success') return 'Confirm';
+        if (children || actionable) return 'Cancel';
+        return 'Close';
     };
 
     const getTitle = () => {
@@ -110,13 +127,11 @@ const PantryAlert = ({
         return 'See you soon!';
     };
 
-    const icon = getIcon();
-
     return (
-        <Modal transparent visible={show} animationType="none" onRequestClose={handleClose}>
-            <TouchableWithoutFeedback onPress={() => {}}>
+        <Modal transparent visible={show} animationType="none" onRequestClose={handleClose} statusBarTranslucent>
+            <TouchableWithoutFeedback onPress={() => { }}>
                 <Animated.View style={[styles.modalBackdrop, { opacity }]}>
-                    <TouchableWithoutFeedback onPress={() => {}}>
+                    <TouchableWithoutFeedback onPress={() => { }}>
                         <Animated.View style={[
                             styles.modalWrapper,
                             {
@@ -127,7 +142,7 @@ const PantryAlert = ({
                             <View style={styles.modalCard}>
                                 {/* Icon */}
                                 <View style={styles.iconContainer}>
-                                    {customIcon ? customIcon : null}
+                                    {getIcon()}
                                 </View>
 
                                 {/* Title */}
@@ -161,7 +176,7 @@ const PantryAlert = ({
                                         activeOpacity={0.7}
                                     >
                                         <Text style={styles.returnButtonText}>
-                                            {cancelLabel}
+                                            {getCancelText()}
                                         </Text>
                                     </TouchableOpacity>
                                 </View>
@@ -180,7 +195,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         paddingHorizontal: wp('5%'),
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        backgroundColor: 'rgba(0, 0, 0, 0.7)',
     },
     modalWrapper: {
         width: '100%',
@@ -265,13 +280,11 @@ const styles = StyleSheet.create({
         paddingVertical: hp('1.6%'),
         alignItems: 'center',
         justifyContent: 'center',
-        marginTop: hp('0.5%'),
-        backgroundColor: '#81A969',
-        borderRadius: wp('2.5%'),
+        marginTop: hp('1%'),
     },
     returnButtonText: {
-        color: '#fff',
-        fontWeight: '700',
+        color: '#888',
+        fontWeight: '600',
         fontSize: wp('4%'),
         letterSpacing: 0.3,
     },

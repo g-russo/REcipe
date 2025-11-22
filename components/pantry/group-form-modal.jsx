@@ -134,7 +134,7 @@ const GroupFormModal = ({
             </TouchableOpacity>
           </View>
 
-          <ScrollView 
+          <ScrollView
             style={styles.scrollView}
             showsVerticalScrollIndicator={false}
           >
@@ -203,7 +203,7 @@ const GroupFormModal = ({
 
           {/* Action Buttons */}
           <View style={styles.buttonContainer}>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.saveButton}
               onPress={handleSave}
             >
@@ -211,8 +211,8 @@ const GroupFormModal = ({
                 {isEditMode ? 'Update Group' : 'Create Group'}
               </Text>
             </TouchableOpacity>
-            
-            <TouchableOpacity 
+
+            <TouchableOpacity
               style={styles.cancelButton}
               onPress={handleCancel} // CHANGED (was handleClose)
             >
@@ -388,16 +388,15 @@ const styles = StyleSheet.create({
   buttonContainer: {
     paddingHorizontal: 0,
     marginTop: 16,
-    flexDirection: 'row',
+    flexDirection: 'column',
     gap: 12,
-    justifyContent: 'space-between',
   },
   saveButton: {
     backgroundColor: '#8ac551',
     paddingVertical: 13,
     borderRadius: 8,
     alignItems: 'center',
-    flex: 1,
+    width: '100%',
   },
   saveButtonText: {
     color: '#fff',
@@ -405,14 +404,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   cancelButton: {
-    backgroundColor: '#f5f5f5',
+    backgroundColor: 'transparent',
     paddingVertical: 13,
-    borderRadius: 8,
     alignItems: 'center',
-    flex: 1,
+    width: '100%',
   },
   cancelButtonText: {
-    color: '#555',
+    color: '#888',
     fontSize: 16,
     fontWeight: '600',
   },
