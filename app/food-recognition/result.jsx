@@ -27,7 +27,6 @@ import ItemFormModal from '../../components/pantry/item-form-modal';
 import PantryAlert from '../../components/pantry/pantry-alert';
 
 const CONFIDENCE_THRESHOLD = 0.03; // 3% minimum confidence
-const DISPLAY_THRESHOLD = 0.60; // 60% minimum confidence for "Other Options" list
 
 export default function FoodRecognitionResult() {
   // ✅ FIX: Get params correctly
@@ -134,7 +133,7 @@ export default function FoodRecognitionResult() {
     }
   }, [result, uri]);
 
-  // Get ALL predictions with ≥60% confidence for selection
+  // Get ALL predictions with ≥3% confidence for selection
   const getSelectableOptions = (data) => {
     if (!data || !data.success) return [];
 
@@ -180,8 +179,8 @@ export default function FoodRecognitionResult() {
       if (!items || !Array.isArray(items)) return;
       items.forEach(item => {
         const conf = item.confidence || 0;
-        // STRICT FILTER: Only >= DISPLAY_THRESHOLD (0.60)
-        if (conf >= DISPLAY_THRESHOLD) {
+        // STRICT FILTER: Only >= CONFIDENCE_THRESHOLD (0.03)
+        if (conf >= CONFIDENCE_THRESHOLD) {
           const label = (item.class || item.name).trim(); // Handle 'class' vs 'name'
           const normalizedLabel = label.toLowerCase();
 
@@ -199,23 +198,22 @@ export default function FoodRecognitionResult() {
       });
     };
 
-    // 2. Add Local Models (Filtered by 60% threshold)
+    // 2. Add Local Models (Filtered by 3% threshold)
     addIfValid(data.detections, 'Detector (YOLOv8)', 'detector');
     addIfValid(data.food101_predictions, 'Food101 Classifier', 'food101');
     addIfValid(data.filipino_predictions, 'Filipino Classifier', 'filipino');
     addIfValid(data.ingredient_predictions, 'Ingredient Detector', 'ingredient');
 
-    // 3. Fill with Gemini Alternatives if < 5
-    if (uniqueMap.size < 5 && geminiPredictions.length > 1) {
+    // 3. Fill with Gemini Alternatives
+    if (geminiPredictions.length > 1) {
       for (let i = 1; i < geminiPredictions.length; i++) {
-        if (uniqueMap.size >= 5) break;
         const pred = geminiPredictions[i];
 
         // Ensure confidence is a number
         const conf = typeof pred.confidence === 'number' ? pred.confidence : 0;
 
         // ✅ STRICT CHECK: Skip if below threshold
-        if (conf < DISPLAY_THRESHOLD) continue;
+        if (conf < CONFIDENCE_THRESHOLD) continue;
 
         const normalizedLabel = pred.name.toLowerCase().trim();
 
