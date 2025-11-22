@@ -1,0 +1,62 @@
+{
+  "cli": {
+    "version": ">= 5.0.0",
+    "appVersionSource": "local"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://dymujerduwloeeurcqso.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR5bXVqZXJkdXdsb2VldXJjcXNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUxNjUyODgsImV4cCI6MjA3MDc0MTI4OH0.etUXqhniwaReVAw1x9GsoMkyRlt1h9k6pzTNxjuEOsc",
+        "EXPO_PUBLIC_EDAMAM_APP_ID": "e6367ae7",
+        "EXPO_PUBLIC_EDAMAM_APP_KEY": "7503bbf60dc650bc2c55409af36ba5ab",
+        "EXPO_PUBLIC_FOOD_API_URL": "http://54.153.205.43:8000",
+        "EXPO_PUBLIC_APP_ENV": "development",
+        "EXPO_PUBLIC_FATSECRET_CLIENT_ID": "7546d922e502421f848438016a49c932",
+        "EXPO_PUBLIC_FATSECRET_CLIENT_SECRET": "bdd0493313194688a49a6f1648030834",
+        "EXPO_PUBLIC_GEMINI_API_KEY": "AIzaSyCW0tbgNPGVfsohoQkPL2XYCu3bIbhBAUo" 
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://dymujerduwloeeurcqso.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR5bXVqZXJkdXdsb2VldXJjcXNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUxNjUyODgsImV4cCI6MjA3MDc0MTI4OH0.etUXqhniwaReVAw1x9GsoMkyRlt1h9k6pzTNxjuEOsc",
+        "EXPO_PUBLIC_EDAMAM_APP_ID": "e6367ae7",
+        "EXPO_PUBLIC_EDAMAM_APP_KEY": "7503bbf60dc650bc2c55409af36ba5ab",
+        "EXPO_PUBLIC_FOOD_API_URL": "http://54.153.205.43:8000",
+        "EXPO_PUBLIC_APP_ENV": "preview",
+        "EXPO_PUBLIC_FATSECRET_CLIENT_ID": "7546d922e502421f848438016a49c932",
+        "EXPO_PUBLIC_FATSECRET_CLIENT_SECRET": "bdd0493313194688a49a6f1648030834",
+        "EXPO_PUBLIC_GEMINI_API_KEY": "AIzaSyCW0tbgNPGVfsohoQkPL2XYCu3bIbhBAUo"
+      }
+    },
+    "production": {
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://dymujerduwloeeurcqso.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR5bXVqZXJkdXdsb2VldXJjcXNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUxNjUyODgsImV4cCI6MjA3MDc0MTI4OH0.etUXqhniwaReVAw1x9GsoMkyRlt1h9k6pzTNxjuEOsc",
+        "EXPO_PUBLIC_EDAMAM_APP_ID": "e6367ae7",
+        "EXPO_PUBLIC_EDAMAM_APP_KEY": "7503bbf60dc650bc2c55409af36ba5ab",
+        "EXPO_PUBLIC_FOOD_API_URL": "http://54.153.205.43:8000",
+        "EXPO_PUBLIC_APP_ENV": "production",
+        "EXPO_PUBLIC_FATSECRET_CLIENT_ID": "7546d922e502421f848438016a49c932",
+        "EXPO_PUBLIC_FATSECRET_CLIENT_SECRET": "bdd0493313194688a49a6f1648030834",
+        "EXPO_PUBLIC_GEMINI_API_KEY": "AIzaSyCW0tbgNPGVfsohoQkPL2XYCu3bIbhBAUo"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}
