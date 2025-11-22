@@ -23,12 +23,14 @@ const SplashScreen = ({ onFinish }) => {
     useEffect(() => {
         // Iris in animation - expand from center to full screen
         // Total duration: 500ms (iris) + 300ms (content) = 800ms, but we add buffer
+        const IRIS_IN_DELAY = 500; // Delay before starting
         const IRIS_IN_DURATION = 800;
         const CONTENT_FADE_DURATION = 500;
         const MINIMUM_SHOW_TIME = 2500; // Time to keep the splash screen visible
         
         const startAnimation = () => {
             Animated.sequence([
+                Animated.delay(IRIS_IN_DELAY), // Wait a bit before starting
                 // First, expand the iris background (both white and green layers)
                 Animated.timing(irisScale, {
                     toValue: 1,
@@ -63,8 +65,8 @@ const SplashScreen = ({ onFinish }) => {
 
     const triggerExitAnimation = () => {
         // Iris out animation - contract to center
-        const CONTENT_FADE_OUT_DURATION = 300;
-        const IRIS_OUT_DURATION = 600;
+        const CONTENT_FADE_OUT_DURATION = 200; // Faster fade out
+        const IRIS_OUT_DURATION = 400; // Faster iris out
         
         Animated.sequence([
             // First fade out content
