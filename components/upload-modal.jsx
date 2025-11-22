@@ -379,8 +379,6 @@ const UploadModal = () => {
 
     // --- Render Logic ---
 
-    if (!isUploadModalVisible && fadeAnim._value === 0) return null;
-
     const RenderOption = ({ icon, title, sub, index, onPress, color }) => {
         const scaleAnim = useRef(new Animated.Value(1)).current;
 
@@ -445,10 +443,16 @@ const UploadModal = () => {
     return (
         <View style={styles.modalContainer} pointerEvents="box-none">
             <TouchableWithoutFeedback onPress={hideUploadModal}>
-                <Animated.View style={[styles.backdrop, { opacity: fadeAnim }]} />
+                <Animated.View 
+                    style={[styles.backdrop, { opacity: fadeAnim }]} 
+                    pointerEvents={isUploadModalVisible ? 'auto' : 'none'}
+                />
             </TouchableWithoutFeedback>
 
-            <View style={styles.contentContainer} pointerEvents="box-none">
+            <View 
+                style={styles.contentContainer} 
+                pointerEvents={isUploadModalVisible ? 'box-none' : 'none'}
+            >
                 <RenderOption
                     index={4}
                     title="Take Photo"
