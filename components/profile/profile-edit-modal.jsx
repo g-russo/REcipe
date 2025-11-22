@@ -22,7 +22,10 @@ const ProfileEditModal = ({
     const [name, setName] = useState(initialName);
     const [selectedAvatar, setSelectedAvatar] = useState(initialAvatar);
     const [isSaving, setIsSaving] = useState(false);
-    const canSave = name.trim().length > 0 && !isSaving;
+    // Strict name validation: only letters and spaces
+    const nameRegex = /^[A-Za-z\s]+$/;
+    const isValidName = nameRegex.test(name.trim());
+    const canSave = isValidName && !isSaving;
 
     useEffect(() => {
         if (visible) {
@@ -34,10 +37,11 @@ const ProfileEditModal = ({
 
     const handleSave = async () => {
         const trimmedName = name.trim();
-        if (!trimmedName || isSaving) {
+        if (isSaving) return;
+        if (!trimmedName || !nameRegex.test(trimmedName)) {
+            alert('Name must contain only letters and spaces.');
             return;
         }
-
         try {
             setIsSaving(true);
             await Promise.resolve(onSave({ name: trimmedName, avatar: selectedAvatar }));
@@ -69,6 +73,11 @@ const ProfileEditModal = ({
                                 maxLength={40}
                                 editable={!isSaving}
                             />
+                            {!isValidName && name.trim().length > 0 && (
+                                <Text style={{ color: '#d9534f', marginTop: 6, fontSize: 12 }}>
+                                    Only letters and spaces are allowed.
+                                </Text>
+                            )}
                         </View>
 
                         <View style={styles.section}>
