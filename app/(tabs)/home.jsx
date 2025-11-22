@@ -29,6 +29,7 @@ import PantryService from '../../services/pantry-service';
 import EdamamService from '../../services/edamam-service';
 import SupabaseCacheService from '../../services/supabase-cache-service';
 import RecipeMatcherService from '../../services/recipe-matcher-service';
+import SimpleTrySomethingNew from '../../services/simple-try-something-new';
 import { supabase } from '../../lib/supabase';
 
 const PANTRY_RECIPES_CACHE_PREFIX = 'pantry_recipes_cache_';
@@ -131,7 +132,7 @@ const TryNewCard = ({ recipe, isFavorited, onToggleFavorite, onPress }) => {
               <Path d="M12 6v6l4 2" />
             </Svg>
             <Text style={[styles.tryNewInfoText, { fontSize: wp('3.5%') }]}>
-              {recipe.time ? `${recipe.time} Min` : 'Time TBD'}
+              {recipe.time ? `${recipe.time} Min` : 'Time: 30 Min'}
             </Text>
           </View>
         </View>
@@ -528,12 +529,16 @@ const Home = () => {
     setPopularRecipesError('');
 
     try {
-      // Use the new image cache service for "Try Something New"
-      const recipeList = await SupabaseCacheService.getRecipesFromImageCache();
+      console.log('🔄 Loading Try Something New recipes...');
+      
+      // Get 10 recommendations (ultra-simple, no database needed!)
+      const recipeList = forceRefresh 
+        ? await SimpleTrySomethingNew.forceRefresh(10)
+        : await SimpleTrySomethingNew.getRecommendations(10);
 
       if (!recipeList || recipeList.length === 0) {
         setPopularRecipes([]);
-        setPopularRecipesError('No new recipes discovered yet.');
+        setPopularRecipesError('No recipes available right now. Please try again later.');
         setLoadingPopularRecipes(false);
         return;
       }
@@ -543,10 +548,10 @@ const Home = () => {
       // ✅ Keep loading visible until recipes render (prevents flash of empty state)
       setTimeout(() => {
         setLoadingPopularRecipes(false);
-        console.log('✅ Try Something New recipes loaded from image cache');
+        console.log(`✅ ${recipeList.length} Try Something New recipes loaded successfully`);
       }, 500); 
     } catch (error) {
-      console.error('Error loading popular recipes:', error);
+      console.error('❌ Error loading Try Something New recipes:', error);
       setPopularRecipes([]);
       setPopularRecipesError('Unable to load recipes right now.');
       setLoadingPopularRecipes(false); // Stop loading immediately on error
@@ -898,7 +903,7 @@ const Home = () => {
                             <Path d="M12 6v6l4 2" />
                           </Svg>
                           <Text style={[styles.pantryCardTimeText, { fontSize: wp('3.2%') }]}>
-                            {recipe.time ? `${recipe.time} Min` : 'Time TBD'}
+                            {recipe.time ? `${recipe.time} Min` : 'Time: 30 Min'}
                           </Text>
                         </View>
                       </View>
