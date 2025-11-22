@@ -64,8 +64,8 @@ const styles = StyleSheet.create({
   },
   substituteText: {
     fontSize: 14,
-    color: '#4CAF50',
-    fontWeight: '500',
+    color: '#81A969',
+    fontWeight: '700',
   },
   itemCount: {
     fontSize: 14,
