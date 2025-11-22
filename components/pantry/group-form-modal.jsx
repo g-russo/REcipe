@@ -95,7 +95,7 @@ const GroupFormModal = ({
   // Validate and save
   const handleSave = () => {
     if (!formData.groupTitle.trim()) {
-      Alert.alert('Error', 'Please enter a group name');
+      ('Error', 'Please enter a group name');
       return;
     }
 
