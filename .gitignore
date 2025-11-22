@@ -116,8 +116,8 @@ backend/models/*
 # Zips/large archives
 *.zip
 
-#eas
-*.eas.json
+# EAS Build configuration (contains sensitive API keys)
 eas.json
+*.eas.json
 *.eas.buildcache
 eas.buildcache
