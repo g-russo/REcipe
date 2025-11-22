@@ -501,7 +501,9 @@ const UploadModal = () => {
 
                 {/* Spacer for Bottom Navbar Safe Area */}
                 <View style={{ height: hp('16%') }} />
-            </View>            {/* Scanner Modals */}
+            </View>
+
+            {/* Scanner Modals */}
             <BarcodeScannerModal
                 visible={barcodeScannerVisible}
                 onClose={() => setBarcodeScannerVisible(false)}
