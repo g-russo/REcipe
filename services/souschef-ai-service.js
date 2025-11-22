@@ -587,12 +587,14 @@ class SousChefAIService {
 ⚠️ CRITICAL REQUIREMENTS:
 1. The recipe MUST be directly related to "${searchQuery}"
 2. "${searchQuery}" should be the MAIN ingredient, dish name, or primary focus
-3. If "${searchQuery}" is a specific ingredient (e.g., "kabayo", "chicken", "beef"):
+3. If the recipe is a dish/leftover:
+    - It must be deconstructed first into its main components (protein, carbs, veggies, sauce) and ingredients in the pantry
+4. If "${searchQuery}" is a specific ingredient (e.g., "kabayo", "chicken", "beef"):
    - It MUST be the primary protein/ingredient in the recipe
    - Recipe name should feature "${searchQuery}" prominently
    - Do NOT substitute with other ingredients
-4. Use pantry items as SUPPORTING ingredients only
-5. If pantry doesn't have "${searchQuery}", assume user will buy it - STILL create recipe with it
+5. Use pantry items as SUPPORTING ingredients only
+6. If pantry doesn't have "${searchQuery}", assume user will buy it - STILL create recipe with it
 
 ## CURRENT REQUEST
 Search Query: "${searchQuery}" ← THIS IS THE STAR OF THE RECIPE!

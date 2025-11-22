@@ -19,6 +19,8 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useCustomAuth } from '../hooks/use-custom-auth';
 import RecipeHistoryService from '../services/recipe-history-service';
 import PantryService from '../services/pantry-service';
+import SimpleSubstitutionService from '../services/simple-ingredient-substitution-service';
+import IngredientUsageConfirmationModal from '../components/cooking/ingredient-usage-confirmation-modal';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -105,6 +107,11 @@ const CookingSteps = () => {
   const [isCompletingRecipe, setIsCompletingRecipe] = useState(false);
   const [hasSavedHistory, setHasSavedHistory] = useState(false);
   
+  // New ingredient confirmation states
+  const [showIngredientConfirmation, setShowIngredientConfirmation] = useState(false);
+  const [substitutedIngredients, setSubstitutedIngredients] = useState([]);
+  const [isDeletingIngredients, setIsDeletingIngredients] = useState(false);
+  
   // Animation values
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -189,101 +196,8 @@ const CookingSteps = () => {
     // Mark last step as completed
     setCompletedSteps([...completedSteps, currentStep]);
 
-    // Subtract ingredients from pantry AFTER cooking completion
     try {
-      if (customUserData?.userID) {
-        console.log('🛒 Subtracting used ingredients from pantry...');
-        let subtractedCount = 0;
-        
-        // Get all ingredients (including substituted ones)
-        const ingredientKey = recipe.ingredientLines ? 'ingredientLines' : 'ingredients';
-        const allIngredients = recipe[ingredientKey] || [];
-        
-        // Only subtract ingredients that are substituted (came from pantry)
-        const ingredientsToSubtract = allIngredients.filter(ing => 
-          ing.isSubstituted === true && ing.quantity && ing.unit
-        );
-        
-        if (ingredientsToSubtract.length > 0) {
-          console.log(`  Found ${ingredientsToSubtract.length} substituted ingredients to subtract`);
-          
-          // Get all pantry items once
-          const allPantryItems = await PantryService.getUserItems(customUserData.userID);
-          
-          // Subtract each ingredient
-          for (const ingredient of ingredientsToSubtract) {
-            console.log(`  ➖ Subtracting ${ingredient.quantity} ${ingredient.unit} ${ingredient.text}`);
-            
-            // Find the pantry item by name (try multiple matching strategies)
-            const pantryItem = allPantryItems.find(item => {
-              const itemNameLower = item.itemName.toLowerCase();
-              const ingredientTextLower = ingredient.text.toLowerCase();
-              
-              return (
-                itemNameLower === ingredientTextLower ||
-                itemNameLower.includes(ingredientTextLower) ||
-                ingredientTextLower.includes(itemNameLower)
-              );
-            });
-            
-            if (pantryItem) {
-              // Check if units match, if not, convert
-              let quantityToSubtract = ingredient.quantity;
-              let isEstimate = false;
-              
-              if (pantryItem.unit.toLowerCase() !== ingredient.unit.toLowerCase()) {
-                // Units don't match - need to convert
-                const converted = convertUnit(ingredient.quantity, ingredient.unit, pantryItem.unit);
-                
-                quantityToSubtract = converted;
-                
-                // Check if this was an exact conversion or estimate
-                const countingUnits = ['pcs', 'pc', 'piece', 'pieces', 'each', 'whole', 'count', ''];
-                const isCountingConversion = countingUnits.includes(ingredient.unit.toLowerCase()) && 
-                                             countingUnits.includes(pantryItem.unit.toLowerCase());
-                
-                if (converted === ingredient.quantity && !isCountingConversion) {
-                  isEstimate = true;
-                  console.log(`    � Using 1:1 estimate: ${ingredient.quantity} ${ingredient.unit} → ${converted} ${pantryItem.unit}`);
-                } else {
-                  console.log(`    � Converted ${ingredient.quantity} ${ingredient.unit} → ${converted.toFixed(3)} ${pantryItem.unit}`);
-                }
-              }
-              
-              // Calculate new quantity
-              const newQuantity = pantryItem.quantity - quantityToSubtract;
-              
-              if (newQuantity > 0) {
-                // Update item with reduced quantity
-                await PantryService.updateItem(pantryItem.itemID, {
-                  quantity: newQuantity,
-                  userID: customUserData.userID,
-                  itemName: pantryItem.itemName
-                });
-                console.log(`    ✅ Updated ${pantryItem.itemName}: ${pantryItem.quantity} ${pantryItem.unit} → ${newQuantity.toFixed(3)} ${pantryItem.unit}`);
-                subtractedCount++;
-              } else {
-                // Remove item completely if quantity is 0 or negative
-                await PantryService.deleteItem(pantryItem.itemID);
-                console.log(`    ✅ Removed ${pantryItem.itemName} (quantity depleted)`);
-                subtractedCount++;
-              }
-            } else {
-              console.warn(`  ⚠️ Pantry item not found: ${ingredient.text}`);
-            }
-          }
-          
-          console.log(`✅ Subtracted ${subtractedCount} ingredients from pantry`);
-        } else {
-          console.log('  No substituted ingredients to subtract from pantry');
-        }
-      }
-    } catch (error) {
-      console.error('❌ Error subtracting from pantry:', error);
-    }
-
-    // Save recipe to history
-    try {
+      // 1. Save recipe to history first
       if (customUserData?.userID) {
         console.log('📝 Saving recipe to history...');
         const ingredientsUsed = recipe.ingredients || recipe.ingredientLines || [];
@@ -296,24 +210,104 @@ const CookingSteps = () => {
         );
 
         if (result.success) {
-          setCompletionMessage('Recipe saved to your cooking history and ingredients removed from pantry!');
           setHasSavedHistory(true);
-          showCompletionModal();
+          console.log('✅ Recipe saved to history');
         } else {
-          setCompletionMessage('Recipe completed but history was not saved.');
-          showCompletionModal();
+          console.warn('⚠️ Failed to save recipe to history');
         }
+      }
+
+      // 2. Check if there are substituted ingredients
+      const substitutions = await SimpleSubstitutionService.getSubstitutionSummary(
+        recipe,
+        customUserData?.userID
+      );
+      
+      console.log(`🔍 Found ${substitutions.length} substituted ingredients`);
+      
+      if (substitutions.length > 0 && customUserData?.userID) {
+        // Show confirmation modal for ingredient deletion
+        setSubstitutedIngredients(substitutions);
+        setShowIngredientConfirmation(true);
+        setCompletionMessage('Recipe saved! Please confirm ingredient usage.');
       } else {
-        setCompletionMessage('Great job completing this recipe!');
-        setHasSavedHistory(true);
+        // No substitutions, just complete
+        setCompletionMessage('Recipe saved to your cooking history!');
         showCompletionModal();
       }
+
     } catch (error) {
-      console.error('❌ Error saving to history:', error);
-      setCompletionMessage('Recipe completed but history was not saved.');
+      console.error('❌ Error completing recipe:', error);
+      Alert.alert('Error', 'Failed to complete recipe. Please try again.');
+      setCompletionMessage('Recipe completed with errors.');
       showCompletionModal();
     } finally {
       setIsCompletingRecipe(false);
+    }
+  };
+
+  // Handler for ingredient deletion confirmation
+  const handleIngredientConfirmation = async (selectedIds) => {
+    setIsDeletingIngredients(true);
+
+    try {
+      if (selectedIds.length > 0) {
+        console.log(`🗑️ Deleting ${selectedIds.length} confirmed ingredients from pantry...`);
+        
+        // Build items array with both ID and name for flexible deletion
+        const itemsToDelete = selectedIds.map(id => {
+          // Handle both numeric IDs and string-based name keys
+          if (typeof id === 'number') {
+            const substitution = substitutedIngredients.find(s => s.pantryItemId === id);
+            return {
+              pantryItemId: id,
+              ingredientName: substitution?.ingredientName || substitution?.pantryItem?.itemName
+            };
+          } else if (typeof id === 'string' && id.startsWith('name_')) {
+            // Name-based key (fallback when no ID available)
+            const ingredientName = id.replace(/^name_/, '').replace(/_\d+$/, '');
+            return {
+              pantryItemId: null,
+              ingredientName: ingredientName
+            };
+          }
+          return { pantryItemId: id, ingredientName: null };
+        });
+        
+        const result = await SimpleSubstitutionService.deleteUsedIngredients(
+          customUserData.userID,
+          itemsToDelete
+        );
+
+        if (result.success) {
+          const deletedCount = result.deleted.length;
+          const failedCount = result.failed.length;
+          
+          if (failedCount > 0) {
+            setCompletionMessage(
+              `Recipe complete! ${deletedCount} ingredient(s) removed. ${failedCount} failed to delete.`
+            );
+          } else {
+            setCompletionMessage(
+              `Recipe complete! ${deletedCount} ingredient(s) removed from pantry.`
+            );
+          }
+          console.log(`✅ Successfully deleted ${deletedCount} ingredients`);
+        } else {
+          setCompletionMessage('Recipe saved, but failed to update pantry.');
+          console.error('❌ Failed to delete ingredients');
+        }
+      } else {
+        setCompletionMessage('Recipe saved! No ingredients were removed.');
+        console.log('ℹ️ User skipped ingredient deletion');
+      }
+    } catch (error) {
+      console.error('❌ Error deleting ingredients:', error);
+      setCompletionMessage('Recipe saved, but pantry update failed.');
+    } finally {
+      setIsDeletingIngredients(false);
+      setShowIngredientConfirmation(false);
+      showCompletionModal();
     }
   };
 
@@ -580,6 +574,18 @@ const CookingSteps = () => {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
+
+      {/* Ingredient Usage Confirmation Modal */}
+      <IngredientUsageConfirmationModal
+        visible={showIngredientConfirmation}
+        onClose={() => {
+          setShowIngredientConfirmation(false);
+          setShowCompleteModal(true);
+        }}
+        substitutedIngredients={substitutedIngredients}
+        onConfirm={handleIngredientConfirmation}
+        loading={isDeletingIngredients}
+      />
     </SafeAreaView>
   );
 };
