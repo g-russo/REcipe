@@ -55,6 +55,12 @@ const ItemFormModal = ({
   const [formErrors, setFormErrors] = useState({});
   const [imagePickerVisible, setImagePickerVisible] = useState(false);
   const [validationAlert, setValidationAlert] = useState({ visible: false, message: '' });
+  const [localDuplicateAlert, setLocalDuplicateAlert] = useState({ 
+    visible: false, 
+    existingItem: null, 
+    incomingItem: null,
+    mergeAvailable: false 
+  });
 
   // SPLIT & REFINED FOOD CATEGORIES (No '&' or '/')
   const foodCategories = [
@@ -382,6 +388,20 @@ const ItemFormModal = ({
     console.log('✅ Validation passed, calling onSave...');
     try {
       const saveResult = await onSave(formData);
+      
+      // Handle duplicate detection from parent
+      if (saveResult?.status === 'duplicate-detected') {
+        console.log('⚠️ Duplicate detected, showing local alert');
+        setLocalDuplicateAlert({
+          visible: true,
+          existingItem: saveResult.existingItem,
+          incomingItem: saveResult.incomingItem,
+          mergeAvailable: saveResult.mergeAvailable
+        });
+        await saveDraft();
+        return;
+      }
+      
       if (saveResult?.status === 'duplicate-cancelled') {
         console.log('ℹ️ Duplicate detected; keeping form open for user adjustments.');
         await saveDraft();
@@ -755,6 +775,116 @@ const ItemFormModal = ({
         message={validationAlert.message}
         onClose={() => setValidationAlert({ visible: false, message: '' })}
       />
+
+      {/* Local Duplicate Alert */}
+      <PantryAlert
+        visible={localDuplicateAlert.visible}
+        type="info"
+        title="Duplicate Item Detected"
+        message={localDuplicateAlert.existingItem ? 
+          `"${localDuplicateAlert.existingItem.itemName}" already exists (${localDuplicateAlert.existingItem.quantity || 0} ${localDuplicateAlert.existingItem.unit || ''}).\n${localDuplicateAlert.mergeAvailable ? 'Merge quantities or add a separate entry?' : 'Units differ; merge unavailable. Add a separate entry?'}` 
+          : ''}
+        onClose={() => {
+          setLocalDuplicateAlert({ 
+            visible: false, 
+            existingItem: null, 
+            incomingItem: null, 
+            mergeAvailable: false 
+          });
+        }}
+      >
+        <View style={{ width: '100%', marginTop: 12, gap: 10 }}>
+          {localDuplicateAlert.mergeAvailable && (
+            <TouchableOpacity
+              style={{
+                backgroundColor: '#81A969',
+                paddingVertical: 12,
+                borderRadius: 12,
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.1,
+                shadowRadius: 4,
+                elevation: 3
+              }}
+              onPress={async () => {
+                // Call save with merge action
+                const mergeData = { 
+                  ...formData, 
+                  forceSave: true, 
+                  duplicateAction: 'merge' 
+                };
+                setLocalDuplicateAlert({ visible: false, existingItem: null, incomingItem: null, mergeAvailable: false });
+                const result = await onSave(mergeData);
+                if (result?.status !== 'duplicate-detected') {
+                  await clearDraft();
+                  setFormData({
+                    itemName: '',
+                    inventoryID: inventories[0]?.inventoryID || null,
+                    quantity: '',
+                    unit: '',
+                    itemCategory: '',
+                    itemDescription: '',
+                    itemExpiration: '',
+                    imageURL: null,
+                  });
+                  setFormErrors({});
+                  onClose();
+                }
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '700', fontSize: 16 }}>Merge Quantities</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            style={{
+              backgroundColor: localDuplicateAlert.mergeAvailable ? '#fff' : '#81A969',
+              borderWidth: localDuplicateAlert.mergeAvailable ? 2 : 0,
+              borderColor: '#81A969',
+              paddingVertical: 12,
+              borderRadius: 12,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.1,
+              shadowRadius: 4,
+              elevation: 2
+            }}
+            onPress={async () => {
+              // Call save with add anyway action
+              const addAnywayData = { 
+                ...formData, 
+                forceSave: true, 
+                duplicateAction: 'add-anyway' 
+              };
+              setLocalDuplicateAlert({ visible: false, existingItem: null, incomingItem: null, mergeAvailable: false });
+              const result = await onSave(addAnywayData);
+              if (result?.status !== 'duplicate-detected') {
+                await clearDraft();
+                setFormData({
+                  itemName: '',
+                  inventoryID: inventories[0]?.inventoryID || null,
+                  quantity: '',
+                  unit: '',
+                  itemCategory: '',
+                  itemDescription: '',
+                  itemExpiration: '',
+                  imageURL: null,
+                });
+                setFormErrors({});
+                onClose();
+              }
+            }}
+            activeOpacity={0.8}
+          >
+            <Text style={{
+              color: localDuplicateAlert.mergeAvailable ? '#81A969' : '#fff',
+              textAlign: 'center',
+              fontWeight: '700',
+              fontSize: 16
+            }}>Add Anyway</Text>
+          </TouchableOpacity>
+        </View>
+      </PantryAlert>
     </>
   );
 };
