@@ -87,9 +87,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.recipe.app'
+    namespace 'com.rewindzxc.recipe'
     defaultConfig {
-        applicationId 'com.recipe.app'
+        applicationId 'com.rewindzxc.recipe'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 2

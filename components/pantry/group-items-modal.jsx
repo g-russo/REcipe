@@ -11,15 +11,15 @@ import {
   Dimensions,
   Alert,
 } from 'react-native';
-// MODIFIED: Import MaterialCommunityIcons
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useRouter } from 'expo-router';
 import PantryService from '../../services/pantry-service';
+import PantryAlert from './pantry-alert';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const MODAL_ITEM_WIDTH = (SCREEN_WIDTH - 60) / 2; // Account for padding and gap
 
-// NEW: Map categories to MaterialCommunityIcons
+// Map categories to MaterialCommunityIcons
 const categoryIconMap = {
   // Cooked/Prepared Food
   'Rice': 'rice',
@@ -64,6 +64,11 @@ const GroupItemsModal = ({
 }) => {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
+
+  // NEW: State for removal alert
+  const [removeAlertVisible, setRemoveAlertVisible] = useState(false);
+  const [itemToRemove, setItemToRemove] = useState(null);
+
   const router = useRouter();
 
   // Load items when modal opens or group changes
@@ -87,7 +92,34 @@ const GroupItemsModal = ({
     }
   };
 
-  // NEW: Handle find recipe with all group items
+  // NEW: Handle Long Press to confirm removal
+  const confirmRemoveItem = (item) => {
+    setItemToRemove(item);
+    setRemoveAlertVisible(true);
+  };
+
+  // NEW: Execute removal after confirmation
+  const handleRemoveItem = async () => {
+    if (!itemToRemove || !group) return;
+
+    try {
+      // Call service to remove item from group
+      const success = await PantryService.removeItemFromGroup(itemToRemove.itemID, group.groupID);
+
+      if (success) {
+        // Remove item from local state immediately for UI responsiveness
+        setItems(currentItems => currentItems.filter(i => i.itemID !== itemToRemove.itemID));
+        console.log('✅ Item removed from group');
+      } else {
+        Alert.alert('Error', 'Failed to remove item from group');
+      }
+    } catch (error) {
+      console.error('Error removing item:', error);
+      Alert.alert('Error', 'An error occurred while removing the item');
+    }
+  };
+
+  // Handle find recipe with all group items
   const handleFindRecipe = () => {
     if (items.length === 0) {
       Alert.alert('No Items', 'This group has no items to search recipes with');
@@ -117,7 +149,7 @@ const GroupItemsModal = ({
 
   if (!group) return null;
 
-  // NEW: Helper function to render icon or letter
+  // Helper function to render icon or letter
   const renderGroupIcon = (groupData) => {
     const targetGroup = groupData || group;
     const iconName = categoryIconMap[targetGroup?.groupCategory];
@@ -153,7 +185,6 @@ const GroupItemsModal = ({
           <View style={[styles.modalHeader, { backgroundColor: group.groupColor || '#8ac551' }]}>
             <View style={styles.headerLeft}>
 
-              {/* MODIFIED: Use renderGroupIcon */}
               <View style={styles.groupIconContainer}>
                 {renderGroupIcon(group)}
               </View>
@@ -164,7 +195,6 @@ const GroupItemsModal = ({
               </View>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              {/* MODIFIED: Use MaterialCommunityIcons */}
               <MaterialCommunityIcons name="close" size={28} color="#fff" />
             </TouchableOpacity>
           </View>
@@ -178,7 +208,6 @@ const GroupItemsModal = ({
                 onEditGroup();
               }}
             >
-              {/* MODIFIED: Use MaterialCommunityIcons */}
               <MaterialCommunityIcons name="pencil-outline" size={20} color="#8BC34A" />
               <Text style={styles.actionButtonText}>Edit Group</Text>
             </TouchableOpacity>
@@ -190,7 +219,6 @@ const GroupItemsModal = ({
                 onDeleteGroup();
               }}
             >
-              {/* MODIFIED: Use MaterialCommunityIcons */}
               <MaterialCommunityIcons name="trash-can-outline" size={20} color="#ff4d4d" />
               <Text style={[styles.actionButtonText, styles.deleteButtonText]}>Delete</Text>
             </TouchableOpacity>
@@ -208,7 +236,6 @@ const GroupItemsModal = ({
               </View>
             ) : items.length === 0 ? (
               <View style={styles.emptyContainer}>
-                {/* MODIFIED: Use MaterialCommunityIcons */}
                 <MaterialCommunityIcons name="cube-outline" size={80} color="#ccc" />
                 <Text style={styles.emptyTitle}>No items yet</Text>
                 <Text style={styles.emptySubtitle}>
@@ -225,6 +252,9 @@ const GroupItemsModal = ({
                       onClose();
                       onItemPress(item);
                     }}
+                    // NEW: Long press to remove
+                    onLongPress={() => confirmRemoveItem(item)}
+                    delayLongPress={500}
                     activeOpacity={0.7}
                   >
                     {/* Item Image */}
@@ -237,7 +267,6 @@ const GroupItemsModal = ({
                         />
                       ) : (
                         <View style={styles.itemImagePlaceholder}>
-                          {/* MODIFIED: Use MaterialCommunityIcons */}
                           <MaterialCommunityIcons name="image-outline" size={32} color="#ccc" />
                         </View>
                       )}
@@ -263,7 +292,6 @@ const GroupItemsModal = ({
                       {/* Expiration Badge */}
                       {item.itemExpiration && (
                         <View style={styles.expirationBadge}>
-                          {/* MODIFIED: Use MaterialCommunityIcons */}
                           <MaterialCommunityIcons name="clock-outline" size={12} color="#666" />
                           <Text style={styles.expirationText}>
                             {new Date(item.itemExpiration).toLocaleDateString()}
@@ -284,7 +312,6 @@ const GroupItemsModal = ({
                 style={styles.findRecipeButton}
                 onPress={handleFindRecipe}
               >
-                {/* MODIFIED: Use MaterialCommunityIcons */}
                 <MaterialCommunityIcons name="silverware-fork-knife" size={20} color="#fff" />
                 <Text style={styles.findRecipeButtonText}>Find a Recipe</Text>
               </TouchableOpacity>
@@ -292,6 +319,19 @@ const GroupItemsModal = ({
           )}
         </View>
       </View>
+
+      {/* NEW: Removal Confirmation Alert */}
+      <PantryAlert
+        visible={removeAlertVisible}
+        type="error"
+        title="Remove Item?"
+        message={`Are you sure you want to remove "${itemToRemove?.itemName}" from this group?`}
+        actionable={true}
+        actionLabel="Remove"
+        cancelLabel="Cancel"
+        onAction={handleRemoveItem}
+        onClose={() => setRemoveAlertVisible(false)}
+      />
     </Modal>
   );
 };

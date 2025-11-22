@@ -279,7 +279,7 @@ export default function FloatingPlayButton({
 const styles = StyleSheet.create({
   floatingButtonContainer: {
     position: 'absolute',
-    bottom: hp('4%'),
+    bottom: hp('8%'),
     right: wp('5%'),
     alignItems: 'flex-end',
     zIndex: 1000,

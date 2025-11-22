@@ -1,4 +1,4 @@
-package com.recipe.app
+package com.rewindzxc.recipe
 
 import android.app.Application
 import android.content.res.Configuration
