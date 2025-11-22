@@ -35,9 +35,9 @@ export default {
         "INTERNET",
         "ACCESS_NETWORK_STATE"
       ],
-      googleServicesFile: "./android/google-services.json",
+      // googleServicesFile: "./android/google-services.json",
       usesCleartextTraffic: true,  // ✅ CRITICAL
-      networkSecurityConfig: "./android/app/src/main/res/xml/network_security_config.xml"  // ✅ NEW
+      networkSecurityConfig: "./network_security_config.xml"  // ✅ NEW
     },
     plugins: [
       "expo-router",
