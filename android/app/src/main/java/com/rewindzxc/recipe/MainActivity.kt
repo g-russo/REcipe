@@ -1,4 +1,4 @@
-package com.recipe.app
+package com.rewindzxc.recipe
 import expo.modules.splashscreen.SplashScreenManager
 
 import android.os.Build
