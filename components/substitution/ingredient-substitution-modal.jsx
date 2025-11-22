@@ -95,13 +95,22 @@ const IngredientSubstitutionModal = ({
       
       // Use SousChef AI (with automatic fallback to rule-based)
       console.log('🤖 Requesting SousChef AI substitutions...');
-      const suggestions = await IngredientSubstitutionService.getAISubstitutions(
-        ingredientName,
-        pantryItems,
-        '', // recipe name (optional, could pass from props if available)
-        '', // cooking method (optional, could detect from recipe)
-        originalText // pass original text for better unit detection
+      
+      // Add timeout to prevent infinite loading if API hangs
+      const timeout = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Request timeout - please try again')), 15000)
       );
+      
+      const suggestions = await Promise.race([
+        IngredientSubstitutionService.getAISubstitutions(
+          ingredientName,
+          pantryItems,
+          '', // recipe name (optional, could pass from props if available)
+          '', // cooking method (optional, could detect from recipe)
+          originalText // pass original text for better unit detection
+        ),
+        timeout
+      ]);
 
       if (suggestions.length === 0) {
         // Show custom modal instead of Alert
@@ -116,7 +125,8 @@ const IngredientSubstitutionModal = ({
       setStep(2);
     } catch (error) {
       console.error('Error fetching substitutes:', error);
-      setErrorMessage('Failed to fetch substitutes. Please try again.');
+      const errorMsg = error.message || 'Failed to fetch substitutes. Please try again.';
+      setErrorMessage(errorMsg);
       setShowErrorModal(true);
     } finally {
       setLoading(false);
