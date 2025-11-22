@@ -9,7 +9,7 @@ import { useTabContext } from '../contexts/tab-context';
 const BottomNavbar = () => {
   const router = useRouter();
   const pathname = usePathname();
-  const { emit } = useTabContext();
+  const { emit, toggleUploadModal } = useTabContext();
   const [hasNavigationBar, setHasNavigationBar] = useState(false);
 
   // Animation values for each tab
@@ -117,7 +117,21 @@ const BottomNavbar = () => {
         {/* Scan (Center) */}
         <TouchableOpacity
           style={styles.scanButton}
-          onPress={() => handlePress('/food-recognition/upload', scanScale)}
+          onPress={() => {
+            // Trigger haptic feedback
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+            // Instant spring bounce animation
+            scanScale.setValue(0.85);
+            Animated.spring(scanScale, {
+              toValue: 1,
+              useNativeDriver: true,
+              speed: 50,
+              bounciness: 12,
+            }).start();
+
+            toggleUploadModal();
+          }}
           activeOpacity={0.8}
         >
           <Animated.View style={{ transform: [{ scale: scanScale }], alignItems: 'center' }}>

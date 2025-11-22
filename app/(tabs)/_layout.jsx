@@ -4,6 +4,7 @@ import { Tabs } from 'expo-router';
 import BottomNavbar from '../../components/bottom-navbar';
 import { TabProvider } from '../../contexts/tab-context';
 import ScreenFlash from '../../components/screen-flash';
+import UploadModal from '../../components/upload-modal';
 
 export default function TabsLayout() {
   return (
@@ -41,6 +42,7 @@ export default function TabsLayout() {
         />
       </Tabs>
       <ScreenFlash />
+      <UploadModal />
       <BottomNavbar />
     </TabProvider>
   );

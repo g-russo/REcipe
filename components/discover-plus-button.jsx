@@ -1,13 +1,13 @@
 import React from 'react';
 import { TouchableOpacity, Text, StyleSheet } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useTabContext } from '../contexts/tab-context';
 
 export function DiscoverPlusButton({ children }) {
-  const router = useRouter();
+  const { showUploadModal } = useTabContext();
   return (
     <TouchableOpacity
       style={styles.fab}
-      onPress={() => router.push('/food-recognition/upload')}
+      onPress={() => showUploadModal()}
       accessibilityRole="button"
       accessibilityLabel="Open food recognition"
     >
