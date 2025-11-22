@@ -171,7 +171,10 @@ const PantryAlert = ({
                                     {children}
                                     {/* Return button */}
                                     <TouchableOpacity
-                                        style={styles.returnButton}
+                                        style={[
+                                            styles.returnButton,
+                                            (actionable && !children) && styles.returnButtonRow
+                                        ]}
                                         onPress={handleClose}
                                         activeOpacity={0.7}
                                     >
@@ -287,6 +290,13 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         fontSize: wp('4%'),
         letterSpacing: 0.3,
+    },
+    returnButtonRow: {
+        width: 'auto',
+        flex: 1,
+        marginTop: 0,
+        backgroundColor: '#f5f5f5',
+        borderRadius: wp('2.5%'),
     },
 });
 
