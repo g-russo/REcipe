@@ -36,6 +36,74 @@ class SupabaseCacheService {
   }
 
   /**
+   * Get recipes from image cache (Try Something New)
+   * Returns a random subset of recipes to ensure variety on refresh
+   */
+  async getRecipesFromImageCache(count = 10) {
+    try {
+      console.log('📸 Fetching recipes from image cache for Try Something New...');
+      
+      // Fetch a larger pool to allow for randomization
+      const { data, error } = await supabase
+        .from('cache_recipe_images')
+        .select('id, recipe_id, recipe_name, cached_url, original_url, created_at')
+        .not('recipe_id', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(50); // Fetch last 50 items
+
+      if (error) {
+        console.error('❌ Error fetching from image cache:', error);
+        return [];
+      }
+
+      if (!data || data.length === 0) {
+        console.log('⚠️ No recipes found in image cache');
+        return [];
+      }
+
+      // Shuffle the data array
+      const shuffled = data.sort(() => 0.5 - Math.random());
+      
+      // Take the requested number of items
+      const selectedItems = shuffled.slice(0, count);
+
+      // Transform to recipe format
+      const recipes = selectedItems.map(item => {
+        // Format title: replace underscores with spaces, capitalize words
+        const title = item.recipe_name 
+          ? item.recipe_name.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
+          : 'Untitled Recipe';
+
+        return {
+          id: item.recipe_id,
+          title: title,
+          calories: null, // Not available in image cache
+          time: null,     // Not available in image cache
+          image: item.cached_url || item.original_url,
+          recipeData: {
+            uri: item.recipe_id, // Use recipe_id as URI for consistency
+            label: title,
+            image: item.cached_url || item.original_url,
+            source: 'Image Cache'
+          }
+        };
+      });
+
+      // Deduplicate by recipe_id (just in case)
+      const uniqueRecipes = Array.from(
+        new Map(recipes.map(recipe => [recipe.id, recipe])).values()
+      );
+
+      console.log(`✅ Fetched ${uniqueRecipes.length} unique recipes from image cache (randomized)`);
+      return uniqueRecipes;
+
+    } catch (error) {
+      console.error('Error in getRecipesFromImageCache:', error);
+      return [];
+    }
+  }
+
+  /**
    * Get popular recipes with caching
    * LAZY LOADED - Only fetches when needed, not on app startup!
    */

@@ -528,52 +528,27 @@ const Home = () => {
     setPopularRecipesError('');
 
     try {
-      const result = await SupabaseCacheService.getPopularRecipes(forceRefresh);
-      const recipeList = Array.isArray(result)
-        ? result
-        : result?.data?.recipes || [];
+      // Use the new image cache service for "Try Something New"
+      const recipeList = await SupabaseCacheService.getRecipesFromImageCache();
 
-      if (!recipeList.length) {
+      if (!recipeList || recipeList.length === 0) {
         setPopularRecipes([]);
-        setPopularRecipesError('No trending recipes available right now.');
+        setPopularRecipesError('No new recipes discovered yet.');
+        setLoadingPopularRecipes(false);
         return;
       }
 
-      const normalized = recipeList
-        .filter(recipe => recipe?.label)
-        .slice(0, 8)
-        .map(recipe => {
-          const caloriesPerServing = recipe.calories && recipe.yield
-            ? Math.round(recipe.calories / Math.max(1, recipe.yield))
-            : null;
-
-          const image = recipe.image
-            || recipe.images?.REGULAR?.url
-            || recipe.images?.LARGE?.url
-            || DEFAULT_RECIPE_IMAGE;
-
-          return {
-            id: recipe.id || recipe.uri || recipe.shareAs,
-            title: recipe.label,
-            calories: caloriesPerServing,
-            time: recipe.totalTime || 30,
-            source: recipe.source,
-            image,
-            recipeData: recipe
-          };
-        });
-
-      setPopularRecipes(normalized);
+      setPopularRecipes(recipeList);
 
       // ✅ Keep loading visible until recipes render (prevents flash of empty state)
       setTimeout(() => {
         setLoadingPopularRecipes(false);
-        console.log('✅ Popular recipes loaded and rendered');
-      }, 2000); // 2 seconds for smooth transition
+        console.log('✅ Try Something New recipes loaded from image cache');
+      }, 500); 
     } catch (error) {
       console.error('Error loading popular recipes:', error);
       setPopularRecipes([]);
-      setPopularRecipesError('Unable to load popular recipes right now.');
+      setPopularRecipesError('Unable to load recipes right now.');
       setLoadingPopularRecipes(false); // Stop loading immediately on error
     }
   }, []);
@@ -591,10 +566,11 @@ const Home = () => {
     setRefreshing(true);
     await Promise.all([
       loadRecentHistory(),
-      loadPantryRecipeSuggestions(true)
+      loadPantryRecipeSuggestions(true),
+      loadPopularRecipes(true) // Refresh "Try Something New"
     ]);
     setRefreshing(false);
-  }, [loadRecentHistory, loadPantryRecipeSuggestions]);
+  }, [loadRecentHistory, loadPantryRecipeSuggestions, loadPopularRecipes]);
 
   const getGreetingIcon = () => {
     const hour = new Date().getHours();
