@@ -142,6 +142,7 @@ const TryNewCard = ({ recipe, isFavorited, onToggleFavorite, onPress }) => {
 
 const Home = () => {
   const { user, customUserData } = useCustomAuth();
+  const { showUploadModal } = useTabContext();
   const [userName, setUserName] = useState('');
   const [greeting, setGreeting] = useState('Good Morning');
   const [unreadCount, setUnreadCount] = useState(0);
@@ -937,7 +938,7 @@ const Home = () => {
                 {!hasPantryItems && (
                   <TouchableOpacity
                     style={[styles.startScanningButton, { marginTop: hp('1.2%'), paddingVertical: hp('1%'), paddingHorizontal: wp('5%'), borderRadius: wp('5%') }]}
-                    onPress={() => router.push('/food-recognition/upload')}
+                    onPress={() => showUploadModal()}
                   >
                     <Text style={[styles.startScanningButtonText, { fontSize: wp('4%') }]}>Start Scanning</Text>
                   </TouchableOpacity>

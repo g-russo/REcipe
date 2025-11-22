@@ -154,7 +154,6 @@ export default function RootLayout() {
           <Stack.Screen name="new-password" options={{ title: 'New Password' }} />
           <Stack.Screen name="force-password-change" options={{ title: 'Update Password' }} />
           <Stack.Screen name="recipe-detail" options={{ title: 'Recipe Details' }} />
-          <Stack.Screen name="food-recognition/upload" options={{ title: 'Food Recognition' }} />
           <Stack.Screen name="food-recognition/result" options={{ title: 'Result' }} />
           <Stack.Screen name="notifications" options={{ title: 'Notifications' }} />
         </Stack>

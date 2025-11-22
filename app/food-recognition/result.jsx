@@ -407,7 +407,7 @@ export default function FoodRecognitionResult() {
         day: 'numeric',
         year: 'numeric'
       }).replace(/\//g, '/');
-      
+
       // Smart unit suggestion based on category
       const suggestUnit = (cat) => {
         switch (cat) {
@@ -494,7 +494,7 @@ export default function FoodRecognitionResult() {
 
         if (duplicateItem) {
           // Check if merge is possible (same unit)
-          const canMerge = 
+          const canMerge =
             duplicateItem.unit?.trim().toLowerCase() === itemData.unit?.trim().toLowerCase() &&
             !isNaN(Number(duplicateItem.quantity)) &&
             !isNaN(Number(itemData.quantity));
@@ -755,7 +755,7 @@ export default function FoodRecognitionResult() {
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.retryButton}
-          onPress={() => router.replace('/food-recognition/upload')}
+          onPress={() => router.back()}
         >
           <Text style={styles.retryButtonText}>Try Again</Text>
         </TouchableOpacity>
@@ -1175,7 +1175,7 @@ export default function FoodRecognitionResult() {
             activeOpacity={0.7}
           >
             <Text style={groupSelectionAlertStyles.groupButtonText}>
-              {groupSelectionAlert.singleGroupMode 
+              {groupSelectionAlert.singleGroupMode
                 ? `Add to ${group.groupTitle}`
                 : `${group.groupTitle} (${group.itemCount || 0} ${(group.itemCount || 0) === 1 ? 'item' : 'items'})`}
             </Text>
