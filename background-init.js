@@ -6,7 +6,12 @@ import { SupabaseProvider } from './contexts/supabase-context';
 import RootLayout from './app/_layout';
 
 // Keep the splash screen visible while we fetch resources
-SplashScreen.preventAutoHideAsync();
+// Wrap in try-catch to prevent crashes on some Android devices
+try {
+  SplashScreen.preventAutoHideAsync();
+} catch (e) {
+  console.warn('SplashScreen.preventAutoHideAsync() failed:', e);
+}
 
 export default function BackgroundInit() {
   useEffect(() => {
@@ -23,13 +28,21 @@ export default function BackgroundInit() {
         
         // Hide splash screen after a short delay to ensure router is ready
         setTimeout(async () => {
-          await SplashScreen.hideAsync();
+          try {
+            await SplashScreen.hideAsync();
+          } catch (e) {
+            console.warn('SplashScreen.hideAsync() failed:', e);
+          }
         }, 100);
         
       } catch (error) {
         console.error('❌ App.js: Background initialization failed:', error);
         // Still hide splash screen even if initialization fails
-        await SplashScreen.hideAsync();
+        try {
+          await SplashScreen.hideAsync();
+        } catch (e) {
+          console.warn('SplashScreen.hideAsync() failed:', e);
+        }
       }
     }
 
