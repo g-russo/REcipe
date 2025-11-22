@@ -7,7 +7,7 @@ export default {
     icon: "./assets/icon.png",
     userInterfaceStyle: "light",
     splash: {
-      image: "./assets/splash.png",
+      image: "./assets/splash-icon.png",
       resizeMode: "contain",
       backgroundColor: "#ffffff"
     },
@@ -47,16 +47,16 @@ export default {
           "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera for food recognition"
         }
       ],
-      [
-        "expo-notifications",
-        {
-          "icon": "./assets/notification-icon.png",
-          "color": "#ffffff",
-          "sounds": [
-            "./assets/notification.wav"
-          ]
-        }
-      ],
+      // [
+      //   "expo-notifications",
+      //   {
+      //     "icon": "./assets/notification-icon.png",
+      //     "color": "#ffffff",
+      //     "sounds": [
+      //       "./assets/notification.wav"
+      //     ]
+      //   }
+      // ],
       [
         "expo-build-properties",
         {
