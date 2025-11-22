@@ -11,6 +11,7 @@ export default {
       resizeMode: "contain",
       backgroundColor: "#ffffff"
     },
+    jsEngine: "hermes",
     assetBundlePatterns: [
       "**/*"
     ],
@@ -61,8 +62,11 @@ export default {
         "expo-build-properties",
         {
           "android": {
-            "usesCleartextTraffic": true,  // ✅ CRITICAL
-            "networkSecurityConfig": "@xml/network_security_config"
+            "usesCleartextTraffic": true,
+            "networkSecurityConfig": "@xml/network_security_config",
+            "compileSdkVersion": 34,
+            "targetSdkVersion": 34,
+            "buildToolsVersion": "34.0.0"
           }
         }
       ]
