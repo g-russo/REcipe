@@ -16,9 +16,10 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { recognizeFoodCombined } from '../../services/food-recog-api'; // ✅ UPDATED: Use combined endpoint
+import { recognizeFoodCombined } from '../../services/food-recog-api';
 import { supabase } from '../../lib/supabase';
 import PantryService from '../../services/pantry-service';
+import LoadingOverlay from '../../components/food-recognition/loading-overlay';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -727,36 +728,31 @@ export default function FoodRecognitionResult() {
     });
   };
 
-  if (loading) {
+  // If not loading and no result, show error (but keep overlay if loading)
+  if (!loading && (!result || !result.success)) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#81A969" />
-        <Text style={styles.loadingText}>Analyzing food...</Text>
-      </View>
-    );
-  }
-
-  if (!result || !result.success) {
-    return (
-      <View style={styles.errorContainer}>
-        <Ionicons name="alert-circle-outline" size={64} color="#FF6B6B" />
-        <Text style={styles.errorTitle}>Recognition Failed</Text>
-        <Text style={styles.errorText}>
-          {result?.error || 'Could not recognize food in the image'}
-        </Text>
-        <TouchableOpacity
-          style={styles.manualEntryButton}
-          onPress={handleManualEntry}
-        >
-          <Ionicons name="create-outline" size={20} color="#FFF" />
-          <Text style={styles.manualEntryButtonText}>Add Manually</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.retryButton}
-          onPress={() => router.back()}
-        >
-          <Text style={styles.retryButtonText}>Try Again</Text>
-        </TouchableOpacity>
+      <View style={styles.container}>
+        <LoadingOverlay visible={loading} />
+        <View style={styles.errorContainer}>
+          <Ionicons name="alert-circle-outline" size={64} color="#FF6B6B" />
+          <Text style={styles.errorTitle}>Recognition Failed</Text>
+          <Text style={styles.errorText}>
+            {result?.error || 'Could not recognize food in the image'}
+          </Text>
+          <TouchableOpacity
+            style={styles.manualEntryButton}
+            onPress={handleManualEntry}
+          >
+            <Ionicons name="create-outline" size={20} color="#FFF" />
+            <Text style={styles.manualEntryButtonText}>Add Manually</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={() => router.back()}
+          >
+            <Text style={styles.retryButtonText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
@@ -764,6 +760,7 @@ export default function FoodRecognitionResult() {
   return (
     <AuthGuard>
       <View style={styles.container}>
+        <LoadingOverlay visible={loading} />
         <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
         {/* Sticky Header */}
