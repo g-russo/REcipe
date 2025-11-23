@@ -12,7 +12,11 @@ import {
   Alert,
   SafeAreaView,
   StyleSheet,
+  Dimensions,
 } from 'react-native';
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -36,7 +40,11 @@ const ItemFormModal = ({
   initialData = null,
   inventories = [],
 }) => {
-  const isEditMode = !!initialData;
+  const isEditMode = !!initialData && !!initialData.itemID;
+  const isAIRecommendation = !!initialData?.isAI;
+  const aiReasoning = initialData?.aiReasoning;
+
+  const [reasoningModalVisible, setReasoningModalVisible] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -56,11 +64,11 @@ const ItemFormModal = ({
   const [formErrors, setFormErrors] = useState({});
   const [imagePickerVisible, setImagePickerVisible] = useState(false);
   const [validationAlert, setValidationAlert] = useState({ visible: false, message: '' });
-  const [localDuplicateAlert, setLocalDuplicateAlert] = useState({ 
-    visible: false, 
-    existingItem: null, 
+  const [localDuplicateAlert, setLocalDuplicateAlert] = useState({
+    visible: false,
+    existingItem: null,
     incomingItem: null,
-    mergeAvailable: false 
+    mergeAvailable: false
   });
 
   // SPLIT & REFINED FOOD CATEGORIES (No '&' or '/')
@@ -379,9 +387,9 @@ const ItemFormModal = ({
     if (!isValid) {
       console.log('❌ Validation failed: Missing required fields');
       await saveDraft();
-      setValidationAlert({ 
-        visible: true, 
-        message: 'Please complete all required fields. Item description is optional.' 
+      setValidationAlert({
+        visible: true,
+        message: 'Please complete all required fields. Item description is optional.'
       });
       return;
     }
@@ -389,7 +397,7 @@ const ItemFormModal = ({
     console.log('✅ Validation passed, calling onSave...');
     try {
       const saveResult = await onSave(formData);
-      
+
       // Handle duplicate detection from parent
       if (saveResult?.status === 'duplicate-detected') {
         console.log('⚠️ Duplicate detected, showing local alert');
@@ -402,7 +410,7 @@ const ItemFormModal = ({
         await saveDraft();
         return;
       }
-      
+
       if (saveResult?.status === 'duplicate-cancelled') {
         console.log('ℹ️ Duplicate detected; keeping form open for user adjustments.');
         await saveDraft();
@@ -429,9 +437,9 @@ const ItemFormModal = ({
     } catch (e) {
       // If save fails, keep draft
       await saveDraft();
-      setValidationAlert({ 
-        visible: true, 
-        message: e.message || 'Failed to save item. Please try again.' 
+      setValidationAlert({
+        visible: true,
+        message: e.message || 'Failed to save item. Please try again.'
       });
     }
   };
@@ -491,180 +499,231 @@ const ItemFormModal = ({
     <>
       <Modal
         animationType="slide"
-        transparent={false}
+        transparent={true}
         visible={visible}
         onRequestClose={handleClose}
       >
-        <SafeAreaView style={styles.modalContainer}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-            style={{ flex: 1 }}
-          >
-            {/* Header */}
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
-                {isEditMode ? 'Edit Item' : 'Add New Item'}
-              </Text>
-              <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
-                <Ionicons name="close" size={24} color="#555" />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView
-              style={styles.modalScrollView}
-              contentContainerStyle={styles.modalContentContainer}
-              showsVerticalScrollIndicator={false}
+        <View style={styles.modalOverlay}>
+          <SafeAreaView style={styles.modalContainer}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === "ios" ? "padding" : "height"}
+              style={{ flex: 1 }}
             >
-              <View style={styles.modalContent}>
-                {/* Image Upload */}
-                <TouchableOpacity
-                  style={styles.imageUploadArea}
-                  onPress={showImagePickerOptions}
-                >
-                  {formData.imageURL ? (
-                    <Image
-                      source={{ uri: formData.imageURL }}
-                      style={styles.uploadedImage}
-                    />
-                  ) : (
-                    <View style={styles.uploadPlaceholder}>
-                      <Ionicons name="image-outline" size={32} color="#fff" />
-                      <Text style={styles.uploadText}>Add Photo</Text>
-                    </View>
-                  )}
+              {/* Header */}
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>
+                  {isEditMode ? 'Edit Item' : 'Add New Item'}
+                </Text>
+                <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
+                  <Ionicons name="close" size={24} color="#555" />
                 </TouchableOpacity>
-
-                {/* Item Name */}
-                <TextInput
-                  style={styles.input}
-                  placeholder="Item Name *"
-                  placeholderTextColor="#999"
-                  value={formData.itemName}
-                  maxLength={ITEM_NAME_MAX_LENGTH}
-                  onChangeText={(text) => updateField('itemName', text)}
-                />
-                {!!formErrors.itemName && (
-                  <Text style={styles.errorText}>{formErrors.itemName}</Text>
-                )}
-
-                {/* Category */}
-                <TouchableOpacity
-                  style={styles.dropdownInput}
-                  onPress={() => setCategoryModalVisible(true)}
-                >
-                  <Text style={formData.itemCategory ? styles.dropdownSelectedText : styles.dropdownPlaceholder}>
-                    {formData.itemCategory || 'Choose Category *'}
-                  </Text>
-                  <Ionicons name="chevron-down" size={20} color="#999" />
-                </TouchableOpacity>
-                {!!formErrors.itemCategory && (
-                  <Text style={styles.errorText}>{formErrors.itemCategory}</Text>
-                )}
-
-                {/* Quantity and Unit Row */}
-                <View style={styles.formRow}>
-                  <View style={styles.formColumn}>
-                    <Text style={styles.columnLabel}>Quantity:</Text>
-                    <TextInput
-                      style={styles.smallInput}
-                      placeholder="0"
-                      placeholderTextColor="#999"
-                      keyboardType="decimal-pad"
-                      value={formData.quantity?.toString() ?? ''}
-                      onChangeText={handleQuantityChange}
-                    />
-                    {!!formErrors.quantity && (
-                      <Text style={styles.errorText}>{formErrors.quantity}</Text>
-                    )}
-                  </View>
-
-                  <View style={styles.formColumn}>
-                    <Text style={styles.columnLabel}>Unit:</Text>
-                    <TouchableOpacity
-                      style={styles.smallDropdown}
-                      onPress={() => setUnitModalVisible(true)}
-                    >
-                      <Text style={formData.unit ? styles.dropdownSelectedText : styles.dropdownPlaceholder}>
-                        {formData.unit || 'Select'}
-                      </Text>
-                      <Ionicons name="chevron-down" size={20} color="#999" />
-                    </TouchableOpacity>
-                    {!!formErrors.unit && (
-                      <Text style={styles.errorText}>{formErrors.unit}</Text>
-                    )}
-                  </View>
-                </View>
-
-                {/* Date Section */}
-                <View style={styles.dateSection}>
-                  <View style={styles.formRow}>
-                    <Text style={styles.formLabel}>Date Added:</Text>
-                    <View style={[styles.dateInput, styles.disabledInput]}>
-                      <Text style={styles.dateDisplayText}>{getCurrentDate()}</Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.formRow}>
-                    <Text style={styles.formLabel}>Expiration Date:</Text>
-                    <TouchableOpacity
-                      style={styles.dateInput}
-                      onPress={() => setShowDatePicker(true)}
-                    >
-                      <Text style={formData.itemExpiration ? styles.dateDisplayText : styles.dropdownPlaceholder}>
-                        {formData.itemExpiration || 'Select Date'}
-                      </Text>
-                      <Ionicons name="calendar-outline" size={20} color="#999" />
-                    </TouchableOpacity>
-                  </View>
-                  {!!formErrors.itemExpiration && (
-                    <Text style={styles.errorText}>{formErrors.itemExpiration}</Text>
-                  )}
-                </View>
-
-                {showDatePicker && (
-                  <DateTimePicker
-                    value={formData.itemExpiration ? parseDate(formData.itemExpiration) : new Date()}
-                    mode="date"
-                    display="default"
-                    onChange={onDateChange}
-                    minimumDate={new Date()}
-                  />
-                )}
-
-                {/* Description */}
-                <Text style={styles.formLabel}>Item Description:</Text>
-                <TextInput
-                  style={styles.textAreaInput}
-                  placeholder="Describe this item (optional)"
-                  placeholderTextColor="#999"
-                  multiline={true}
-                  numberOfLines={4}
-                  value={formData.itemDescription}
-                  onChangeText={(text) => updateField('itemDescription', text)}
-                />
-
-                {/* Action Buttons */}
-                <View style={styles.buttonContainer}>
-                  <TouchableOpacity
-                    style={styles.saveButton}
-                    onPress={handleSave}
-                  >
-                    <Text style={styles.saveButtonText}>
-                      {isEditMode ? 'Update' : 'Save'}
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.cancelButton}
-                    onPress={handleCancel} // CHANGED (was handleClose)
-                  >
-                    <Text style={styles.cancelButtonText}>Cancel</Text>
-                  </TouchableOpacity>
-                </View>
               </View>
-            </ScrollView>
-          </KeyboardAvoidingView>
-        </SafeAreaView>
+
+              {/* AI Recommendation Banner */}
+              {isAIRecommendation && (
+                <TouchableOpacity
+                  onPress={() => aiReasoning && setReasoningModalVisible(true)}
+                  activeOpacity={aiReasoning ? 0.7 : 1}
+                  style={{
+                    backgroundColor: '#E8F5E9',
+                    padding: 16,
+                    marginHorizontal: 24,
+                    marginTop: 20,
+                    marginBottom: 0,
+                    borderRadius: 12,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    borderWidth: 1,
+                    borderColor: '#C8E6C9'
+                  }}>
+                  <MaterialCommunityIcons name="robot" size={24} color="#4CAF50" style={{ marginRight: 12 }} />
+                  <Text style={{ color: '#2E7D32', fontSize: 14, flex: 1, lineHeight: 20 }}>
+                    Details predicted by SousChef AI. Please verify and adjust if needed.
+                    {aiReasoning && <Text style={{ fontWeight: '700' }}> (Tap for info)</Text>}
+                  </Text>
+                </TouchableOpacity>
+              )}
+
+              {/* Reasoning Modal */}
+              <Modal
+                visible={reasoningModalVisible}
+                transparent={true}
+                animationType="fade"
+                onRequestClose={() => setReasoningModalVisible(false)}
+              >
+                <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+                  <View style={{ backgroundColor: 'white', borderRadius: 20, padding: 24, width: '100%', maxWidth: 400, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 10, elevation: 10 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+                      <MaterialCommunityIcons name="brain" size={28} color="#81A969" style={{ marginRight: 12 }} />
+                      <Text style={{ fontSize: 20, fontWeight: '700', color: '#1A1A1A' }}>AI Prediction Logic</Text>
+                    </View>
+                    <Text style={{ fontSize: 16, color: '#444', lineHeight: 24 }}>{aiReasoning}</Text>
+                    <TouchableOpacity
+                      onPress={() => setReasoningModalVisible(false)}
+                      style={{ marginTop: 24, backgroundColor: '#81A969', paddingVertical: 14, borderRadius: 12, alignItems: 'center' }}
+                    >
+                      <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>Close</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </Modal>
+
+              <ScrollView
+                style={styles.modalScrollView}
+                contentContainerStyle={styles.modalContentContainer}
+                showsVerticalScrollIndicator={false}
+              >
+                <View style={styles.modalContent}>
+                  {/* Image Upload */}
+                  <TouchableOpacity
+                    style={[styles.imageUploadArea, { height: Math.min(Math.max(SCREEN_HEIGHT * 0.25, 150), 250) }]}
+                    onPress={showImagePickerOptions}
+                  >
+                    {formData.imageURL ? (
+                      <Image
+                        source={{ uri: formData.imageURL }}
+                        style={styles.uploadedImage}
+                      />
+                    ) : (
+                      <View style={styles.uploadPlaceholder}>
+                        <Ionicons name="image-outline" size={40} color="#81A969" />
+                        <Text style={styles.uploadText}>Add Photo</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+
+                  {/* Item Name */}
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Item Name *"
+                    placeholderTextColor="#999"
+                    value={formData.itemName}
+                    maxLength={ITEM_NAME_MAX_LENGTH}
+                    onChangeText={(text) => updateField('itemName', text)}
+                  />
+                  {!!formErrors.itemName && (
+                    <Text style={styles.errorText}>{formErrors.itemName}</Text>
+                  )}
+
+                  {/* Category */}
+                  <TouchableOpacity
+                    style={styles.dropdownInput}
+                    onPress={() => setCategoryModalVisible(true)}
+                  >
+                    <Text style={formData.itemCategory ? styles.dropdownSelectedText : styles.dropdownPlaceholder}>
+                      {formData.itemCategory || 'Choose Category *'}
+                    </Text>
+                    <Ionicons name="chevron-down" size={20} color="#999" />
+                  </TouchableOpacity>
+                  {!!formErrors.itemCategory && (
+                    <Text style={styles.errorText}>{formErrors.itemCategory}</Text>
+                  )}
+
+                  {/* Quantity and Unit Row */}
+                  <View style={styles.formRow}>
+                    <View style={styles.formColumn}>
+                      <Text style={styles.columnLabel}>Quantity:</Text>
+                      <TextInput
+                        style={styles.smallInput}
+                        placeholder="0"
+                        placeholderTextColor="#999"
+                        keyboardType="decimal-pad"
+                        value={formData.quantity?.toString() ?? ''}
+                        onChangeText={handleQuantityChange}
+                      />
+                      {!!formErrors.quantity && (
+                        <Text style={styles.errorText}>{formErrors.quantity}</Text>
+                      )}
+                    </View>
+
+                    <View style={styles.formColumn}>
+                      <Text style={styles.columnLabel}>Unit:</Text>
+                      <TouchableOpacity
+                        style={styles.smallDropdown}
+                        onPress={() => setUnitModalVisible(true)}
+                      >
+                        <Text style={formData.unit ? styles.dropdownSelectedText : styles.dropdownPlaceholder}>
+                          {formData.unit || 'Select'}
+                        </Text>
+                        <Ionicons name="chevron-down" size={20} color="#999" />
+                      </TouchableOpacity>
+                      {!!formErrors.unit && (
+                        <Text style={styles.errorText}>{formErrors.unit}</Text>
+                      )}
+                    </View>
+                  </View>
+
+                  {/* Date Section */}
+                  <View style={styles.dateSection}>
+                    <View style={styles.formRow}>
+                      <Text style={styles.formLabel}>Date Added:</Text>
+                      <View style={[styles.dateInput, styles.disabledInput]}>
+                        <Text style={styles.dateDisplayText}>{getCurrentDate()}</Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.formRow}>
+                      <Text style={styles.formLabel}>Expiration Date:</Text>
+                      <TouchableOpacity
+                        style={styles.dateInput}
+                        onPress={() => setShowDatePicker(true)}
+                      >
+                        <Text style={formData.itemExpiration ? styles.dateDisplayText : styles.dropdownPlaceholder}>
+                          {formData.itemExpiration || 'Select Date'}
+                        </Text>
+                        <Ionicons name="calendar-outline" size={20} color="#999" />
+                      </TouchableOpacity>
+                    </View>
+                    {!!formErrors.itemExpiration && (
+                      <Text style={styles.errorText}>{formErrors.itemExpiration}</Text>
+                    )}
+                  </View>
+
+                  {showDatePicker && (
+                    <DateTimePicker
+                      value={formData.itemExpiration ? parseDate(formData.itemExpiration) : new Date()}
+                      mode="date"
+                      display="default"
+                      onChange={onDateChange}
+                      minimumDate={new Date()}
+                    />
+                  )}
+
+                  {/* Description */}
+                  <Text style={styles.formLabel}>Item Description:</Text>
+                  <TextInput
+                    style={styles.textAreaInput}
+                    placeholder="Describe this item (optional)"
+                    placeholderTextColor="#999"
+                    multiline={true}
+                    numberOfLines={4}
+                    value={formData.itemDescription}
+                    onChangeText={(text) => updateField('itemDescription', text)}
+                  />
+
+                  {/* Action Buttons */}
+                  <View style={styles.buttonContainer}>
+                    <TouchableOpacity
+                      style={styles.saveButton}
+                      onPress={handleSave}
+                    >
+                      <Text style={styles.saveButtonText}>
+                        {isEditMode ? 'Update' : 'Save'}
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.cancelButton}
+                      onPress={handleCancel} // CHANGED (was handleClose)
+                    >
+                      <Text style={styles.cancelButtonText}>Cancel</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </ScrollView>
+            </KeyboardAvoidingView>
+          </SafeAreaView>
+        </View>
       </Modal>
 
       {/* Category Selection Modal */}
@@ -782,15 +841,15 @@ const ItemFormModal = ({
         visible={localDuplicateAlert.visible}
         type="info"
         title="Duplicate Item Detected"
-        message={localDuplicateAlert.existingItem ? 
-          `"${localDuplicateAlert.existingItem.itemName}" already exists (${localDuplicateAlert.existingItem.quantity || 0} ${localDuplicateAlert.existingItem.unit || ''}).\n${localDuplicateAlert.mergeAvailable ? 'Merge quantities or add a separate entry?' : 'Units differ; merge unavailable. Add a separate entry?'}` 
+        message={localDuplicateAlert.existingItem ?
+          `"${localDuplicateAlert.existingItem.itemName}" already exists (${localDuplicateAlert.existingItem.quantity || 0} ${localDuplicateAlert.existingItem.unit || ''}).\n${localDuplicateAlert.mergeAvailable ? 'Merge quantities or add a separate entry?' : 'Units differ; merge unavailable. Add a separate entry?'}`
           : ''}
         onClose={() => {
-          setLocalDuplicateAlert({ 
-            visible: false, 
-            existingItem: null, 
-            incomingItem: null, 
-            mergeAvailable: false 
+          setLocalDuplicateAlert({
+            visible: false,
+            existingItem: null,
+            incomingItem: null,
+            mergeAvailable: false
           });
         }}
       >
@@ -809,10 +868,10 @@ const ItemFormModal = ({
               }}
               onPress={async () => {
                 // Call save with merge action
-                const mergeData = { 
-                  ...formData, 
-                  forceSave: true, 
-                  duplicateAction: 'merge' 
+                const mergeData = {
+                  ...formData,
+                  forceSave: true,
+                  duplicateAction: 'merge'
                 };
                 setLocalDuplicateAlert({ visible: false, existingItem: null, incomingItem: null, mergeAvailable: false });
                 const result = await onSave(mergeData);
@@ -852,10 +911,10 @@ const ItemFormModal = ({
             }}
             onPress={async () => {
               // Call save with add anyway action
-              const addAnywayData = { 
-                ...formData, 
-                forceSave: true, 
-                duplicateAction: 'add-anyway' 
+              const addAnywayData = {
+                ...formData,
+                forceSave: true,
+                duplicateAction: 'add-anyway'
               };
               setLocalDuplicateAlert({ visible: false, existingItem: null, incomingItem: null, mergeAvailable: false });
               const result = await onSave(addAnywayData);
@@ -891,55 +950,62 @@ const ItemFormModal = ({
 };
 
 const styles = StyleSheet.create({
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
   modalContainer: {
     flex: 1,
     backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 4,
+    marginTop: 50,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    overflow: 'hidden',
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 13,
+    paddingHorizontal: 24,
+    paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: '#F5F5F5',
   },
   modalTitle: {
-    fontSize: 19,
-    fontWeight: '600',
-    color: '#333',
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#1A1A1A',
+    letterSpacing: -0.5,
   },
   closeButton: {
-    padding: 5,
+    padding: 8,
+    backgroundColor: '#F5F5F5',
+    borderRadius: 20,
   },
   modalScrollView: {
     flex: 1,
   },
   modalContentContainer: {
-    paddingBottom: 30,
+    paddingBottom: 40,
   },
   modalContent: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
+    paddingHorizontal: 24,
+    paddingTop: 20,
   },
   imageUploadArea: {
     width: '100%',
-    height: 180,
-    backgroundColor: '#81A969',
-    borderRadius: 12,
-    marginBottom: 16,
+    backgroundColor: '#F0F7ED',
+    borderRadius: 16,
+    marginBottom: 24,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderStyle: 'dashed',
   },
   uploadedImage: {
     width: '100%',
     height: '100%',
+    resizeMode: 'cover',
   },
   uploadPlaceholder: {
     flex: 1,
@@ -947,30 +1013,33 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   uploadText: {
-    color: '#fff',
-    marginTop: 10,
+    color: '#81A969',
+    marginTop: 12,
     fontSize: 16,
+    fontWeight: '600',
   },
   input: {
+    backgroundColor: '#FAFAFA',
     borderWidth: 1,
-    borderColor: '#e0e0e0',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
+    borderColor: '#EEEEEE',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
     color: '#333',
-    marginBottom: 8,
+    marginBottom: 16,
   },
   dropdownInput: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    backgroundColor: '#FAFAFA',
     borderWidth: 1,
-    borderColor: '#e0e0e0',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 8,
+    borderColor: '#EEEEEE',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginBottom: 16,
   },
   dropdownPlaceholder: {
     fontSize: 16,
@@ -983,105 +1052,125 @@ const styles = StyleSheet.create({
   formRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 10,
-    gap: 10,
+    marginBottom: 16,
+    gap: 16,
   },
   formColumn: {
     flex: 1,
-    marginRight: 0,
   },
   columnLabel: {
-    fontSize: 13,
+    fontSize: 14,
+    fontWeight: '600',
     color: '#555',
-    marginBottom: 6,
+    marginBottom: 8,
+    marginLeft: 4,
   },
   smallInput: {
+    backgroundColor: '#FAFAFA',
     borderWidth: 1,
-    borderColor: '#e0e0e0',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    fontSize: 15,
+    borderColor: '#EEEEEE',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
     color: '#333',
   },
   smallDropdown: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    backgroundColor: '#FAFAFA',
     borderWidth: 1,
-    borderColor: '#e0e0e0',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    borderColor: '#EEEEEE',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
   },
   dateSection: {
-    marginBottom: 10,
+    marginBottom: 16,
+    backgroundColor: '#FAFAFA',
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#EEEEEE',
   },
   sectionLabel: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '600',
     color: '#333',
-    marginBottom: 8,
+    marginBottom: 12,
   },
   formLabel: {
-    fontSize: 13,
-    color: '#555',
-    marginBottom: 6,
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 8,
   },
   dateInput: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    backgroundColor: '#fff',
     borderWidth: 1,
-    borderColor: '#e0e0e0',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  disabledInput: {
-    backgroundColor: '#f5f5f5',
-  },
-  dateDisplayText: {
-    fontSize: 16,
-    color: '#333',
-  },
-  textAreaInput: {
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    borderRadius: 8,
+    borderColor: '#E0E0E0',
+    borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
+    minWidth: 120,
+  },
+  disabledInput: {
+    backgroundColor: '#F5F5F5',
+    borderColor: 'transparent',
+  },
+  dateDisplayText: {
     fontSize: 15,
     color: '#333',
-    height: 90,
+    fontWeight: '500',
+  },
+  textAreaInput: {
+    backgroundColor: '#FAFAFA',
+    borderWidth: 1,
+    borderColor: '#EEEEEE',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    color: '#333',
+    height: 100,
     textAlignVertical: 'top',
-    marginBottom: 12,
+    marginBottom: 24,
   },
   buttonContainer: {
     marginTop: 8,
     flexDirection: 'column',
-    gap: 12,
+    gap: 16,
   },
   saveButton: {
     backgroundColor: '#81A969',
-    paddingVertical: 13,
-    borderRadius: 8,
+    paddingVertical: 16,
+    borderRadius: 16,
     alignItems: 'center',
     width: '100%',
+    shadowColor: '#81A969',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
   },
   saveButtonText: {
     color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 17,
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
   cancelButton: {
-    backgroundColor: 'transparent',
-    paddingVertical: 13,
+    backgroundColor: '#F5F5F5',
+    paddingVertical: 16,
+    borderRadius: 16,
     alignItems: 'center',
     width: '100%',
   },
   cancelButtonText: {
-    color: '#888',
+    color: '#666',
     fontSize: 16,
     fontWeight: '600',
   },
@@ -1092,42 +1181,44 @@ const styles = StyleSheet.create({
   },
   categoryModalContent: {
     backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingTop: 20,
-    maxHeight: '70%',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 24,
+    maxHeight: '80%',
+    paddingBottom: 30,
   },
   categoryModalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingBottom: 15,
+    paddingHorizontal: 24,
+    paddingBottom: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: '#F0F0F0',
   },
   categoryModalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 20,
+    fontWeight: '700',
     color: '#333',
   },
   categoryList: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 24,
   },
   categoryOption: {
-    paddingVertical: 15,
+    paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: '#F5F5F5',
   },
   categoryOptionText: {
-    fontSize: 16,
+    fontSize: 17,
     color: '#333',
   },
   errorText: {
-    color: '#d9534f',
-    marginTop: 4,
-    marginBottom: 10,
+    color: '#FF5252',
+    marginTop: -12,
+    marginBottom: 16,
     fontSize: 13,
+    marginLeft: 4,
   },
 });
 
