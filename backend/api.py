@@ -19,6 +19,7 @@ import traceback
 import google.generativeai as genai
 from google.ai.generativelanguage import Content, Part
 import json
+import base64
 
 # ✅ Load .env file FIRST
 load_dotenv()
@@ -31,6 +32,7 @@ FATSECRET_API_URL = "https://platform.fatsecret.com/rest/server.api"
 FATSECRET_KEY = os.getenv("FATSECRET_CLIENT_ID", "")
 FATSECRET_SECRET = os.getenv("FATSECRET_CLIENT_SECRET", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 def call_server_api(method: str, params: dict = None):
     timestamp = str(int(time.time()))
@@ -166,11 +168,12 @@ def call_gemini_vision(image: Image.Image):
     
     # ✅ Check Rate Limit
     if not check_gemini_rate_limit():
-        return None
+        print("⚠️ Gemini Rate Limit Reached. Switching to OpenAI Fallback...")
+        return call_openai_vision(image)
 
     if not gemini_model:
-        print("❌ gemini_model is None")
-        return None
+        print("❌ gemini_model is None. Switching to OpenAI Fallback...")
+        return call_openai_vision(image)
 
     prompt = """
     You are an expert in Filipino cuisine. Analyze this food image and identify the dish/ingredient.
@@ -210,6 +213,99 @@ def call_gemini_vision(image: Image.Image):
         return json.loads(response.text)
     except Exception as e:
         print(f"❌ Gemini Error: {e}")
+        traceback.print_exc()
+        print("⚠️ Gemini Failed. Switching to OpenAI Fallback...")
+        return call_openai_vision(image)
+
+def encode_image(image: Image.Image):
+    buffered = io.BytesIO()
+    image.save(buffered, format="JPEG")
+    return base64.b64encode(buffered.getvalue()).decode('utf-8')
+
+def call_openai_vision(image: Image.Image):
+    """
+    Fallback to OpenAI GPT-4o Vision when Gemini rate limit is reached.
+    """
+    if not OPENAI_API_KEY:
+        print("❌ OpenAI API Key missing for fallback")
+        return None
+        
+    print("🤖 Calling OpenAI Vision (Fallback)...")
+    
+    try:
+        base64_image = encode_image(image)
+        
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {OPENAI_API_KEY}"
+        }
+        
+        prompt_text = """
+        You are an expert in Filipino cuisine. Analyze this food image and identify the dish/ingredient.
+        
+        Key Instructions:
+        1. Prioritize Filipino dishes/ingredients. If the dish looks like a generic international dish (e.g., Spaghetti, Fried Chicken, Curry) but has Filipino characteristics (e.g., red hotdogs in spaghetti, gravy with chicken), identify it as the Filipino version.
+        2. Look for visual cues common in Filipino cooking: specific vegetables (eggplant, okra, kangkong), sauces (adobo, sinigang, kare-kare), or side dishes (rice, dipping sauces).
+        3. If it is a regional Filipino specialty, provide the specific local name.
+        4. If it is definitely NOT Filipino, identify it correctly as its international name.
+        5. If the image is NOT food (e.g., a person, car, landscape, blurry object), return "Not a Food" as the name.
+        6. If you cannot identify the food at all, return "Unknown Food" as the name.
+        7. Provide top 5 possible identifications, sorted by confidence (highest first).
+        8. Assign a realistic confidence score (0.0 to 0.99) for each prediction based on how certain you are. Do not default to 0.99 unless absolutely certain.
+        9. Do NOT return generic cuisine names (e.g., "Italian Cuisine", "American Food") or meal types. Return ONLY specific dish names (e.g., "Carbonara", "Burger") or ingredient names.
+        
+        Return strict JSON format with a "predictions" key:
+        {
+            "predictions": [
+                {
+                    "name": "Dish or Ingredient Name",
+                    "confidence": 0.6 to 0.99
+                },
+                {
+                    "name": "Dish or Ingredient Name that may look similar",
+                    "confidence": 0.6 to 0.99
+                }
+            ]
+        }
+        """
+        
+        payload = {
+            "model": "gpt-4o",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": prompt_text
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{base64_image}"
+                            }
+                        }
+                    ]
+                }
+            ],
+            "response_format": { "type": "json_object" },
+            "max_tokens": 500
+        }
+        
+        response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
+        
+        if response.status_code != 200:
+            print(f"❌ OpenAI Error: {response.status_code} - {response.text}")
+            return None
+            
+        result = response.json()
+        content = result['choices'][0]['message']['content']
+        print(f"✅ OpenAI Raw Response: {content}")
+        
+        data = json.loads(content)
+        return data.get("predictions", [])
+    except Exception as e:
+        print(f"❌ OpenAI Fallback Error: {e}")
         traceback.print_exc()
         return None
 
