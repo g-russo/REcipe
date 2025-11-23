@@ -354,6 +354,9 @@ Return ONLY the JSON array, no additional text.`;
     }
 
     ingredients.forEach((ing, index) => {
+      const ingredientText = ing.text || ing;
+      const ingredientName = this.extractIngredientName(ingredientText);
+      
       // Check if ingredient is marked as substituted (from old system)
       if (ing.isSubstituted && ing.originalText) {
         // Extract ingredient name from substituted text (remove quantity/unit)
@@ -391,9 +394,32 @@ Return ONLY the JSON array, no additional text.`;
           ingredientName: ing.substitutedWith.pantryItem?.itemName
         });
       }
+      // NEW: Also detect ANY pantry items that match recipe ingredients (not just substitutions)
+      else if (pantryItems.length > 0) {
+        const matchedPantryItem = pantryItems.find(item => {
+          const itemNameLower = item.itemName.toLowerCase();
+          const ingredientNameLower = ingredientName.toLowerCase();
+          return itemNameLower === ingredientNameLower || 
+                 itemNameLower.includes(ingredientNameLower) ||
+                 ingredientNameLower.includes(itemNameLower);
+        });
+
+        // If this ingredient matches something in the pantry, include it
+        if (matchedPantryItem) {
+          substitutions.push({
+            index,
+            original: ingredientText,
+            substituted: ingredientText, // Same as original (not substituted)
+            pantryItem: matchedPantryItem,
+            pantryItemId: matchedPantryItem.itemID,
+            ingredientName: matchedPantryItem.itemName,
+            isFromPantry: true // Flag to indicate this is a pantry match, not a substitution
+          });
+        }
+      }
     });
 
-    console.log(`📋 Found ${substitutions.length} substitutions in recipe`);
+    console.log(`📋 Found ${substitutions.length} pantry items in recipe (substituted + matched)`);
     return substitutions;
   }
 }

@@ -110,14 +110,27 @@ const IngredientUsageConfirmationModal = ({
 
                     {/* Ingredient Info */}
                     <View style={styles.ingredientInfo}>
-                      <View style={styles.substitutionRow}>
-                        <Text style={styles.originalText}>{sub.original}</Text>
-                        <Ionicons name="arrow-forward" size={16} color="#999" />
-                        <Text style={styles.substitutedText}>{sub.substituted}</Text>
-                      </View>
-                      <Text style={styles.pantryItemLabel}>
-                        From pantry: <Text style={styles.pantryItemName}>{sub.pantryItem?.itemName}</Text>
-                      </Text>
+                      {sub.isFromPantry ? (
+                        // Pantry item (not substituted, just used from pantry)
+                        <View>
+                          <Text style={styles.substitutedText}>{sub.substituted}</Text>
+                          <Text style={styles.pantryItemLabel}>
+                            From pantry: <Text style={styles.pantryItemName}>{sub.pantryItem?.itemName}</Text>
+                          </Text>
+                        </View>
+                      ) : (
+                        // Substituted ingredient
+                        <View>
+                          <View style={styles.substitutionRow}>
+                            <Text style={styles.originalText}>{sub.original}</Text>
+                            <Ionicons name="arrow-forward" size={16} color="#999" />
+                            <Text style={styles.substitutedText}>{sub.substituted}</Text>
+                          </View>
+                          <Text style={styles.pantryItemLabel}>
+                            From pantry: <Text style={styles.pantryItemName}>{sub.pantryItem?.itemName}</Text>
+                          </Text>
+                        </View>
+                      )}
                     </View>
                   </TouchableOpacity>
                 );

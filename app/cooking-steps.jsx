@@ -217,7 +217,7 @@ const CookingSteps = () => {
         }
       }
 
-      // 2. Check if there are substituted ingredients
+      // 2. Always check for ingredients used (substituted or not)
       const substitutions = await SimpleSubstitutionService.getSubstitutionSummary(
         recipe,
         customUserData?.userID
@@ -225,13 +225,13 @@ const CookingSteps = () => {
       
       console.log(`🔍 Found ${substitutions.length} substituted ingredients`);
       
-      if (substitutions.length > 0 && customUserData?.userID) {
-        // Show confirmation modal for ingredient deletion
+      if (customUserData?.userID) {
+        // Always show confirmation modal for better pantry tracking
         setSubstitutedIngredients(substitutions);
         setShowIngredientConfirmation(true);
         setCompletionMessage('Recipe saved! Please confirm ingredient usage.');
       } else {
-        // No substitutions, just complete
+        // No user ID, just complete
         setCompletionMessage('Recipe saved to your cooking history!');
         showCompletionModal();
       }
