@@ -732,20 +732,38 @@ export default function FoodRecognitionResult() {
 
       if (deconstructionResult.is_dish || (deconstructionResult.suggested_recipes && deconstructionResult.suggested_recipes.length > 0)) {
 
-        // 2. Search for recipes using the ingredients
+        // 2. Search for recipes using the ingredients (Individually to maximize results)
         let realRecipes = [];
         if (deconstructionResult.ingredients && deconstructionResult.ingredients.length > 0) {
           try {
-            const ingredientsQuery = deconstructionResult.ingredients.join(' ');
-            console.log(`🔍 Searching for recipes with ingredients: ${ingredientsQuery}`);
+            console.log(`🔍 Searching for recipes individually for: ${deconstructionResult.ingredients.join(', ')}`);
 
-            const searchResults = await EdamamService.searchRecipes(ingredientsQuery, {
-              to: 5 // Limit to 5 results for the modal
+            // Search for each ingredient individually in parallel
+            const searchPromises = deconstructionResult.ingredients.map(async (ingredient) => {
+              try {
+                const result = await EdamamService.searchRecipes(ingredient, { to: 2 }); // Get top 2 for each
+                return result.success && result.data ? result.data.recipes : [];
+              } catch (e) {
+                console.warn(`Failed to search for ${ingredient}:`, e);
+                return [];
+              }
             });
 
-            if (searchResults && searchResults.hits) {
-              realRecipes = searchResults.hits.map(hit => hit.recipe);
-            }
+            const results = await Promise.all(searchPromises);
+
+            // Flatten and deduplicate results
+            const allFoundRecipes = results.flat();
+            const seenUris = new Set();
+
+            realRecipes = allFoundRecipes.filter(recipe => {
+              if (!recipe || !recipe.uri) return false;
+              if (seenUris.has(recipe.uri)) return false;
+              seenUris.add(recipe.uri);
+              return true;
+            }).slice(0, 10); // Limit total to 10 recipes
+
+            console.log(`✅ Found ${realRecipes.length} total recipes from individual ingredient searches`);
+
           } catch (searchError) {
             console.error("Error searching for recipes:", searchError);
           }
@@ -792,6 +810,30 @@ export default function FoodRecognitionResult() {
         autoSearch: 'true',
         isDeconstructed: 'true',
         originalDish: selectedFood.label
+      }
+    });
+  };
+
+  // New function to handle AI recipe generation
+  const handleGenerateRecipe = (recipeName) => {
+    setDeconstructionModalVisible(false);
+    router.push({
+      pathname: '/(tabs)/recipe-search',
+      params: {
+        searchQuery: recipeName,
+        autoSearch: 'true',
+        mode: 'generate'
+      }
+    });
+  };
+
+  // New function to handle recipe selection
+  const handleRecipeSelect = (recipe) => {
+    setDeconstructionModalVisible(false);
+    router.push({
+      pathname: '/recipe-detail',
+      params: {
+        recipeData: JSON.stringify(recipe)
       }
     });
   };
@@ -1205,6 +1247,8 @@ export default function FoodRecognitionResult() {
           onClose={() => setDeconstructionModalVisible(false)}
           data={deconstructionData}
           onSearchRecipe={handleDeconstructionSearch}
+          onRecipeSelect={handleRecipeSelect} // Pass the new handler
+          onGenerateRecipe={handleGenerateRecipe} // Pass the new handler
         />
 
         <ItemFormModal

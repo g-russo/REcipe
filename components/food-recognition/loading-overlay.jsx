@@ -22,16 +22,21 @@ const LOADING_PHRASES = [
     "Chopping the pixels..."
 ];
 
-const LoadingOverlay = ({ visible }) => {
+const LoadingOverlay = ({ visible, phrases, mode = 'search', progress = 0, themeColor = '#81A969' }) => {
     const [phraseIndex, setPhraseIndex] = useState(0);
+    const activePhrases = phrases || LOADING_PHRASES;
     const [show, setShow] = useState(visible);
     const [isAnimating, setIsAnimating] = useState(false);
+
+    const isGenerate = mode === 'generate';
+    // Use passed themeColor or default based on mode if not provided (fallback)
+    const activeColor = themeColor || (isGenerate ? '#8A2BE2' : '#81A969');
 
     // Animation values
     const irisScale = useRef(new Animated.Value(0)).current; // Start at 0 for iris in
     const contentOpacity = useRef(new Animated.Value(0)).current;
     const contentScale = useRef(new Animated.Value(0.8)).current;
-    
+
     const animationStartTime = useRef(null);
     const shouldClose = useRef(false);
 
@@ -42,13 +47,13 @@ const LoadingOverlay = ({ visible }) => {
             setIsAnimating(true);
             shouldClose.current = false;
             animationStartTime.current = Date.now();
-            
+
             // Iris in animation - expand from center to full screen
             // Total duration: 500ms (iris) + 300ms (content) = 800ms, but we add 500ms buffer
             const IRIS_IN_DURATION = 500;
             const CONTENT_FADE_DURATION = 300;
             const MINIMUM_SHOW_TIME = 1300; // Minimum time to show the animation
-            
+
             Animated.sequence([
                 // First, expand the iris background (both white and green layers)
                 Animated.timing(irisScale, {
@@ -74,7 +79,7 @@ const LoadingOverlay = ({ visible }) => {
                 // Animation complete, but enforce minimum duration
                 const elapsedTime = Date.now() - animationStartTime.current;
                 const remainingTime = Math.max(0, MINIMUM_SHOW_TIME - elapsedTime);
-                
+
                 setTimeout(() => {
                     setIsAnimating(false);
                     // If visible was set to false during animation, trigger exit now
@@ -86,7 +91,7 @@ const LoadingOverlay = ({ visible }) => {
 
             // Rotate phrases
             interval = setInterval(() => {
-                setPhraseIndex((prev) => (prev + 1) % LOADING_PHRASES.length);
+                setPhraseIndex((prev) => (prev + 1) % activePhrases.length);
             }, 3000);
         } else {
             // If animation is still running, defer the close
@@ -106,7 +111,7 @@ const LoadingOverlay = ({ visible }) => {
         // Iris out animation - contract to center
         const CONTENT_FADE_OUT_DURATION = 200;
         const IRIS_OUT_DURATION = 400;
-        
+
         Animated.sequence([
             // First fade out content
             Animated.parallel([
@@ -149,18 +154,30 @@ const LoadingOverlay = ({ visible }) => {
                     }
                 ]}
             />
-            
-            {/* Green iris circle that expands/contracts on top of white */}
+
+            {/* Iris circle that expands/contracts on top of white */}
             <Animated.View
                 style={[
                     styles.irisCircle,
-                    styles.greenLayer,
+                    styles.irisLayer,
                     {
                         transform: [{ scale: irisScale }]
                     }
                 ]}
-            />
-            
+            >
+                <View style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    width: SCREEN_DIAGONAL,
+                    height: SCREEN_DIAGONAL,
+                    borderRadius: SCREEN_DIAGONAL / 2,
+                    backgroundColor: activeColor
+                }} />
+            </Animated.View>
+
             {/* Content on top of the iris */}
             <Animated.View
                 style={[
@@ -177,8 +194,17 @@ const LoadingOverlay = ({ visible }) => {
                     resizeMode="contain"
                 />
                 <Text style={styles.phrase}>
-                    {LOADING_PHRASES[phraseIndex]}
+                    {activePhrases[phraseIndex % activePhrases.length]}
                 </Text>
+
+                {isGenerate && (
+                    <View style={styles.progressContainer}>
+                        <View style={styles.progressTrack}>
+                            <View style={[styles.progressBar, { width: `${progress}%` }]} />
+                        </View>
+                        <Text style={styles.progressText}>{progress}%</Text>
+                    </View>
+                )}
             </Animated.View>
         </View>
     );
@@ -204,8 +230,7 @@ const styles = StyleSheet.create({
         backgroundColor: '#FFFFFF',
         zIndex: 0,
     },
-    greenLayer: {
-        backgroundColor: '#81A969',
+    irisLayer: {
         zIndex: 1,
     },
     content: {
@@ -227,6 +252,29 @@ const styles = StyleSheet.create({
         paddingHorizontal: wp('10%'),
         marginTop: hp('2%'),
         fontStyle: 'italic'
+    },
+    progressContainer: {
+        width: '80%',
+        marginTop: hp('3%'),
+        alignItems: 'center',
+    },
+    progressTrack: {
+        width: '100%',
+        height: 6,
+        backgroundColor: 'rgba(255, 255, 255, 0.3)',
+        borderRadius: 3,
+        overflow: 'hidden',
+    },
+    progressBar: {
+        height: '100%',
+        backgroundColor: '#FFFFFF',
+        borderRadius: 3,
+    },
+    progressText: {
+        color: '#FFFFFF',
+        fontSize: wp('3.5%'),
+        marginTop: hp('1%'),
+        fontWeight: '600',
     }
 });
 

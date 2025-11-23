@@ -988,7 +988,8 @@ const Pantry = () => {
         // You can use expo-router's useLocalSearchParams to receive them
         router.setParams({
           searchQuery: searchQuery,
-          autoSearch: 'true'
+          autoSearch: 'true',
+          isDeconstructed: 'true'
         });
       }, 300);
     } catch (error) {

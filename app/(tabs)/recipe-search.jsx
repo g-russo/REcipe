@@ -32,6 +32,10 @@ import CachedImage from '../../components/common/cached-image';
 import AuthGuard from '../../components/auth-guard';
 import { useCustomAuth } from '../../hooks/use-custom-auth';
 import { useTabContext } from '../../contexts/tab-context';
+import LoadingOverlay from '../../components/food-recognition/loading-overlay';
+import AIRecipeSuccessModal from '../../components/food-recognition/ai-recipe-success-modal';
+import GenerateAnotherSuccessModal from '../../components/food-recognition/generate-another-success-modal';
+import LimitReachedModal from '../../components/food-recognition/limit-reached-modal';
 
 const RecipeSearch = () => {
   const router = useRouter();
@@ -50,6 +54,12 @@ const RecipeSearch = () => {
   const [currentSearchQuery, setCurrentSearchQuery] = useState(''); // Store current search for "Generate Another"
   const [showGenerateButton, setShowGenerateButton] = useState(false); // Show "Generate AI Recipe" button when no results
   const [isValidSearchTerm, setIsValidSearchTerm] = useState(false); // Track if search term is valid for AI generation
+  const [aiSuccessModalVisible, setAiSuccessModalVisible] = useState(false);
+  const [aiSuccessData, setAiSuccessData] = useState({ recipeName: '', pantryItemCount: 0 });
+  const [generateAnotherModalVisible, setGenerateAnotherModalVisible] = useState(false);
+  const [generateAnotherData, setGenerateAnotherData] = useState({ recipeName: '', pantryItemCount: 0, totalRecipes: 0, canGenerateMore: false });
+  const [limitReachedModalVisible, setLimitReachedModalVisible] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState(0); // Progress for AI generation
   const [filters, setFilters] = useState({
     allergy: [],   // 14 allergen-free options (health labels)
     dietary: [],   // 13 lifestyle/restriction options (health labels)
@@ -100,6 +110,23 @@ const RecipeSearch = () => {
     'low-carb',
     'low-fat',
     'low-sodium'
+  ];
+
+  // Custom Loading Phrases
+  const SEARCH_PHRASES = [
+    "Scouring the recipe books...",
+    "Asking the chefs...",
+    "Looking for tasty matches...",
+    "Checking the pantry...",
+    "Finding the perfect dish..."
+  ];
+
+  const GENERATION_PHRASES = [
+    "SousChef AI is thinking...",
+    "Inventing a new recipe...",
+    "Calculating flavor profiles...",
+    "Writing the instructions...",
+    "Plating your custom dish..."
   ];
   const [hasSearched, setHasSearched] = useState(false);
 
@@ -157,15 +184,20 @@ const RecipeSearch = () => {
   // Reset loading states when screen comes into focus (after long periods)
   useFocusEffect(
     React.useCallback(() => {
+      // Determine timeout duration based on what's loading
+      // AI generation takes longer (up to 2 mins), regular search is faster
+      const timeoutDuration = generatingAI ? 120000 : 15000;
+
       // Reset loading states if they're stuck
       const timer = setTimeout(() => {
         if (loading || generatingAI || loadingPopular) {
-          console.log('⚠️ Resetting stuck loading states on focus');
+          console.log(`⚠️ Resetting stuck loading states on focus (${timeoutDuration / 1000}s timeout)`);
+          console.log('🔴 Loading overlay FINISHED (Focus Timeout)');
           setLoading(false);
           setGeneratingAI(false);
           setLoadingPopular(false);
         }
-      }, 1000); // Give 1 second for legitimate loading to complete
+      }, timeoutDuration);
 
       return () => clearTimeout(timer);
     }, [loading, generatingAI, loadingPopular])
@@ -464,6 +496,566 @@ const RecipeSearch = () => {
     }
   };
 
+
+  const handleGenerateAnother = async () => {
+    const currentTotal = recipes.length;
+
+    // Check if we've reached 5 total recipes
+    if (currentTotal >= 5) {
+      setLimitReachedModalVisible(true);
+      return;
+    }
+
+    // ✅ Show loading during generation
+    setLoading(true);
+    setGeneratingAI(true);
+
+    // ✅ CRITICAL: Clear search timeout so it doesn't stop loading during AI generation
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+      searchTimeoutRef.current = null;
+      console.log('🔄 Cleared search timeout - AI generation in progress');
+    }
+
+    // Verify currentSearchQuery is set
+    if (!currentSearchQuery || currentSearchQuery.trim() === '') {
+      console.error('⚠️ ERROR: currentSearchQuery is empty!', { currentSearchQuery });
+      Alert.alert('Error', 'Search query is missing. Please try searching again.');
+      setLoading(false);
+      setGeneratingAI(false);
+      return;
+    }
+
+    console.log(`🎯 Generating with search query: "${currentSearchQuery}"`);
+
+    try {
+      const recipesNeeded = 5 - currentTotal;
+      console.log(`🤖 Generating another recipe based on search "${currentSearchQuery}" (Total: ${currentTotal}/5, Need: ${recipesNeeded} more)...`);
+
+      // Get user's pantry items
+      let pantryItems = [];
+      if (user?.email) {
+        pantryItems = await SousChefAIService.getUserPantryItems(user.email);
+        console.log(`📦 Using ${pantryItems.length} pantry items for recipe generation`);
+      }
+
+      // ✅ Generate recipe based on BOTH search query AND pantry items
+      console.log(`🔍 Generating recipe with search: "${currentSearchQuery}", pantry: ${pantryItems.length} items`);
+
+      // Generate 1 more AI recipe (pass existing recipes for duplicate detection)
+      const aiResult = await SousChefAIService.generateSingleRecipe(
+        currentSearchQuery, // ✅ Use current search query
+        filters,
+        pantryItems, // ✅ Use user's pantry items
+        aiRecipeCount, // Pass current count
+        recipes // Pass existing recipes to avoid duplicates
+      );
+
+      if (aiResult.success && aiResult.recipe) {
+        // Format new recipe
+        const formattedRecipe = {
+          id: aiResult.recipe.recipeID,
+          uri: `souschef://recipe/${aiResult.recipe.recipeID}`,
+          label: aiResult.recipe.recipeName,
+          image: aiResult.recipe.recipeImage,
+          source: 'SousChef AI',
+          url: null,
+          yield: aiResult.recipe.servings,
+          dietLabels: aiResult.recipe.dietLabels || [],
+          healthLabels: aiResult.recipe.healthLabels || [],
+          cautions: aiResult.recipe.allergens || [],
+          ingredientLines: aiResult.recipe.ingredients.map(ing =>
+            `${ing.quantity} ${ing.unit} ${ing.name}${ing.notes ? ` (${ing.notes})` : ''}`
+          ),
+          ingredients: aiResult.recipe.ingredients,
+          // ✅ Nutrition values (per serving from AI)
+          calories: Math.round(aiResult.recipe.calories || 0),
+          protein: Math.round(aiResult.recipe.protein || 0),
+          carbs: Math.round(aiResult.recipe.carbs || 0),
+          fat: Math.round(aiResult.recipe.fat || 0),
+          totalTime: aiResult.recipe.cookingTime,
+          cuisineType: [aiResult.recipe.cuisineType],
+          mealType: [aiResult.recipe.mealType],
+          dishType: [aiResult.recipe.dishType],
+          isCustom: true,
+          recipeID: aiResult.recipe.recipeID,
+          instructions: aiResult.recipe.instructions,
+          difficulty: aiResult.recipe.difficulty
+        };
+
+        // Add to existing recipes (check for duplicates first)
+        setRecipes(prevRecipes => {
+          // Check if recipe already exists by recipeID or URI
+          const exists = prevRecipes.some(r =>
+            (r.recipeID && r.recipeID === formattedRecipe.recipeID) ||
+            (r.uri && r.uri === formattedRecipe.uri)
+          );
+
+          if (exists) {
+            console.log('⚠️ Recipe already exists, not adding duplicate');
+            return prevRecipes;
+          }
+
+          return [...prevRecipes, formattedRecipe];
+        });
+
+        const newAiCount = aiRecipeCount + 1;
+        setAiRecipeCount(newAiCount);
+
+        const newTotal = currentTotal + 1;
+
+        // Disable button if reached 5 total recipes
+        if (newTotal >= 5) {
+          setCanGenerateMore(false);
+        }
+
+
+        console.log(`✅ Generated another recipe (Total: ${newTotal}/5, AI: ${newAiCount})`);
+
+        // ✅ Stop loading ONLY after recipe is successfully added
+        // Add artificial delay to ensure UI renders before overlay disappears
+        setTimeout(() => {
+          setGeneratingAI(false);
+          setLoading(false);
+          console.log('✅ Generate Another complete - recipe rendered');
+
+          // Show modal instead of alert
+          setGenerateAnotherData({
+            recipeName: currentSearchQuery,
+            pantryItemCount: pantryItems.length,
+            totalRecipes: newTotal,
+            canGenerateMore: newTotal < 5
+          });
+          setGenerateAnotherModalVisible(true);
+        }, 2500);
+      } else {
+        console.error('❌ AI generation failed:', aiResult.error);
+
+        // ✅ Stop loading on failure
+        setGeneratingAI(false);
+      }
+    } catch (error) {
+      console.error('❌ Generate another error:', error);
+
+      // ✅ Stop loading on error
+      setGeneratingAI(false);
+      setLoading(false);
+      console.log('❌ Generate Another error occurred');
+
+      Alert.alert(
+        'Error',
+        `Failed to generate recipe: ${error.message}`,
+        [{ text: 'OK' }]
+      );
+    }
+  };
+
+  const handleGenerateFirstAIRecipe = async (queryOverride = null) => {
+    const queryToUse = typeof queryOverride === 'string' ? queryOverride : currentSearchQuery;
+
+    if (!queryToUse || (!isValidSearchTerm && !queryOverride)) {
+      Alert.alert('Error', 'Invalid search term. Please try a different search.');
+      return;
+    }
+
+    setGeneratingAI(true);
+    setLoadingProgress(10); // Start progress
+    setShowGenerateButton(false); // Hide button during generation
+
+    // ✅ Clear search timeout - AI generation will control loading state
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+      searchTimeoutRef.current = null;
+      console.log('🔄 Cleared search timeout - AI generation starting');
+    }
+
+    try {
+      // 1. Start Background Search (Parallel)
+      // Construct search options same as performSearch
+      const healthLabels = [
+        ...(filters.allergy || []),
+        ...(filters.dietary || [])
+      ];
+      const searchOptions = { from: 0, to: 20 };
+      if (healthLabels.length > 0) searchOptions.health = healthLabels;
+      if (filters.diet?.length > 0) searchOptions.diet = filters.diet;
+
+      console.log('🔍 Starting background search for:', queryToUse);
+      setLoadingProgress(20); // Search started
+
+      const searchPromise = cacheService.getSearchResults(queryToUse, searchOptions)
+        .catch(err => {
+          console.warn('⚠️ Background search failed:', err);
+          return [];
+        });
+
+      // 2. Start AI Generation (Parallel)
+      // Get user's pantry items
+      let pantryItems = [];
+      if (user?.email) {
+        pantryItems = await SousChefAIService.getUserPantryItems(user.email);
+        console.log(`📦 Found ${pantryItems.length} pantry items`);
+      }
+      setLoadingProgress(30); // Pantry loaded
+
+      // Generate 1 AI recipe based on BOTH search query AND pantry items
+      console.log(`🤖 Creating recipe for "${queryToUse}" with ${pantryItems.length} pantry items`);
+      const aiPromise = SousChefAIService.generateSingleRecipe(
+        queryToUse,
+        filters,
+        pantryItems,
+        0, // First recipe
+        [] // No existing recipes yet
+      );
+
+      // 3. Wait for AI (Search will likely finish first)
+      const [aiResult, searchResults] = await Promise.all([aiPromise, searchPromise]);
+      setLoadingProgress(90); // Generation complete
+
+      const validSearchResults = Array.isArray(searchResults) ? searchResults : [];
+      console.log(`✅ Background search found ${validSearchResults.length} recipes`);
+
+      if (aiResult.success && aiResult.recipe) {
+        setLoadingProgress(100); // Finalizing
+        // Format AI recipe
+        const formattedRecipe = {
+          id: aiResult.recipe.recipeID,
+          uri: `souschef://recipe/${aiResult.recipe.recipeID}`,
+          label: aiResult.recipe.recipeName,
+          image: aiResult.recipe.recipeImage,
+          source: 'SousChef AI',
+          url: null,
+          yield: aiResult.recipe.servings,
+          dietLabels: aiResult.recipe.dietLabels || [],
+          healthLabels: aiResult.recipe.healthLabels || [],
+          cautions: aiResult.recipe.allergens || [],
+          ingredientLines: aiResult.recipe.ingredients.map(ing =>
+            `${ing.quantity} ${ing.unit} ${ing.name}${ing.notes ? ` (${ing.notes})` : ''}`
+          ),
+          ingredients: aiResult.recipe.ingredients,
+          calories: Math.round(aiResult.recipe.calories || 0),
+          protein: Math.round(aiResult.recipe.protein || 0),
+          carbs: Math.round(aiResult.recipe.carbs || 0),
+          fat: Math.round(aiResult.recipe.fat || 0),
+          totalTime: aiResult.recipe.cookingTime,
+          cuisineType: [aiResult.recipe.cuisineType],
+          mealType: [aiResult.recipe.mealType],
+          dishType: [aiResult.recipe.dishType],
+          isCustom: true,
+          recipeID: aiResult.recipe.recipeID,
+          instructions: aiResult.recipe.instructions,
+          difficulty: aiResult.recipe.difficulty
+        };
+
+        // Combine AI recipe with search results (AI first)
+        // Filter out any search results that might duplicate the AI recipe name (unlikely but safe)
+        const uniqueSearchResults = validSearchResults.filter(r =>
+          r.label.toLowerCase() !== formattedRecipe.label.toLowerCase()
+        );
+
+        setRecipes([formattedRecipe, ...uniqueSearchResults]);
+        setAiRecipeCount(1);
+        setCanGenerateMore(true); // Enable "Generate Another"
+        setHasSearched(true); // ✅ CRITICAL: Ensure UI switches to results view
+        console.log(`✅ Generated 1 AI recipe + ${uniqueSearchResults.length} search results`);
+
+        // ✅ Stop loading ONLY after recipe is successfully added
+        // Add artificial delay to ensure UI renders before overlay disappears
+        setTimeout(() => {
+          setGeneratingAI(false);
+          console.log('✅ AI generation complete - recipe rendered');
+
+          setAiSuccessData({
+            recipeName: aiResult.recipe.recipeName,
+            pantryItemCount: pantryItems.length
+          });
+          setAiSuccessModalVisible(true);
+        }, 2500);
+      } else {
+        console.error('❌ AI generation failed:', aiResult.error);
+
+        setGeneratingAI(false);
+        setShowGenerateButton(true); // Show button again
+
+        Alert.alert(
+          'Generation Failed',
+          'Sorry, we couldn\'t generate a recipe. Please try again.',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (aiError) {
+      console.error('❌ AI generation error:', aiError);
+
+      setGeneratingAI(false);
+      setShowGenerateButton(true); // Show button again
+
+      Alert.alert(
+        'Generation Failed',
+        `Could not generate AI recipe: ${aiError.message}`,
+        [{ text: 'OK' }]
+      );
+    }
+  };
+
+  const handleQuickSearch = (query) => {
+    setSearchQuery(query);
+    handleSearch(query);
+  };
+
+  const handleRecentSearchTap = (search) => {
+    setSearchQuery(search);
+    handleSearch(search);
+  };
+
+  const clearSearchResults = () => {
+    setHasSearched(false);
+    setRecipes([]);
+    setSearchQuery('');
+    setShowGenerateButton(false);
+    setIsValidSearchTerm(false);
+    setCanGenerateMore(false);
+  };
+
+  const renderRecipeCard = ({ item }) => {
+    const isAI = item.isCustom || item.source === 'SousChef AI';
+
+    return (
+      <TouchableOpacity style={styles.recipeCard} onPress={() => handleRecipePress(item)}>
+        <View style={styles.recipeImageContainer}>
+          {item.image ? (
+            <CachedImage
+              uri={item.image}
+              style={styles.recipeImage}
+              resizeMode="cover"
+              fallbackIcon={<Ionicons name="image-outline" size={50} color="#ccc" />}
+            />
+          ) : (
+            <View style={[styles.recipeImage, { backgroundColor: '#f0f0f0', alignItems: 'center', justifyContent: 'center' }]}>
+              <Ionicons name="image-outline" size={50} color="#ccc" />
+            </View>
+          )}
+
+          {/* AI Badge */}
+          {isAI && (
+            <View style={styles.aiBadge}>
+              <Ionicons name="sparkles" size={12} color="#fff" />
+              <Text style={styles.aiBadgeText}>SousChef AI</Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.recipeInfo}>
+          <Text style={styles.recipeTitle} numberOfLines={2}>{item.label}</Text>
+          <Text style={styles.recipeSource}>by {item.source}</Text>
+
+          <View style={styles.recipeStats}>
+            <View style={styles.statItem}>
+              <Ionicons name="time-outline" size={wp('4%')} color="#7f8c8d" style={styles.statIcon} />
+              <Text style={styles.statLabel}>{item.totalTime || 30} min</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Ionicons name="flame-outline" size={wp('4%')} color="#7f8c8d" style={styles.statIcon} />
+              <Text style={styles.statLabel}>{Math.round(item.calories || 0)} kcal</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Ionicons name="people-outline" size={wp('4%')} color="#7f8c8d" style={styles.statIcon} />
+              <Text style={styles.statLabel}>{item.yield} servings</Text>
+            </View>
+          </View>
+
+          {item.dietLabels.length > 0 && (
+            <View style={styles.labelsContainer}>
+              {item.dietLabels.slice(0, 2).map((label, index) => (
+                <View key={index} style={styles.dietLabel}>
+                  <Text style={styles.labelText}>{label}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {item.healthLabels.length > 0 && (
+            <View style={styles.labelsContainer}>
+              {item.healthLabels.slice(0, 3).map((label, index) => (
+                <View key={index} style={styles.healthLabel}>
+                  <Text style={styles.labelText}>{label}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const handleRecipePress = (recipe) => {
+    // Navigate to detailed recipe view
+    router.push({
+      pathname: '/recipe-detail',
+      params: { recipeData: JSON.stringify(recipe) }
+    });
+  };
+
+  const handlePopularRecipePress = (recipe) => {
+    // For popular recipes, we need to fetch full recipe data first
+    if (recipe.fullData) {
+      handleRecipePress(recipe.fullData);
+    } else {
+      // If we only have basic data, show a simple alert or search for the recipe
+      Alert.alert('Recipe', `${recipe.title}\n\nTap search to find more details about this recipe.`);
+    }
+  };
+
+  // Quick search suggestions (static, no API call needed)
+  const quickSearches = [
+    { id: '1', icon: '🍕', label: 'Pizza', query: 'pizza' },
+    { id: '2', icon: '🍝', label: 'Pasta', query: 'pasta' },
+    { id: '3', icon: '🍔', label: 'Burger', query: 'burger' },
+    { id: '4', icon: '🥗', label: 'Salad', query: 'salad' },
+    { id: '5', icon: '🍛', label: 'Curry', query: 'curry' },
+    { id: '6', icon: '🌮', label: 'Tacos', query: 'tacos' },
+    { id: '7', icon: '🍜', label: 'Ramen', query: 'ramen' },
+    { id: '8', icon: '🥘', label: 'Stew', query: 'stew' }
+  ];
+
+  // NEW: Auto-search when coming from pantry or deconstruction
+  useEffect(() => {
+    if (params?.searchQuery && params?.autoSearch === 'true') {
+      console.log('🔍 Auto-searching:', params.searchQuery, 'Mode:', params.mode);
+      setSearchQuery(params.searchQuery);
+      setCurrentSearchQuery(params.searchQuery); // Ensure this is set for AI generation
+
+      // If generating, show loading immediately
+      if (params.mode === 'generate') {
+        setGeneratingAI(true);
+      }
+
+      // Clear params and trigger search after a short delay
+      setTimeout(() => {
+        if (params.mode === 'generate') {
+          console.log('🤖 Triggering AI generation for:', params.searchQuery);
+          setIsValidSearchTerm(true); // Assume valid if coming from deconstruction
+          handleGenerateFirstAIRecipe(params.searchQuery);
+        } else if (params.isDeconstructed === 'true') {
+          console.log('🧩 Triggering deconstructed search for:', params.searchQuery);
+          handleDeconstructedSearch(params.searchQuery);
+        } else {
+          handleSearch(params.searchQuery);
+        }
+
+        // Clear the params so it doesn't search again
+        router.setParams({ searchQuery: undefined, autoSearch: undefined, isDeconstructed: undefined, originalDish: undefined, mode: undefined });
+      }, 500);
+    }
+  }, [params?.searchQuery, params?.autoSearch]);  // Handler for camera button - directly launch camera
+  const handleCameraCapture = async () => {
+    try {
+      // Request camera permission
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+
+      if (status !== 'granted') {
+        Alert.alert(
+          'Permission Required',
+          'Please allow camera access to use food recognition.'
+        );
+        return;
+      }
+
+      // Launch camera
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      // If photo was taken, navigate to result screen
+      if (!result.canceled && result.assets[0]) {
+        router.push({
+          pathname: '/food-recognition/result',
+          params: { uri: result.assets[0].uri },
+        });
+      }
+    } catch (error) {
+      console.error('Camera capture error:', error);
+      Alert.alert('Error', 'Failed to open camera. Please try again.');
+    }
+  };
+
+  const handleDeconstructedSearch = async (query) => {
+    const ingredients = query.split(',').map(i => i.trim());
+    console.log('🔍 Deconstructed search for:', ingredients);
+
+    setLoading(true);
+    setRecipes([]);
+    setHasSearched(false);
+
+    try {
+      const allFoundRecipes = [];
+      const seenUris = new Set();
+      
+      // Rate limiting configuration (10 requests per minute)
+      const MAX_RPM = 10;
+      const WINDOW_MS = 60000; // 1 minute
+      const requestTimestamps = []; // Track request times
+
+      // Process ingredients sequentially to respect rate limits
+      for (let i = 0; i < ingredients.length; i++) {
+        const ingredient = ingredients[i];
+        
+        // Check rate limit
+        const now = Date.now();
+        // Filter out timestamps older than 1 minute
+        while (requestTimestamps.length > 0 && requestTimestamps[0] < now - WINDOW_MS) {
+          requestTimestamps.shift();
+        }
+
+        if (requestTimestamps.length >= MAX_RPM) {
+          // Rate limit reached - wait until the oldest request expires
+          const oldestRequest = requestTimestamps[0];
+          const waitTime = (oldestRequest + WINDOW_MS) - now + 1000; // Add 1s buffer
+          
+          console.log(`⏳ Rate limit reached (${MAX_RPM} RPM). Waiting ${Math.ceil(waitTime/1000)}s...`);
+          
+          // Show a toast or update loading text if possible (optional)
+          // For now, just wait
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+        }
+
+        // Proceed with search
+        try {
+          console.log(`🔎 Searching for ingredient ${i+1}/${ingredients.length}: ${ingredient}`);
+          requestTimestamps.push(Date.now()); // Record timestamp
+          
+          const results = await cacheService.getSearchResults(ingredient, { to: 5 });
+          
+          if (Array.isArray(results)) {
+            allFoundRecipes.push(...results);
+          }
+        } catch (e) {
+          console.warn(`Failed to search for ${ingredient}:`, e);
+        }
+      }
+
+      const uniqueRecipes = [];
+
+      for (const recipe of allFoundRecipes) {
+        if (recipe && recipe.uri && !seenUris.has(recipe.uri)) {
+          seenUris.add(recipe.uri);
+          uniqueRecipes.push(recipe);
+        }
+      }
+
+      setRecipes(uniqueRecipes);
+      setHasSearched(true);
+
+    } catch (error) {
+      console.error("Error in deconstructed search:", error);
+      Alert.alert("Error", "Failed to search for ingredients.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSearch = async (query = searchQuery) => {
     if (!query.trim()) {
       Alert.alert('Search Required', 'Please enter a recipe name or ingredient to search for.');
@@ -488,6 +1080,7 @@ const RecipeSearch = () => {
     // Clear previous results to show loading screen
     setRecipes([]);
     setLoading(true);
+    console.log('🟢 Loading overlay STARTED');
     setShowGenerateButton(false); // ✅ Reset generate button state
     setIsValidSearchTerm(false); // ✅ Reset validation state
     // ✅ DON'T set hasSearched yet - wait until we have results or confirmed no results
@@ -711,15 +1304,15 @@ const RecipeSearch = () => {
             }));
 
           if (imagesToCache.length > 0) {
-            recipeImageCacheService.batchCacheImages(imagesToCache);
+            // ✅ Wait for images to be cached before showing results
+            await recipeImageCacheService.batchCacheImages(imagesToCache);
           }
 
           // ✅ Keep loading animation visible until recipes are ready (prevents false "No Recipes" screen)
           // Wait for images to start loading and UI to render
-          setTimeout(() => {
-            setLoading(false);
-            console.log('✅ Search complete - recipes rendered');
-          }, 3000); // 3 seconds for smoother transition
+          console.log('🔴 Loading overlay FINISHED');
+          setLoading(false);
+          console.log('✅ Search complete - recipes rendered');
         } else {
           // ❌ No results anywhere - Validate search term and show Generate button
           console.log(`ℹ️ No existing recipes found for "${query}"`);
@@ -807,438 +1400,28 @@ const RecipeSearch = () => {
     }
   };
 
-  const handleGenerateAnother = async () => {
-    const currentTotal = recipes.length;
-
-    // Check if we've reached 5 total recipes
-    if (currentTotal >= 5) {
-      Alert.alert(
-        'Limit Reached',
-        'You have 5 recipes already! Try a new search for more options.',
-        [{ text: 'OK' }]
-      );
-      return;
-    }
-
-    // ✅ Show loading during generation
-    setLoading(true);
-    setGeneratingAI(true);
-
-    // ✅ CRITICAL: Clear search timeout so it doesn't stop loading during AI generation
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-      searchTimeoutRef.current = null;
-      console.log('🔄 Cleared search timeout - AI generation in progress');
-    }
-
-    // Verify currentSearchQuery is set
-    if (!currentSearchQuery || currentSearchQuery.trim() === '') {
-      console.error('⚠️ ERROR: currentSearchQuery is empty!', { currentSearchQuery });
-      Alert.alert('Error', 'Search query is missing. Please try searching again.');
-      setLoading(false);
-      setGeneratingAI(false);
-      return;
-    }
-
-    console.log(`🎯 Generating with search query: "${currentSearchQuery}"`);
-
-    try {
-      const recipesNeeded = 5 - currentTotal;
-      console.log(`🤖 Generating another recipe based on search "${currentSearchQuery}" (Total: ${currentTotal}/5, Need: ${recipesNeeded} more)...`);
-
-      // Get user's pantry items
-      let pantryItems = [];
-      if (user?.email) {
-        pantryItems = await SousChefAIService.getUserPantryItems(user.email);
-        console.log(`📦 Using ${pantryItems.length} pantry items for recipe generation`);
-      }
-
-      // ✅ Generate recipe based on BOTH search query AND pantry items
-      console.log(`🔍 Generating recipe with search: "${currentSearchQuery}", pantry: ${pantryItems.length} items`);
-
-      // Generate 1 more AI recipe (pass existing recipes for duplicate detection)
-      const aiResult = await SousChefAIService.generateSingleRecipe(
-        currentSearchQuery, // ✅ Use current search query
-        filters,
-        pantryItems, // ✅ Use user's pantry items
-        aiRecipeCount, // Pass current count
-        recipes // Pass existing recipes to avoid duplicates
-      );
-
-      if (aiResult.success && aiResult.recipe) {
-        // Format new recipe
-        const formattedRecipe = {
-          id: aiResult.recipe.recipeID,
-          uri: `souschef://recipe/${aiResult.recipe.recipeID}`,
-          label: aiResult.recipe.recipeName,
-          image: aiResult.recipe.recipeImage,
-          source: 'SousChef AI',
-          url: null,
-          yield: aiResult.recipe.servings,
-          dietLabels: aiResult.recipe.dietLabels || [],
-          healthLabels: aiResult.recipe.healthLabels || [],
-          cautions: aiResult.recipe.allergens || [],
-          ingredientLines: aiResult.recipe.ingredients.map(ing =>
-            `${ing.quantity} ${ing.unit} ${ing.name}${ing.notes ? ` (${ing.notes})` : ''}`
-          ),
-          ingredients: aiResult.recipe.ingredients,
-          // ✅ Nutrition values (per serving from AI)
-          calories: Math.round(aiResult.recipe.calories || 0),
-          protein: Math.round(aiResult.recipe.protein || 0),
-          carbs: Math.round(aiResult.recipe.carbs || 0),
-          fat: Math.round(aiResult.recipe.fat || 0),
-          totalTime: aiResult.recipe.cookingTime,
-          cuisineType: [aiResult.recipe.cuisineType],
-          mealType: [aiResult.recipe.mealType],
-          dishType: [aiResult.recipe.dishType],
-          isCustom: true,
-          recipeID: aiResult.recipe.recipeID,
-          instructions: aiResult.recipe.instructions,
-          difficulty: aiResult.recipe.difficulty
-        };
-
-        // Add to existing recipes (check for duplicates first)
-        setRecipes(prevRecipes => {
-          // Check if recipe already exists by recipeID or URI
-          const exists = prevRecipes.some(r =>
-            (r.recipeID && r.recipeID === formattedRecipe.recipeID) ||
-            (r.uri && r.uri === formattedRecipe.uri)
-          );
-
-          if (exists) {
-            console.log('⚠️ Recipe already exists, not adding duplicate');
-            return prevRecipes;
-          }
-
-          return [...prevRecipes, formattedRecipe];
-        });
-
-        const newAiCount = aiRecipeCount + 1;
-        setAiRecipeCount(newAiCount);
-
-        const newTotal = currentTotal + 1;
-
-        // Disable button if reached 5 total recipes
-        if (newTotal >= 5) {
-          setCanGenerateMore(false);
-        }
-
-        console.log(`✅ Generated another recipe (Total: ${newTotal}/5, AI: ${newAiCount})`);
-
-        // ✅ Stop loading ONLY after recipe is successfully added
-        setGeneratingAI(false);
-        setLoading(false);
-        console.log('✅ Generate Another complete - recipe rendered');
-
-        Alert.alert(
-          '✨ New Recipe Added!',
-          `Created a new recipe based on "${currentSearchQuery}"${pantryItems.length > 0 ? ` using ${pantryItems.length} items from your pantry` : ''}!\n\nNow showing ${newTotal} recipes!${newTotal < 5 ? `\n\nWant ${5 - newTotal} more? Tap "Generate Another" again.` : '\n\nThat\'s 5 recipes! Try a new search for more.'}`,
-          [{ text: 'Nice!', style: 'default' }]
-        );
-      } else {
-        console.error('❌ AI generation failed:', aiResult.error);
-
-        // ✅ Stop loading on failure
-        setGeneratingAI(false);
-        setLoading(false);
-        console.log('❌ Generate Another failed');
-
-        Alert.alert(
-          'Generation Failed',
-          'Could not generate another recipe. Please try again.',
-          [{ text: 'OK' }]
-        );
-      }
-    } catch (error) {
-      console.error('❌ Generate another error:', error);
-
-      // ✅ Stop loading on error
-      setGeneratingAI(false);
-      setLoading(false);
-      console.log('❌ Generate Another error occurred');
-
-      Alert.alert(
-        'Error',
-        `Failed to generate recipe: ${error.message}`,
-        [{ text: 'OK' }]
-      );
-    }
-  };
-
-  const handleGenerateFirstAIRecipe = async () => {
-    if (!currentSearchQuery || !isValidSearchTerm) {
-      Alert.alert('Error', 'Invalid search term. Please try a different search.');
-      return;
-    }
-
-    setGeneratingAI(true);
-    setShowGenerateButton(false); // Hide button during generation
-
-    // ✅ Clear search timeout - AI generation will control loading state
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-      searchTimeoutRef.current = null;
-      console.log('🔄 Cleared search timeout - AI generation starting');
-    }
-
-    try {
-      // Get user's pantry items
-      let pantryItems = [];
-      if (user?.email) {
-        pantryItems = await SousChefAIService.getUserPantryItems(user.email);
-        console.log(`📦 Found ${pantryItems.length} pantry items`);
-      }
-
-      // ✅ Generate 1 AI recipe based on BOTH search query AND pantry items
-      console.log(`🤖 Creating recipe for "${currentSearchQuery}" with ${pantryItems.length} pantry items`);
-      const aiResult = await SousChefAIService.generateSingleRecipe(
-        currentSearchQuery,
-        filters,
-        pantryItems,
-        0, // First recipe
-        [] // No existing recipes yet
-      );
-
-      if (aiResult.success && aiResult.recipe) {
-        // Format AI recipe
-        const formattedRecipe = {
-          id: aiResult.recipe.recipeID,
-          uri: `souschef://recipe/${aiResult.recipe.recipeID}`,
-          label: aiResult.recipe.recipeName,
-          image: aiResult.recipe.recipeImage,
-          source: 'SousChef AI',
-          url: null,
-          yield: aiResult.recipe.servings,
-          dietLabels: aiResult.recipe.dietLabels || [],
-          healthLabels: aiResult.recipe.healthLabels || [],
-          cautions: aiResult.recipe.allergens || [],
-          ingredientLines: aiResult.recipe.ingredients.map(ing =>
-            `${ing.quantity} ${ing.unit} ${ing.name}${ing.notes ? ` (${ing.notes})` : ''}`
-          ),
-          ingredients: aiResult.recipe.ingredients,
-          calories: Math.round(aiResult.recipe.calories || 0),
-          protein: Math.round(aiResult.recipe.protein || 0),
-          carbs: Math.round(aiResult.recipe.carbs || 0),
-          fat: Math.round(aiResult.recipe.fat || 0),
-          totalTime: aiResult.recipe.cookingTime,
-          cuisineType: [aiResult.recipe.cuisineType],
-          mealType: [aiResult.recipe.mealType],
-          dishType: [aiResult.recipe.dishType],
-          isCustom: true,
-          recipeID: aiResult.recipe.recipeID,
-          instructions: aiResult.recipe.instructions,
-          difficulty: aiResult.recipe.difficulty
-        };
-
-        setRecipes([formattedRecipe]);
-        setAiRecipeCount(1);
-        setCanGenerateMore(true); // Enable "Generate Another"
-        console.log(`✅ Generated 1 AI recipe (1/5)`);
-
-        // ✅ Stop loading ONLY after recipe is successfully added
-        setGeneratingAI(false);
-        console.log('✅ AI generation complete - recipe rendered');
-
-        Alert.alert(
-          '🤖 AI Recipe Created!',
-          `SousChef AI created a custom recipe for "${currentSearchQuery}"!${pantryItems.length > 0 ? `\n\n✨ Personalized using ${pantryItems.length} items from your pantry!` : ''}\n\nWant more options? Tap "Generate Another" (up to 5 total).`,
-          [{ text: 'Awesome!', style: 'default' }]
-        );
-      } else {
-        console.error('❌ AI generation failed:', aiResult.error);
-
-        setGeneratingAI(false);
-        setShowGenerateButton(true); // Show button again
-
-        Alert.alert(
-          'Generation Failed',
-          'Sorry, we couldn\'t generate a recipe. Please try again.',
-          [{ text: 'OK' }]
-        );
-      }
-    } catch (aiError) {
-      console.error('❌ AI generation error:', aiError);
-
-      setGeneratingAI(false);
-      setShowGenerateButton(true); // Show button again
-
-      Alert.alert(
-        'Generation Failed',
-        `Could not generate AI recipe: ${aiError.message}`,
-        [{ text: 'OK' }]
-      );
-    }
-  };
-
-  const handleQuickSearch = (query) => {
-    setSearchQuery(query);
-    handleSearch(query);
-  };
-
-  const handleRecentSearchTap = (search) => {
-    setSearchQuery(search);
-    handleSearch(search);
-  };
-
-  const clearSearchResults = () => {
-    setHasSearched(false);
-    setRecipes([]);
-    setSearchQuery('');
-    setShowGenerateButton(false);
-    setIsValidSearchTerm(false);
-    setCanGenerateMore(false);
-  };
-
-  const renderRecipeCard = ({ item }) => {
-    const isAI = item.isCustom || item.source === 'SousChef AI';
-
-    return (
-      <TouchableOpacity style={styles.recipeCard} onPress={() => handleRecipePress(item)}>
-        <View style={styles.recipeImageContainer}>
-          {item.image ? (
-            <CachedImage
-              uri={item.image}
-              style={styles.recipeImage}
-              resizeMode="cover"
-              fallbackIcon={<Ionicons name="image-outline" size={50} color="#ccc" />}
-            />
-          ) : (
-            <View style={[styles.recipeImage, { backgroundColor: '#f0f0f0', alignItems: 'center', justifyContent: 'center' }]}>
-              <Ionicons name="image-outline" size={50} color="#ccc" />
-            </View>
-          )}
-
-          {/* AI Badge */}
-          {isAI && (
-            <View style={styles.aiBadge}>
-              <Ionicons name="sparkles" size={12} color="#fff" />
-              <Text style={styles.aiBadgeText}>SousChef AI</Text>
-            </View>
-          )}
-        </View>
-
-        <View style={styles.recipeInfo}>
-          <Text style={styles.recipeTitle} numberOfLines={2}>{item.label}</Text>
-          <Text style={styles.recipeSource}>by {item.source}</Text>
-
-          <View style={styles.recipeStats}>
-            <View style={styles.statItem}>
-              <Ionicons name="time-outline" size={wp('4%')} color="#7f8c8d" style={styles.statIcon} />
-              <Text style={styles.statLabel}>{item.totalTime || 30} min</Text>
-            </View>
-            <View style={styles.statItem}>
-              <Ionicons name="flame-outline" size={wp('4%')} color="#7f8c8d" style={styles.statIcon} />
-              <Text style={styles.statLabel}>{Math.round(item.calories || 0)} kcal</Text>
-            </View>
-            <View style={styles.statItem}>
-              <Ionicons name="people-outline" size={wp('4%')} color="#7f8c8d" style={styles.statIcon} />
-              <Text style={styles.statLabel}>{item.yield} servings</Text>
-            </View>
-          </View>
-
-          {item.dietLabels.length > 0 && (
-            <View style={styles.labelsContainer}>
-              {item.dietLabels.slice(0, 2).map((label, index) => (
-                <View key={index} style={styles.dietLabel}>
-                  <Text style={styles.labelText}>{label}</Text>
-                </View>
-              ))}
-            </View>
-          )}
-
-          {item.healthLabels.length > 0 && (
-            <View style={styles.labelsContainer}>
-              {item.healthLabels.slice(0, 3).map((label, index) => (
-                <View key={index} style={styles.healthLabel}>
-                  <Text style={styles.labelText}>{label}</Text>
-                </View>
-              ))}
-            </View>
-          )}
-        </View>
-      </TouchableOpacity>
-    );
-  };
-
-  const handleRecipePress = (recipe) => {
-    // Navigate to detailed recipe view
-    router.push({
-      pathname: '/recipe-detail',
-      params: { recipeData: JSON.stringify(recipe) }
-    });
-  };
-
-  const handlePopularRecipePress = (recipe) => {
-    // For popular recipes, we need to fetch full recipe data first
-    if (recipe.fullData) {
-      handleRecipePress(recipe.fullData);
-    } else {
-      // If we only have basic data, show a simple alert or search for the recipe
-      Alert.alert('Recipe', `${recipe.title}\n\nTap search to find more details about this recipe.`);
-    }
-  };
-
-  // Quick search suggestions (static, no API call needed)
-  const quickSearches = [
-    { id: '1', icon: '🍕', label: 'Pizza', query: 'pizza' },
-    { id: '2', icon: '🍝', label: 'Pasta', query: 'pasta' },
-    { id: '3', icon: '🍔', label: 'Burger', query: 'burger' },
-    { id: '4', icon: '🥗', label: 'Salad', query: 'salad' },
-    { id: '5', icon: '🍛', label: 'Curry', query: 'curry' },
-    { id: '6', icon: '🌮', label: 'Tacos', query: 'tacos' },
-    { id: '7', icon: '🍜', label: 'Ramen', query: 'ramen' },
-    { id: '8', icon: '🥘', label: 'Stew', query: 'stew' }
-  ];
-
-  // NEW: Auto-search when coming from pantry
+  // Handle params for auto-search (e.g. from Pantry)
   useEffect(() => {
-    if (params?.searchQuery && params?.autoSearch === 'true') {
-      console.log('🔍 Auto-searching from pantry:', params.searchQuery);
-      setSearchQuery(params.searchQuery);
+    if (params?.autoSearch === 'true' && params?.searchQuery) {
+      console.log('🚀 Auto-search triggered from params:', params.searchQuery);
+      
+      const query = params.searchQuery;
+      const isDeconstructed = params.isDeconstructed === 'true';
 
-      // Clear params and trigger search after a short delay
+      // Clear params to prevent re-triggering on re-renders
+      router.setParams({ autoSearch: null, searchQuery: null, isDeconstructed: null });
+
+      // Small delay to ensure component is ready
       setTimeout(() => {
-        handleSearch(params.searchQuery);
-        // Clear the params so it doesn't search again
-        router.setParams({ searchQuery: undefined, autoSearch: undefined, isDeconstructed: undefined, originalDish: undefined });
-      }, 100);
+        if (isDeconstructed) {
+          handleDeconstructedSearch(query);
+        } else {
+          setSearchQuery(query);
+          handleSearch(query);
+        }
+      }, 500);
     }
-  }, [params?.searchQuery, params?.autoSearch]);
-
-  // Handler for camera button - directly launch camera
-  const handleCameraCapture = async () => {
-    try {
-      // Request camera permission
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-
-      if (status !== 'granted') {
-        Alert.alert(
-          'Permission Required',
-          'Please allow camera access to use food recognition.'
-        );
-        return;
-      }
-
-      // Launch camera
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.8,
-      });
-
-      // If photo was taken, navigate to result screen
-      if (!result.canceled && result.assets[0]) {
-        router.push({
-          pathname: '/food-recognition/result',
-          params: { uri: result.assets[0].uri },
-        });
-      }
-    } catch (error) {
-      console.error('Camera capture error:', error);
-      Alert.alert('Error', 'Failed to open camera. Please try again.');
-    }
-  };
+  }, [params]);
 
   return (
     <AuthGuard>
@@ -1602,30 +1785,39 @@ const RecipeSearch = () => {
           </View>
         </ScrollView>
 
-        {/* Loading Overlay Modal - NEW */}
-        <Modal
-          transparent={true}
-          animationType="fade"
+        {/* Loading Overlay Modal */}
+        <LoadingOverlay
+          key={generatingAI ? 'generate' : 'search'}
           visible={loading || generatingAI}
-          onRequestClose={() => { }}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <ActivityIndicator size="large" color={generatingAI ? "#8A2BE2" : "#4CAF50"} />
-              <Text style={styles.modalTitle}>
-                {generatingAI ? "Creating Your Recipe" : "Searching Recipes"}
-              </Text>
-              <Text style={styles.modalText}>
-                {generatingAI
-                  ? "SousChef AI is crafting a custom recipe with images and instructions..."
-                  : "Recipes Loading..."}
-              </Text>
-              {generatingAI && (
-                <Text style={styles.modalSubtext}>This may take 30-60 seconds</Text>
-              )}
-            </View>
-          </View>
-        </Modal>
+          phrases={generatingAI ? GENERATION_PHRASES : SEARCH_PHRASES}
+          mode={generatingAI ? 'generate' : 'search'}
+          themeColor={generatingAI ? '#8A2BE2' : '#81A969'}
+          progress={loadingProgress}
+        />
+
+        {/* AI Recipe Success Modal */}
+        <AIRecipeSuccessModal
+          visible={aiSuccessModalVisible}
+          onClose={() => setAiSuccessModalVisible(false)}
+          recipeName={aiSuccessData.recipeName}
+          pantryItemCount={aiSuccessData.pantryItemCount}
+        />
+
+        {/* Generate Another Success Modal */}
+        <GenerateAnotherSuccessModal
+          visible={generateAnotherModalVisible}
+          onClose={() => setGenerateAnotherModalVisible(false)}
+          recipeName={generateAnotherData.recipeName}
+          pantryItemCount={generateAnotherData.pantryItemCount}
+          totalRecipes={generateAnotherData.totalRecipes}
+          canGenerateMore={generateAnotherData.canGenerateMore}
+        />
+
+        {/* Limit Reached Modal */}
+        <LimitReachedModal
+          visible={limitReachedModalVisible}
+          onClose={() => setLimitReachedModalVisible(false)}
+        />
       </SafeAreaView>
     </AuthGuard>
   );
@@ -2048,115 +2240,57 @@ const styles = StyleSheet.create({
   },
   generateAnotherTextContainer: {
     flex: 1,
-    marginLeft: wp('3%'),
   },
   generateAnotherText: {
+    fontSize: wp('4%'),
     color: '#fff',
-    fontSize: wp('4.5%'),
     fontWeight: '600',
   },
   generateAnotherSubtext: {
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontSize: wp('3.2%'),
-    marginTop: hp('0.2%'),
-  },
-  noResultsContainer: {
-    alignItems: 'center',
-    padding: wp('8%'),
-    backgroundColor: '#fff',
-    borderRadius: wp('4%'),
-    marginVertical: hp('2%'),
-  },
-  noResultsTitle: {
-    fontSize: wp('5.5%'),
-    fontWeight: '700',
-    color: '#333',
-    marginBottom: hp('1%'),
-    textAlign: 'center',
-  },
-  noResultsSubtext: {
-    fontSize: wp('4%'),
-    color: '#666',
-    textAlign: 'center',
-    lineHeight: hp('3%'),
+    fontSize: wp('3%'),
+    color: '#fff',
+    fontWeight: '400',
   },
   generateAIButton: {
-    width: '100%',
+    backgroundColor: '#8A2BE2',
     borderRadius: wp('3%'),
-    marginTop: hp('3%'),
+    marginTop: hp('1.5%'),
     elevation: 8,
-    shadowColor: '#8A2BE2',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
     overflow: 'hidden',
   },
   generateAIButtonGradient: {
+    paddingVertical: hp('1.5%'),
+    paddingHorizontal: wp('4%'),
+    borderRadius: wp('3%'),
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: wp('5%'),
+    justifyContent: 'center',
   },
   generateAIButtonTextContainer: {
     flex: 1,
   },
   generateAIButtonText: {
+    fontSize: wp('4.2%'),
     color: '#fff',
-    fontSize: wp('4.8%'),
-    fontWeight: '700',
-    marginBottom: hp('0.5%'),
+    fontWeight: '600',
+    textAlign: 'center',
   },
   generateAIButtonSubtext: {
-    color: 'rgba(255, 255, 255, 0.9)',
-    fontSize: wp('3.5%'),
+    fontSize: wp('3.2%'),
+    color: '#fff',
+    fontWeight: '400',
+    textAlign: 'center',
   },
   attributionContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: hp('3%'),
-    opacity: 0.7,
+    paddingVertical: hp('2%'),
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
   },
   edamamLogo: {
-    width: wp('40%'),
-    height: hp('4%'),
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: {
-    backgroundColor: 'white',
-    padding: wp('6%'),
-    borderRadius: wp('4%'),
-    alignItems: 'center',
-    width: wp('80%'),
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-  },
-  modalTitle: {
-    fontSize: wp('4.5%'),
-    fontWeight: 'bold',
-    marginTop: hp('2%'),
-    marginBottom: hp('1%'),
-    color: '#333',
-    textAlign: 'center',
-  },
-  modalText: {
-    fontSize: wp('3.5%'),
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: hp('1%'),
-  },
-  modalSubtext: {
-    fontSize: wp('3%'),
-    color: '#999',
-    fontStyle: 'italic',
-    textAlign: 'center',
+    width: wp('45%'),
+    height: hp('3%'),
   },
 });
 

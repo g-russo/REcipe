@@ -13,7 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { BlurView } from 'expo-blur';
 
-const DeconstructionModal = ({ visible, onClose, data, onSearchRecipe }) => {
+const DeconstructionModal = ({ visible, onClose, data, onSearchRecipe, onRecipeSelect, onGenerateRecipe }) => {
     if (!data) return null;
 
     const { is_dish, ingredients, suggested_recipes, reasoning, originalDish, realRecipes } = data;
@@ -76,7 +76,7 @@ const DeconstructionModal = ({ visible, onClose, data, onSearchRecipe }) => {
                                     <TouchableOpacity
                                         key={index}
                                         style={styles.realRecipeCard}
-                                        onPress={() => onSearchRecipe(recipe.label)}
+                                        onPress={() => onRecipeSelect ? onRecipeSelect(recipe) : onSearchRecipe(recipe.label)}
                                     >
                                         <Image source={{ uri: recipe.image }} style={styles.recipeImage} />
                                         <View style={styles.recipeInfo}>
@@ -93,18 +93,18 @@ const DeconstructionModal = ({ visible, onClose, data, onSearchRecipe }) => {
                         {suggested_recipes && suggested_recipes.length > 0 && (
                             <View style={styles.section}>
                                 <Text style={styles.sectionTitle}>
-                                    <Ionicons name="bulb" size={18} color="#FFB74D" /> Recipe Suggestions
+                                    <Ionicons name="sparkles" size={18} color="#FFB74D" /> Create Recipes with SousChefAI
                                 </Text>
-                                <Text style={styles.sectionSubtitle}>Tap to search for these ideas:</Text>
+                                <Text style={styles.sectionSubtitle}>Tap to generate a recipe automatically:</Text>
 
                                 {suggested_recipes.map((recipe, index) => (
                                     <TouchableOpacity
                                         key={index}
                                         style={styles.recipeButton}
-                                        onPress={() => onSearchRecipe(recipe)}
+                                        onPress={() => onGenerateRecipe && onGenerateRecipe(recipe)}
                                     >
                                         <Text style={styles.recipeButtonText}>{recipe}</Text>
-                                        <Ionicons name="chevron-forward" size={20} color="#81A969" />
+                                        <Ionicons name="arrow-forward-circle" size={20} color="#81A969" />
                                     </TouchableOpacity>
                                 ))}
                             </View>
