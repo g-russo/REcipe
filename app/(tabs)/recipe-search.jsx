@@ -13,7 +13,9 @@ import {
   ActivityIndicator,
   StatusBar,
   Platform,
-  RefreshControl
+  RefreshControl,
+  Linking,
+  Modal
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
@@ -120,7 +122,7 @@ const RecipeSearch = () => {
         if (scrollViewRef.current) {
           scrollViewRef.current.scrollTo({ y: 0, animated: true });
         }
-        
+
         // Reset horizontal scroll views
         if (popularRecipesRef.current) {
           popularRecipesRef.current.scrollTo({ x: 0, animated: true });
@@ -283,7 +285,7 @@ const RecipeSearch = () => {
     try {
       console.log('🔄 Refreshing popular recipes from Supabase...');
       setLoadingPopular(true);
-      
+
       // Force refresh from cache service (it will fetch fresh data from API)
       const cached = await cacheService.getPopularRecipes(true); // Pass true to force refresh
 
@@ -292,7 +294,7 @@ const RecipeSearch = () => {
         clearTimeout(popularTimeoutRef.current);
         popularTimeoutRef.current = null;
       }
-      
+
       if (cached && cached.length > 0) {
         console.log(`✅ Refreshed ${cached.length} popular recipes`);
         const limitedRecipes = cached.slice(0, 8);
@@ -475,7 +477,7 @@ const RecipeSearch = () => {
   const performSearch = async (query) => {
     // Replace underscores with spaces
     const cleanedQuery = query.replace(/_/g, ' ');
-    
+
     // Add to recent searches (use cleaned query)
     addToRecentSearches(cleanedQuery);
 
@@ -486,6 +488,8 @@ const RecipeSearch = () => {
     // Clear previous results to show loading screen
     setRecipes([]);
     setLoading(true);
+    setShowGenerateButton(false); // ✅ Reset generate button state
+    setIsValidSearchTerm(false); // ✅ Reset validation state
     // ✅ DON'T set hasSearched yet - wait until we have results or confirmed no results
     setCanGenerateMore(false);
     setAiRecipeCount(0);
@@ -641,16 +645,16 @@ const RecipeSearch = () => {
           // ✅ If ONLY AI recipes from cache (no Edamam results), validate search term
           if (result.data.recipes.length === 0 && dbResult.count > 0) {
             console.log(`⚠️ Only cached AI recipes found. Validating if "${query}" is still a valid search term...`);
-            
+
             // Keep loading visible during validation
             try {
               const validationResult = await SousChefAIService.validateFoodIngredient(query);
-              
+
               if (!validationResult.isValid) {
                 // Search term is gibberish - don't show cached results
                 console.log(`❌ "${query}" is not valid: ${validationResult.reason}`);
                 console.log(`🗑️ Hiding ${totalRecipes} cached AI recipes for invalid search term`);
-                
+
                 // Stop loading and show "No Recipes Available" message
                 setLoading(false);
                 setRecipes([]);
@@ -658,25 +662,25 @@ const RecipeSearch = () => {
                 setIsValidSearchTerm(false);
                 setCanGenerateMore(false);
                 setHasSearched(true);
-                
+
                 // No alert needed - "No Recipes Available" message is sufficient
                 return; // Exit early - don't show cached results
               }
-              
+
               console.log(`✅ "${query}" is valid - showing cached AI recipes`);
             } catch (validationError) {
               console.error('⚠️ Validation check failed, showing cached results anyway:', validationError);
               // If validation fails technically, show cached results (fail-safe)
             }
           }
-          
+
           // ✅ Show all recipes (AI + Edamam)
           setRecipes(allRecipes);
           setHasSearched(true); // ✅ Set hasSearched AFTER we have results
 
           // 🤖 Only show "Generate More" button if NO Edamam results and total < 5
           const hasEdamamResults = result.data.recipes.length > 0;
-          
+
           if (!hasEdamamResults && totalRecipes < 5) {
             // Only AI recipes from cache, and less than 5 total
             setCanGenerateMore(true);
@@ -705,7 +709,7 @@ const RecipeSearch = () => {
               recipeId: r.recipeID || r.uri, // AI recipes have recipeID, Edamam have uri
               recipeName: r.recipeName || r.label
             }));
-          
+
           if (imagesToCache.length > 0) {
             recipeImageCacheService.batchCacheImages(imagesToCache);
           }
@@ -719,15 +723,15 @@ const RecipeSearch = () => {
         } else {
           // ❌ No results anywhere - Validate search term and show Generate button
           console.log(`ℹ️ No existing recipes found for "${query}"`);
-          
+
           // ✅ Validate if search term is food-related using AI
           console.log(`🔍 Validating if "${query}" is a valid food ingredient...`);
           // Keep loading visible during validation
-          
+
           try {
             // Quick AI validation check
             const validationResult = await SousChefAIService.validateFoodIngredient(query);
-            
+
             if (!validationResult.isValid) {
               // Search term is gibberish or not food-related
               console.log(`❌ "${query}" is not a valid food ingredient: ${validationResult.reason}`);
@@ -737,15 +741,15 @@ const RecipeSearch = () => {
               setIsValidSearchTerm(false);
               setCanGenerateMore(false);
               setHasSearched(true);
-              
+
               // No alert - "No Recipes Available" message is sufficient
               // User will see the validation reason in console if needed
               console.log(`💡 Suggestion: Try searching for food ingredients, dishes, or cuisines`);
               return; // Exit early
             }
-            
+
             console.log(`✅ "${query}" is valid: ${validationResult.reason}`);
-            
+
             // ✅ Search term is valid - Show Generate AI Recipe button
             setLoading(false);
             setRecipes([]);
@@ -754,7 +758,7 @@ const RecipeSearch = () => {
             setHasSearched(true);
             console.log(`💡 Showing "Generate AI Recipe" button for "${query}"`);
             return; // Exit - wait for user to click Generate button
-            
+
           } catch (validationError) {
             console.error('⚠️ Validation check failed:', validationError);
             // If validation fails, show button anyway (fail-safe)
@@ -819,14 +823,14 @@ const RecipeSearch = () => {
     // ✅ Show loading during generation
     setLoading(true);
     setGeneratingAI(true);
-    
+
     // ✅ CRITICAL: Clear search timeout so it doesn't stop loading during AI generation
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
       searchTimeoutRef.current = null;
       console.log('🔄 Cleared search timeout - AI generation in progress');
     }
-    
+
     // Verify currentSearchQuery is set
     if (!currentSearchQuery || currentSearchQuery.trim() === '') {
       console.error('⚠️ ERROR: currentSearchQuery is empty!', { currentSearchQuery });
@@ -835,7 +839,7 @@ const RecipeSearch = () => {
       setGeneratingAI(false);
       return;
     }
-    
+
     console.log(`🎯 Generating with search query: "${currentSearchQuery}"`);
 
     try {
@@ -851,7 +855,7 @@ const RecipeSearch = () => {
 
       // ✅ Generate recipe based on BOTH search query AND pantry items
       console.log(`🔍 Generating recipe with search: "${currentSearchQuery}", pantry: ${pantryItems.length} items`);
-      
+
       // Generate 1 more AI recipe (pass existing recipes for duplicate detection)
       const aiResult = await SousChefAIService.generateSingleRecipe(
         currentSearchQuery, // ✅ Use current search query
@@ -933,12 +937,12 @@ const RecipeSearch = () => {
         );
       } else {
         console.error('❌ AI generation failed:', aiResult.error);
-        
+
         // ✅ Stop loading on failure
         setGeneratingAI(false);
         setLoading(false);
         console.log('❌ Generate Another failed');
-        
+
         Alert.alert(
           'Generation Failed',
           'Could not generate another recipe. Please try again.',
@@ -947,12 +951,12 @@ const RecipeSearch = () => {
       }
     } catch (error) {
       console.error('❌ Generate another error:', error);
-      
+
       // ✅ Stop loading on error
       setGeneratingAI(false);
       setLoading(false);
       console.log('❌ Generate Another error occurred');
-      
+
       Alert.alert(
         'Error',
         `Failed to generate recipe: ${error.message}`,
@@ -969,7 +973,7 @@ const RecipeSearch = () => {
 
     setGeneratingAI(true);
     setShowGenerateButton(false); // Hide button during generation
-    
+
     // ✅ Clear search timeout - AI generation will control loading state
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
@@ -1042,10 +1046,10 @@ const RecipeSearch = () => {
         );
       } else {
         console.error('❌ AI generation failed:', aiResult.error);
-        
+
         setGeneratingAI(false);
         setShowGenerateButton(true); // Show button again
-        
+
         Alert.alert(
           'Generation Failed',
           'Sorry, we couldn\'t generate a recipe. Please try again.',
@@ -1054,10 +1058,10 @@ const RecipeSearch = () => {
       }
     } catch (aiError) {
       console.error('❌ AI generation error:', aiError);
-      
+
       setGeneratingAI(false);
       setShowGenerateButton(true); // Show button again
-      
+
       Alert.alert(
         'Generation Failed',
         `Could not generate AI recipe: ${aiError.message}`,
@@ -1080,6 +1084,9 @@ const RecipeSearch = () => {
     setHasSearched(false);
     setRecipes([]);
     setSearchQuery('');
+    setShowGenerateButton(false);
+    setIsValidSearchTerm(false);
+    setCanGenerateMore(false);
   };
 
   const renderRecipeCard = ({ item }) => {
@@ -1193,7 +1200,7 @@ const RecipeSearch = () => {
       setTimeout(() => {
         handleSearch(params.searchQuery);
         // Clear the params so it doesn't search again
-        router.setParams({ searchQuery: undefined, autoSearch: undefined });
+        router.setParams({ searchQuery: undefined, autoSearch: undefined, isDeconstructed: undefined, originalDish: undefined });
       }, 100);
     }
   }, [params?.searchQuery, params?.autoSearch]);
@@ -1269,7 +1276,7 @@ const RecipeSearch = () => {
                 </View>
               )}
             </TouchableOpacity>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.cameraButton}
               onPress={handleCameraCapture}
             >
@@ -1436,31 +1443,11 @@ const RecipeSearch = () => {
             </View>
           )}
 
-          {/* Loading State - Show when searching API/Database (but NOT when AI is generating) */}
-          {loading && !generatingAI && (
-            <View style={styles.section}>
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color="#4CAF50" />
-                <Text style={styles.loadingText}>Searching for recipes...</Text>
-                <Text style={styles.loadingSubtext}>Checking Edamam API and database...</Text>
-              </View>
-            </View>
-          )}
+          {/* Loading State - Handled by Modal Overlay */}
 
-          {/* AI Generation State - Show when AI is creating recipes */}
-          {generatingAI && (
-            <View style={styles.section}>
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color="#8A2BE2" />
-                <Text style={styles.loadingText}>🤖 SousChef AI is creating custom recipes...</Text>
-                <Text style={styles.loadingSubtext}>Generating images and cooking instructions</Text>
-                <Text style={styles.loadingSubtext}>This may take 30-60 seconds</Text>
-              </View>
-            </View>
-          )}
 
           {/* Generate AI Recipe Button - Show when no results found but search term is valid */}
-          {showGenerateButton && !generatingAI && (
+          {showGenerateButton && !generatingAI && recipes.length === 0 && (
             <View style={styles.section}>
               <View style={styles.noResultsContainer}>
                 <Ionicons name="search-outline" size={60} color="#8A2BE2" style={{ marginBottom: 15 }} />
@@ -1471,7 +1458,7 @@ const RecipeSearch = () => {
                 <Text style={[styles.noResultsSubtext, { marginTop: 10, fontWeight: '600', color: '#8A2BE2' }]}>
                   ✨ But don't worry! Our AI can create one for you!
                 </Text>
-                
+
                 <TouchableOpacity
                   style={styles.generateAIButton}
                   onPress={handleGenerateFirstAIRecipe}
@@ -1562,10 +1549,10 @@ const RecipeSearch = () => {
                   </Text>
                 </View>
               ) : (
-                <ScrollView 
+                <ScrollView
                   ref={popularRecipesRef}
-                  horizontal 
-                  showsHorizontalScrollIndicator={false} 
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
                   style={styles.popularRecipesContainer}
                 >
                   {popularRecipes.map((recipe, index) => (
@@ -1602,8 +1589,43 @@ const RecipeSearch = () => {
               )}
             </View>
           )}
+
+          {/* Edamam Attribution */}
+          <View style={styles.attributionContainer}>
+            <TouchableOpacity onPress={() => Linking.openURL('http://www.edamam.com')}>
+              <Image
+                source={{ uri: 'https://developer.edamam.com/images/transparent.png' }}
+                style={styles.edamamLogo}
+                resizeMode="contain"
+              />
+            </TouchableOpacity>
+          </View>
         </ScrollView>
 
+        {/* Loading Overlay Modal - NEW */}
+        <Modal
+          transparent={true}
+          animationType="fade"
+          visible={loading || generatingAI}
+          onRequestClose={() => { }}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <ActivityIndicator size="large" color={generatingAI ? "#8A2BE2" : "#4CAF50"} />
+              <Text style={styles.modalTitle}>
+                {generatingAI ? "Creating Your Recipe" : "Searching Recipes"}
+              </Text>
+              <Text style={styles.modalText}>
+                {generatingAI
+                  ? "SousChef AI is crafting a custom recipe with images and instructions..."
+                  : "Recipes Loading..."}
+              </Text>
+              {generatingAI && (
+                <Text style={styles.modalSubtext}>This may take 30-60 seconds</Text>
+              )}
+            </View>
+          </View>
+        </Modal>
       </SafeAreaView>
     </AuthGuard>
   );
@@ -2087,6 +2109,54 @@ const styles = StyleSheet.create({
   generateAIButtonSubtext: {
     color: 'rgba(255, 255, 255, 0.9)',
     fontSize: wp('3.5%'),
+  },
+  attributionContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: hp('3%'),
+    opacity: 0.7,
+  },
+  edamamLogo: {
+    width: wp('40%'),
+    height: hp('4%'),
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    padding: wp('6%'),
+    borderRadius: wp('4%'),
+    alignItems: 'center',
+    width: wp('80%'),
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  modalTitle: {
+    fontSize: wp('4.5%'),
+    fontWeight: 'bold',
+    marginTop: hp('2%'),
+    marginBottom: hp('1%'),
+    color: '#333',
+    textAlign: 'center',
+  },
+  modalText: {
+    fontSize: wp('3.5%'),
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: hp('1%'),
+  },
+  modalSubtext: {
+    fontSize: wp('3%'),
+    color: '#999',
+    fontStyle: 'italic',
+    textAlign: 'center',
   },
 });
 

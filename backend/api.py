@@ -18,6 +18,7 @@ import pytesseract
 import traceback
 import google.generativeai as genai
 from google.ai.generativelanguage import Content, Part
+import json
 
 # ✅ Load .env file FIRST
 load_dotenv()
@@ -184,7 +185,7 @@ def call_gemini_vision(image: Image.Image):
     7. Provide top 5 possible identifications, sorted by confidence (highest first).
     8. Assign a realistic confidence score (0.0 to 0.99) for each prediction based on how certain you are. Do not default to 0.99 unless absolutely certain.
     9. Do NOT return generic cuisine names (e.g., "Italian Cuisine", "American Food") or meal types. Return ONLY specific dish names (e.g., "Carbonara", "Burger") or ingredient names.
-    10. 
+    10 
     Return strict JSON format:
     [
         {
@@ -410,6 +411,76 @@ async def get_food_by_qr(qr_code: str = Query(...)):
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# Dish Deconstruction Endpoint
+class DeconstructRequest(BaseModel):
+    food_name: str
+
+@app.post("/deconstruct-dish")
+async def deconstruct_dish(request: DeconstructRequest):
+    # ✅ Check Rate Limit
+    if not check_gemini_rate_limit():
+        print("⚠️ Gemini Rate Limit Reached for deconstruct-dish. Using fallback.")
+        return {
+            "is_dish": False,
+            "ingredients": [request.food_name],
+            "reasoning": "Rate limit reached, treating as raw ingredient."
+        }
+
+    if not gemini_model:
+        raise HTTPException(status_code=503, detail="Gemini AI not available")
+    
+    prompt = f"""
+    Analyze the food item: "{request.food_name}".
+    
+    1. Is this a cooked dish/leftover or a raw ingredient?
+    2. If it is a dish (especially a Filipino dish), list the main salvageable ingredients that could be repurposed into another meal.
+    3. If it is a raw ingredient, just return the ingredient name.
+    4. Suggest 3-5 creative recipe names that can be made using these leftovers or ingredients.
+    
+    Format the output as a JSON object with these keys:
+    - is_dish: boolean
+    - ingredients: list of strings (the salvageable ingredients or the raw ingredient itself. Keep them simple and concise, e.g., "cooked pork" instead of "cooked meat (pork, beef...)")
+    - suggested_recipes: list of strings (names of recipes to make with these)
+    - reasoning: string (brief explanation)
+    
+    Example 1:
+    Input: "Adobo"
+    Output: {{ 
+        "is_dish": true, 
+        "ingredients": ["cooked chicken", "cooked pork", "adobo sauce"], 
+        "suggested_recipes": ["Adobo Flakes", "Adobo Fried Rice", "Adobo Sandwich"],
+        "reasoning": "Adobo meat can be flaked and fried or used in sandwiches." 
+    }}
+    
+    Example 2:
+    Input: "Tomato"
+    Output: {{ 
+        "is_dish": false, 
+        "ingredients": ["tomato"], 
+        "suggested_recipes": ["Tomato Soup", "Tomato Salsa", "Stuffed Tomatoes"],
+        "reasoning": "It is a raw ingredient." 
+    }}
+    """
+    
+    try:
+        response = gemini_model.generate_content(prompt)
+        text = response.text
+        # Clean up markdown code blocks if present
+        if "```json" in text:
+            text = text.split("```json")[1].split("```")[0]
+        elif "```" in text:
+            text = text.split("```")[1].split("```")[0]
+            
+        return json.loads(text)
+    except Exception as e:
+        print(f"Error deconstructing dish: {e}")
+        # Fallback: treat as raw ingredient
+        return {
+            "is_dish": False,
+            "ingredients": [request.food_name],
+            "reasoning": "Error processing request, treating as raw ingredient."
+        }
 
 # ✅ Run the server
 if __name__ == "__main__":

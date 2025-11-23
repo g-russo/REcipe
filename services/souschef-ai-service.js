@@ -3,8 +3,39 @@ import { supabase } from '../lib/supabase';
 import ImageGenerationService from './image-generation-service';
 
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
+const API_BASE_URL = 'http://192.168.1.4:8000'; // Backend API URL
 
 class SousChefAIService {
+  /**
+   * Deconstruct a dish into its salvageable ingredients using the backend AI
+   * @param {string} foodName - The name of the food/dish
+   * @returns {Promise<{is_dish: boolean, ingredients: string[], reasoning: string}>}
+   */
+  async deconstructDish(foodName) {
+    try {
+      console.log(`🔍 Deconstructing dish: ${foodName}`);
+      const response = await fetch(`${API_BASE_URL}/deconstruct-dish`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ food_name: foodName }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Backend returned ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('✅ Deconstruction result:', data);
+      return data;
+    } catch (error) {
+      console.error('❌ Error deconstructing dish:', error);
+      // Fallback: treat as raw ingredient
+      return { is_dish: false, ingredients: [foodName], reasoning: 'Error connecting to AI service' };
+    }
+  }
+
   /**
    * Check if similar recipes exist in tbl_recipes (by search query, ingredients, or recipe name)
    */
@@ -16,15 +47,15 @@ class SousChefAIService {
       // 1. Exact match on searchQuery
       // 2. Similar recipe names
       // 3. Similar ingredients (using JSONB search)
-      
+
       // Filter out common words that don't indicate recipe content
       const stopWords = ['generate', 'recipe', 'for', 'with', 'the', 'and', 'make', 'create', 'cook', 'using'];
-      
+
       // Split search query into meaningful keywords (longer than 3 chars and not stop words)
       const keywords = searchQuery.toLowerCase()
         .split(' ')
         .filter(k => k.length > 3 && !stopWords.includes(k));
-      
+
       let allRecipes = [];
 
       // Strategy 1: Search by searchQuery field
@@ -71,8 +102,8 @@ class SousChefAIService {
             const matchCount = keywords.filter(keyword => recipeText.includes(keyword)).length;
             return { recipe, score: matchCount };
           })
-          .filter(item => item.score > 0) // Only include recipes with at least one match
-          .sort((a, b) => b.score - a.score); // Sort by relevance
+            .filter(item => item.score > 0) // Only include recipes with at least one match
+            .sort((a, b) => b.score - a.score); // Sort by relevance
 
           // Avoid duplicates and take top matches
           const newRecipes = scoredMatches
@@ -96,13 +127,13 @@ class SousChefAIService {
             }
           }
           if (filters.health && filters.health.length > 0) {
-            const hasHealth = filters.health.some(h => 
+            const hasHealth = filters.health.some(h =>
               recipe.healthLabels?.includes(h)
             );
             if (!hasHealth) return false;
           }
           if (filters.diet && filters.diet.length > 0) {
-            const hasDiet = filters.diet.some(d => 
+            const hasDiet = filters.diet.some(d =>
               recipe.dietLabels?.includes(d)
             );
             if (!hasDiet) return false;
@@ -117,14 +148,14 @@ class SousChefAIService {
       // Update usage count
       if (allRecipes.length > 0) {
         console.log(`✅ Found ${allRecipes.length} existing recipes in tbl_recipes`);
-        
+
         // Increment usage count for each recipe
         for (const recipe of allRecipes) {
           // Read current count, increment, and update
           const currentCount = recipe.usageCount || 0;
           await supabase
             .from('tbl_recipes')
-            .update({ 
+            .update({
               usageCount: currentCount + 1,
               updatedAt: new Date().toISOString()
             })
@@ -201,39 +232,39 @@ class SousChefAIService {
     for (const existing of existingRecipes) {
       // Check 1: Recipe name similarity (exact match or very similar)
       const existingName = existing.recipeName?.toLowerCase() || existing.label?.toLowerCase() || '';
-      
+
       // Exact match
       if (existingName === newRecipeName) {
         console.log('⚠️ Duplicate detected: Exact recipe name match');
         return true;
       }
-      
+
       // Very similar names (70%+ word overlap)
       const newWords = newRecipeName.split(' ').filter(w => w.length > 3);
       const existingWords = existingName.split(' ').filter(w => w.length > 3);
       const commonWords = newWords.filter(w => existingWords.includes(w));
       const nameSimilarity = commonWords.length / Math.max(newWords.length, 1);
-      
+
       if (nameSimilarity >= 0.7) {
         console.log(`⚠️ Duplicate detected: ${(nameSimilarity * 100).toFixed(0)}% name similarity`);
         return true;
       }
 
       // Check 2: Ingredient similarity (80% or more ingredients match)
-      const existingIngredients = existing.ingredients 
-        ? (Array.isArray(existing.ingredients) 
-            ? existing.ingredients.map(ing => ing.name?.toLowerCase() || ing.toString().toLowerCase()).sort()
-            : [])
+      const existingIngredients = existing.ingredients
+        ? (Array.isArray(existing.ingredients)
+          ? existing.ingredients.map(ing => ing.name?.toLowerCase() || ing.toString().toLowerCase()).sort()
+          : [])
         : [];
 
       if (existingIngredients.length > 0 && newIngredients.length > 0) {
-        const matchingIngredients = newIngredients.filter(ing => 
-          existingIngredients.some(existIng => 
+        const matchingIngredients = newIngredients.filter(ing =>
+          existingIngredients.some(existIng =>
             existIng.includes(ing) || ing.includes(existIng)
           )
         );
         const similarityPercentage = (matchingIngredients.length / newIngredients.length) * 100;
-        
+
         // Stricter threshold: 70% match = duplicate (was 80%)
         if (similarityPercentage >= 70) {
           console.log(`⚠️ Duplicate detected: ${similarityPercentage.toFixed(0)}% ingredient match`);
@@ -259,17 +290,17 @@ class SousChefAIService {
           return true;
         }
       }
-      
+
       // Check 4: Cooking method similarity
       const cookingMethods = ['grilled', 'fried', 'baked', 'steamed', 'boiled', 'roasted', 'stir-fry', 'sautéed'];
-      const newMethod = cookingMethods.find(method => 
+      const newMethod = cookingMethods.find(method =>
         newRecipeName.includes(method) || newInstructions.includes(method)
       );
-      const existingMethod = cookingMethods.find(method => 
-        existingName.includes(method) || 
+      const existingMethod = cookingMethods.find(method =>
+        existingName.includes(method) ||
         (existing.instructions && JSON.stringify(existing.instructions).toLowerCase().includes(method))
       );
-      
+
       if (newMethod && existingMethod && newMethod === existingMethod && nameSimilarity >= 0.5) {
         console.log(`⚠️ Duplicate detected: Same cooking method (${newMethod}) with similar name`);
         return true;
@@ -356,10 +387,10 @@ class SousChefAIService {
 
       // Check for duplicates before saving
       const newRecipe = recipesData.recipes[0];
-      
+
       // Get existing recipes from database
       const existingDbRecipes = await this.getExistingRecipesForSearch(searchQuery);
-      
+
       // Combine with recipes already in UI (from this session)
       const allExistingRecipes = [...existingDbRecipes, ...existingRecipesInUI];
 
@@ -368,18 +399,18 @@ class SousChefAIService {
 
       if (isDuplicate) {
         console.log('⚠️ Duplicate recipe detected, regenerating with different approach...');
-        
+
         // Retry with explicit uniqueness instructions
         const retryPrompt = this.buildRecipePrompt(searchQuery, filters, pantryItems, 1);
         const existingRecipeNames = allExistingRecipes.map(r => r.recipeName || r.label).slice(0, 10).join('\n- ');
         const existingIngredients = allExistingRecipes.slice(0, 3).map(r => {
           const ingredients = r.ingredients || r.ingredientLines || [];
-          const ingredientNames = Array.isArray(ingredients) 
+          const ingredientNames = Array.isArray(ingredients)
             ? ingredients.map(ing => ing.name || ing.toString()).slice(0, 5).join(', ')
             : '';
           return `${r.recipeName || r.label}: ${ingredientNames}`;
         }).join('\n  ');
-        
+
         const retryInstructions = `\n\n🚨 CRITICAL: AVOID DUPLICATES!\n\n❌ DO NOT CREATE THESE RECIPES (already exist):\n- ${existingRecipeNames}\n\n❌ DO NOT USE THESE INGREDIENT COMBINATIONS:\n  ${existingIngredients}\n\n✅ REQUIREMENTS FOR NEW RECIPE:\n1. COMPLETELY different recipe name\n2. DIFFERENT cooking method (if they grilled, you stir-fry/bake/steam)\n3. DIFFERENT ingredient combinations\n4. DIFFERENT cuisine style (if they have Filipino, try Asian fusion/Western/International)\n5. DIFFERENT presentation style\n\n🎯 Still center the recipe around "${searchQuery}" but make it UNIQUE!\n\nExample: If existing recipes are grilled/fried, create a soup/stew/curry/casserole instead.`;
 
         const retryResponse = await fetch(OPENAI_API_URL, {
@@ -410,10 +441,10 @@ class SousChefAIService {
           const retryAiResponse = await retryResponse.json();
           const retryRecipesData = JSON.parse(retryAiResponse.choices[0].message.content);
           const retryRecipe = retryRecipesData.recipes[0];
-          
+
           // Verify the retry recipe is actually unique
           const stillDuplicate = await this.isDuplicateRecipe(retryRecipe, allExistingRecipes);
-          
+
           if (!stillDuplicate) {
             recipesData.recipes = retryRecipesData.recipes; // Use the new unique recipe
             console.log(`✅ Generated unique recipe on retry: "${retryRecipe.recipeName}"`);
@@ -433,7 +464,7 @@ class SousChefAIService {
       const [savedRecipes, imageGenerationResult] = await Promise.all([
         // Operation 1: Save recipe to database (fast - ~500ms)
         this.saveRecipesToDatabase(recipesData.recipes, searchQuery, filters),
-        
+
         // Operation 2: Generate image (slow - ~20s)
         (async () => {
           try {
@@ -584,17 +615,27 @@ class SousChefAIService {
 ## PRIMARY OBJECTIVE
 🎯 CREATE RECIPES CENTERED AROUND THE SEARCH QUERY: "${searchQuery}"
 
+## CULINARY STANDARDS & QUALITY CONTROL (STRICTLY ENFORCED)
+1. **General Standards**: Ensure all recipes follow standard culinary practices. Do not generate "weird" or unappetizing combinations.
+2. **Ingredient Logic**: Only use ingredients that chemically and flavor-wise make sense together. If the user provides a list of clashing ingredients, prioritize the main protein/vegetable and IGNORE the ones that would ruin the dish.
+3. **Procedure Logic**: The cooking procedure must be logical and follow best practices.
+4. **Edibility**: The final result must be something a reasonable person would want to eat.
+5. **Best Fit**: Analyze the input. If it's a list of random ingredients, find the *best possible* standard dish that uses the most important ones.
+
 ⚠️ CRITICAL REQUIREMENTS:
 1. The recipe MUST be directly related to "${searchQuery}"
 2. "${searchQuery}" should be the MAIN ingredient, dish name, or primary focus
-3. If the recipe is a dish/leftover:
-    - It must be deconstructed first into its main components (protein, carbs, veggies, sauce) and ingredients in the pantry
+3. If the recipe is for a dish/leftover:
+   - It must be deconstructed first into its main components (protein, carbs, veggies, sauce) and ingredients (tomato, onion, ketchup, etc.) before searching for recipes
 4. If "${searchQuery}" is a specific ingredient (e.g., "kabayo", "chicken", "beef"):
    - It MUST be the primary protein/ingredient in the recipe
    - Recipe name should feature "${searchQuery}" prominently
    - Do NOT substitute with other ingredients
 5. Use pantry items as SUPPORTING ingredients only
 6. If pantry doesn't have "${searchQuery}", assume user will buy it - STILL create recipe with it
+7. If "${searchQuery}" contains multiple ingredients:
+   - Create a cohesive dish that combines them logically.
+   - If ingredients clash, prioritize the main protein and discard incompatible ones.
 
 ## CURRENT REQUEST
 Search Query: "${searchQuery}" ← THIS IS THE STAR OF THE RECIPE!
@@ -630,28 +671,28 @@ Search Query: "${searchQuery}" ← THIS IS THE STAR OF THE RECIPE!
     if (pantryItems.length > 0) {
       prompt += '\n## AVAILABLE PANTRY ITEMS (Use as SUPPORTING ingredients)\n';
       prompt += `⚠️ Remember: "${searchQuery}" is the MAIN focus. Use these pantry items to complement it.\n`;
-      
+
       const leftoverItems = [];
       const freshItems = [];
-      
+
       pantryItems.slice(0, 20).forEach(item => {
-        const isLeftover = item.itemCategory && 
-                          (item.itemCategory.toLowerCase().includes('leftover') ||
-                           item.itemCategory.toLowerCase().includes('cooked'));
-        
+        const isLeftover = item.itemCategory &&
+          (item.itemCategory.toLowerCase().includes('leftover') ||
+            item.itemCategory.toLowerCase().includes('cooked'));
+
         if (isLeftover) {
           leftoverItems.push(item);
         } else {
           freshItems.push(item);
         }
       });
-      
+
       if (leftoverItems.length > 0) {
         prompt += '\n### 🍲 LEFTOVER/COOKED FOODS (PRIORITIZE THESE):\n';
         leftoverItems.forEach(item => {
           prompt += `- ${item.itemName} (${item.quantity} ${item.unit || ''})\n`;
         });
-        
+
         prompt += `\n⚠️ LEFTOVER TRANSFORMATION RULES:\n`;
         prompt += `1. Recognize these as PREPARED DISHES, not raw ingredients\n`;
         prompt += `2. Generate recipes that USE leftovers as KEY INGREDIENTS\n`;
@@ -665,7 +706,7 @@ Search Query: "${searchQuery}" ← THIS IS THE STAR OF THE RECIPE!
         prompt += `5. Minimize additional ingredients for convenience\n`;
         prompt += `6. Focus on ZERO FOOD WASTE\n\n`;
       }
-      
+
       if (freshItems.length > 0) {
         prompt += '### 🥬 FRESH INGREDIENTS:\n';
         freshItems.forEach(item => {
@@ -781,7 +822,7 @@ Return ONLY valid JSON. No additional text.`;
         ...savedRecipe,
         imagePrompt: recipes[index].imagePrompt,
         // Add fields to match Edamam structure for recipe-detail compatibility
-        ingredientLines: savedRecipe.ingredients.map(ing => 
+        ingredientLines: savedRecipe.ingredients.map(ing =>
           `${ing.quantity || ''} ${ing.unit || ''} ${ing.name}${ing.notes ? ` (${ing.notes})` : ''}`.trim()
         ),
         yield: savedRecipe.servings,
@@ -844,7 +885,7 @@ Return ONLY valid JSON. No additional text.`;
         if (recipe.recipeImage) {
           await supabase
             .from('tbl_recipes')
-            .update({ 
+            .update({
               recipeImage: recipe.recipeImage,
               updatedAt: new Date().toISOString()
             })
@@ -921,7 +962,7 @@ Examples:
 
       const data = await response.json();
       const content = data.choices[0].message.content.trim();
-      
+
       // Parse JSON response
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {

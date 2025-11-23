@@ -119,7 +119,7 @@ class ImageGenerationService {
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '');
-      
+
       const timestamp = Date.now();
       const filename = `ai-generated/${cleanName}-${recipeId}-${timestamp}.webp`;
 
@@ -139,10 +139,10 @@ class ImageGenerationService {
       // Step 2: Convert to WebP using our image converter utility
       let finalBase64;
       let contentType = 'image/webp'; // Always WebP now
-      
+
       try {
         console.log('🔄 Converting to WebP with image-converter...');
-        
+
         // Convert to WebP (optimized for AI-generated images)
         const webpResult = await ImageConverter.convertBase64ToWebP(
           base64DataUrl,
@@ -151,7 +151,7 @@ class ImageGenerationService {
 
         finalBase64 = webpResult.base64;
         contentType = 'image/webp';
-        
+
         console.log('✅ WebP conversion successful!');
         console.log(`📐 Dimensions: ${webpResult.width}x${webpResult.height}`);
         console.log(`💾 Size: ${webpResult.sizeKB} KB (${Math.round((1 - webpResult.size / (base64DataUrl.length * 0.75)) * 100)}% smaller!)`);
@@ -175,7 +175,7 @@ class ImageGenerationService {
         .upload(filename, bytes, {
           contentType: 'image/webp', // Always WebP
           cacheControl: '31536000',
-          upsert: false
+          upsert: true
         });
 
       if (error) {
@@ -303,7 +303,7 @@ class ImageGenerationService {
         const { data: urlData } = supabase.storage
           .from('recipe-images')
           .getPublicUrl(filename);
-        
+
         console.log('✅ Image already exists in storage, using cached version');
         console.log('🔗 Cached URL:', urlData.publicUrl);
         return urlData.publicUrl;
@@ -313,7 +313,7 @@ class ImageGenerationService {
 
       // Step 1: Download the image
       const response = await fetch(imageUrl);
-      
+
       if (!response.ok) {
         throw new Error(`Failed to download image: ${response.status} ${response.statusText}`);
       }
@@ -383,7 +383,7 @@ class ImageGenerationService {
 
       console.log('✅ Edamam image stored permanently!');
       console.log('🔗 New permanent URL:', urlData.publicUrl);
-      
+
       return urlData.publicUrl;
     } catch (error) {
       console.error('❌ Error downloading/storing Edamam image:', error);

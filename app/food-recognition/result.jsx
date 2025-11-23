@@ -26,6 +26,9 @@ import * as Haptics from 'expo-haptics';
 import AuthGuard from '../../components/auth-guard';
 import ItemFormModal from '../../components/pantry/item-form-modal';
 import PantryAlert from '../../components/pantry/pantry-alert';
+import SousChefAIService from '../../services/souschef-ai-service';
+import DeconstructionModal from '../../components/food-recognition/deconstruction-modal';
+import EdamamService from '../../services/edamam-service';
 
 const CONFIDENCE_THRESHOLD = 0.03; // 3% minimum confidence
 
@@ -71,6 +74,8 @@ export default function FoodRecognitionResult() {
 
   // Detailed Results Modal State
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
+  const [deconstructionModalVisible, setDeconstructionModalVisible] = useState(false);
+  const [deconstructionData, setDeconstructionData] = useState(null);
 
   // Success Modal State
   const [successModalVisible, setSuccessModalVisible] = useState(false);
@@ -716,14 +721,77 @@ export default function FoodRecognitionResult() {
     }
   };
 
-  const handleSearchRecipes = () => {
+  const handleSearchRecipes = async () => {
     if (!selectedFood) return;
 
+    setLoading(true);
+
+    try {
+      // 1. Deconstruct the dish
+      const deconstructionResult = await SousChefAIService.deconstructDish(selectedFood.label);
+
+      if (deconstructionResult.is_dish || (deconstructionResult.suggested_recipes && deconstructionResult.suggested_recipes.length > 0)) {
+
+        // 2. Search for recipes using the ingredients
+        let realRecipes = [];
+        if (deconstructionResult.ingredients && deconstructionResult.ingredients.length > 0) {
+          try {
+            const ingredientsQuery = deconstructionResult.ingredients.join(' ');
+            console.log(`🔍 Searching for recipes with ingredients: ${ingredientsQuery}`);
+
+            const searchResults = await EdamamService.searchRecipes(ingredientsQuery, {
+              to: 5 // Limit to 5 results for the modal
+            });
+
+            if (searchResults && searchResults.hits) {
+              realRecipes = searchResults.hits.map(hit => hit.recipe);
+            }
+          } catch (searchError) {
+            console.error("Error searching for recipes:", searchError);
+          }
+        }
+
+        setLoading(false);
+
+        setDeconstructionData({
+          ...deconstructionResult,
+          originalDish: selectedFood.label,
+          realRecipes: realRecipes // Pass the actual recipes found
+        });
+        setDeconstructionModalVisible(true);
+        return;
+      }
+
+      setLoading(false);
+      router.push({
+        pathname: '/(tabs)/recipe-search',
+        params: {
+          searchQuery: selectedFood.label,
+          autoSearch: 'true'
+        }
+      });
+    } catch (error) {
+      console.error("Error in handleSearchRecipes:", error);
+      setLoading(false);
+      router.push({
+        pathname: '/(tabs)/recipe-search',
+        params: {
+          searchQuery: selectedFood.label,
+          autoSearch: 'true'
+        }
+      });
+    }
+  };
+
+  const handleDeconstructionSearch = (query) => {
+    setDeconstructionModalVisible(false);
     router.push({
       pathname: '/(tabs)/recipe-search',
       params: {
-        searchQuery: selectedFood.label,
-        autoSearch: 'true'
+        searchQuery: query,
+        autoSearch: 'true',
+        isDeconstructed: 'true',
+        originalDish: selectedFood.label
       }
     });
   };
@@ -1130,10 +1198,15 @@ export default function FoodRecognitionResult() {
             </ScrollView>
           </View>
         </Modal>
-      </View>
 
-      {/* Item Form Modal */}
-      {inventories.length > 0 && (
+        {/* Deconstruction Modal */}
+        <DeconstructionModal
+          visible={deconstructionModalVisible}
+          onClose={() => setDeconstructionModalVisible(false)}
+          data={deconstructionData}
+          onSearchRecipe={handleDeconstructionSearch}
+        />
+
         <ItemFormModal
           visible={itemFormVisible}
           onClose={() => {
@@ -1144,86 +1217,86 @@ export default function FoodRecognitionResult() {
           initialData={prefilledItemData}
           inventories={inventories}
         />
-      )}
 
-      {/* Group Selection Alert */}
-      <PantryAlert
-        visible={groupSelectionAlert.visible}
-        type="info"
-        title={groupSelectionAlert.singleGroupMode ? "Add to Group" : "Select Group"}
-        message={groupSelectionAlert.message}
-        onClose={() => setGroupSelectionAlert({ visible: false, message: '', groups: [], onSelectGroup: null, singleGroupMode: false })}
-        cancelLabel={groupSelectionAlert.singleGroupMode ? "Cancel" : "Skip"}
-        customIcon={
-          <Ionicons name="albums-outline" size={wp('15%')} color="#81A969" />
-        }
-      >
-        {groupSelectionAlert.groups.map((group, index) => (
+        {/* Group Selection Alert */}
+        <PantryAlert
+          visible={groupSelectionAlert.visible}
+          type="info"
+          title={groupSelectionAlert.singleGroupMode ? "Add to Group" : "Select Group"}
+          message={groupSelectionAlert.message}
+          onClose={() => setGroupSelectionAlert({ visible: false, message: '', groups: [], onSelectGroup: null, singleGroupMode: false })}
+          cancelLabel={groupSelectionAlert.singleGroupMode ? "Cancel" : "Skip"}
+          customIcon={
+            <Ionicons name="albums-outline" size={wp('15%')} color="#81A969" />
+          }
+        >
+          {groupSelectionAlert.groups.map((group, index) => (
+            <TouchableOpacity
+              key={group.groupID}
+              style={groupSelectionAlertStyles.groupButton}
+              onPress={() => {
+                if (groupSelectionAlert.onSelectGroup) {
+                  groupSelectionAlert.onSelectGroup(groupSelectionAlert.singleGroupMode ? undefined : group);
+                }
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={groupSelectionAlertStyles.groupButtonText}>
+                {groupSelectionAlert.singleGroupMode
+                  ? `Add to ${group.groupTitle}`
+                  : `${group.groupTitle} (${group.itemCount || 0} ${(group.itemCount || 0) === 1 ? 'item' : 'items'})`}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </PantryAlert>
+
+        {/* Duplicate Alert */}
+        <PantryAlert
+          visible={duplicateAlert.visible}
+          type="info"
+          title="Duplicate Item"
+          message={
+            duplicateAlert.itemData
+              ? `"${duplicateAlert.itemData.itemName}" already exists in your pantry. How would you like to proceed?`
+              : ''
+          }
+          onClose={handleDuplicateCancel}
+          cancelLabel="Return"
+          customIcon={
+            <Ionicons name="alert-circle-outline" size={wp('15%')} color="#FF9800" />
+          }
+        >
           <TouchableOpacity
-            key={group.groupID}
-            style={groupSelectionAlertStyles.groupButton}
-            onPress={() => {
-              if (groupSelectionAlert.onSelectGroup) {
-                groupSelectionAlert.onSelectGroup(groupSelectionAlert.singleGroupMode ? undefined : group);
-              }
-            }}
+            style={duplicateAlertStyles.addToExistingButton}
+            onPress={handleDuplicateMerge}
             activeOpacity={0.7}
           >
-            <Text style={groupSelectionAlertStyles.groupButtonText}>
-              {groupSelectionAlert.singleGroupMode
-                ? `Add to ${group.groupTitle}`
-                : `${group.groupTitle} (${group.itemCount || 0} ${(group.itemCount || 0) === 1 ? 'item' : 'items'})`}
-            </Text>
+            <Ionicons name="layers-outline" size={wp('5%')} color="#fff" />
+            <Text style={duplicateAlertStyles.addToExistingButtonText}>Add to Existing</Text>
           </TouchableOpacity>
-        ))}
-      </PantryAlert>
+          <TouchableOpacity
+            style={duplicateAlertStyles.addAnywayButton}
+            onPress={handleDuplicateCreate}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="add-circle-outline" size={wp('5%')} color="#81A969" />
+            <Text style={duplicateAlertStyles.addAnywayButtonText}>Add Anyway</Text>
+          </TouchableOpacity>
+        </PantryAlert>
 
-      {/* Duplicate Alert */}
-      <PantryAlert
-        visible={duplicateAlert.visible}
-        type="info"
-        title="Duplicate Item"
-        message={
-          duplicateAlert.itemData
-            ? `"${duplicateAlert.itemData.itemName}" already exists in your pantry. How would you like to proceed?`
-            : ''
-        }
-        onClose={handleDuplicateCancel}
-        cancelLabel="Return"
-        customIcon={
-          <Ionicons name="alert-circle-outline" size={wp('15%')} color="#FF9800" />
-        }
-      >
-        <TouchableOpacity
-          style={duplicateAlertStyles.addToExistingButton}
-          onPress={handleDuplicateMerge}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="layers-outline" size={wp('5%')} color="#fff" />
-          <Text style={duplicateAlertStyles.addToExistingButtonText}>Add to Existing</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={duplicateAlertStyles.addAnywayButton}
-          onPress={handleDuplicateCreate}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="add-circle-outline" size={wp('5%')} color="#81A969" />
-          <Text style={duplicateAlertStyles.addAnywayButtonText}>Add Anyway</Text>
-        </TouchableOpacity>
-      </PantryAlert>
-
-      {/* Success Modal */}
-      <PantryAlert
-        visible={successModalVisible}
-        type="success"
-        title="Success!"
-        message={`"${addedItemName}" has been successfully added to your pantry.`}
-        onClose={() => setSuccessModalVisible(false)}
-        cancelLabel="Return"
-        customIcon={
-          <Ionicons name="checkmark-circle" size={wp('15%')} color="#81A969" />
-        }
-      />
+        {/* Success Modal */}
+        <PantryAlert
+          visible={successModalVisible}
+          type="success"
+          title="Success!"
+          message={`"${addedItemName}" has been successfully added to your pantry.`}
+          onClose={() => setSuccessModalVisible(false)}
+          cancelLabel="Return"
+          customIcon={
+            <Ionicons name="checkmark-circle" size={wp('15%')} color="#81A969" />
+          }
+        />
+      </View>
     </AuthGuard>
   );
 }

@@ -87,7 +87,7 @@ class RecipeImageCacheService {
 
     // Create a deterministic hash from URL (no timestamp!)
     const cleanUrl = originalUrl.split('?')[0]; // Remove query params
-    
+
     // Simple but effective hash function
     let hash = 0;
     for (let i = 0; i < cleanUrl.length; i++) {
@@ -95,10 +95,10 @@ class RecipeImageCacheService {
       hash = ((hash << 5) - hash) + char;
       hash = hash & hash; // Convert to 32-bit integer
     }
-    
+
     // Convert to positive hex string
     const hashStr = Math.abs(hash).toString(16).padStart(8, '0');
-    
+
     return hashStr; // Return just the hash for flexibility
   }
 
@@ -107,13 +107,13 @@ class RecipeImageCacheService {
    */
   sanitizeRecipeId(recipeId) {
     if (!recipeId) return '';
-    
+
     // For Edamam URIs, extract just the ID part
     if (recipeId.includes('recipe_')) {
       const match = recipeId.match(/recipe_([a-zA-Z0-9]+)/);
       if (match) return match[1].substring(0, 12);
     }
-    
+
     // For numeric IDs or other formats
     return String(recipeId)
       .replace(/[^a-zA-Z0-9]/g, '_')
@@ -125,7 +125,7 @@ class RecipeImageCacheService {
    */
   sanitizeFileName(name) {
     if (!name) return '';
-    
+
     return name
       .toLowerCase()
       .replace(/[^a-zA-Z0-9]/g, '_')
@@ -153,7 +153,7 @@ class RecipeImageCacheService {
 
       if (!error && cached) {
         const isExpired = new Date(cached.expires_at) < new Date();
-        
+
         if (!isExpired) {
           // Cache hit - increment access count and return cached URL
           await supabase.rpc('increment_image_access', { p_original_url: originalUrl });
@@ -191,7 +191,7 @@ class RecipeImageCacheService {
     try {
       // Always save as WebP (per bucket RLS policy)
       const fileExt = 'webp';
-      
+
       // Generate filename with recipe association
       const baseKey = this.generateCacheKey(originalUrl);
       const recipePrefix = recipeId ? `recipe-${this.sanitizeRecipeId(recipeId)}_` : '';
@@ -248,26 +248,10 @@ class RecipeImageCacheService {
         .upload(filePath, uint8Array, {
           contentType: 'image/webp', // Force WebP to bypass bucket MIME restrictions
           cacheControl: '2592000', // 30 days
-          upsert: false
+          upsert: true
         });
 
       if (error) {
-        // If file already exists (race condition), check database
-        if (error.message?.includes('already exists')) {
-          console.log('♻️ Image already exists (race condition):', fileName);
-          
-          const { data: existingCache } = await supabase
-            .from(CACHE_TABLE)
-            .select('cached_url')
-            .eq('original_url', originalUrl)
-            .single();
-
-          if (existingCache) {
-            await supabase.rpc('increment_image_access', { p_original_url: originalUrl });
-            return existingCache.cached_url;
-          }
-        }
-        
         console.error('❌ Upload error:', error);
         return originalUrl;
       }
@@ -280,8 +264,8 @@ class RecipeImageCacheService {
       const supabaseUrl = urlData.publicUrl;
 
       // Determine source
-      const source = originalUrl.includes('edamam') ? 'edamam' : 
-                     originalUrl.includes('supabase') ? 'ai-generated' : 'external';
+      const source = originalUrl.includes('edamam') ? 'edamam' :
+        originalUrl.includes('supabase') ? 'ai-generated' : 'external';
 
       // Store in database cache with recipe association
       const { error: insertError } = await supabase
@@ -349,7 +333,7 @@ class RecipeImageCacheService {
             const url = typeof item === 'string' ? item : item.url;
             const recipeId = typeof item === 'object' ? item.recipeId : null;
             const recipeName = typeof item === 'object' ? item.recipeName : null;
-            
+
             await this.getCachedImageUrl(url, recipeId, recipeName);
             cached++;
           } catch (error) {
@@ -412,7 +396,7 @@ class RecipeImageCacheService {
         const filePaths = allCached
           .filter(c => c.file_path !== 'skipped')
           .map(c => c.file_path);
-        
+
         if (filePaths.length > 0) {
           await supabase.storage.from(STORAGE_BUCKET).remove(filePaths);
         }
@@ -437,7 +421,7 @@ class RecipeImageCacheService {
    */
   async getImagesByRecipe(recipeId) {
     if (!recipeId) return [];
-    
+
     try {
       const { data, error } = await supabase.rpc('get_recipe_images', {
         p_recipe_id: recipeId
@@ -464,7 +448,7 @@ class RecipeImageCacheService {
         .from(CACHE_TABLE)
         .select('file_path, id')
         .eq('recipe_id', recipeId);
-      
+
       if (!recipeImages || recipeImages.length === 0) {
         console.log('ℹ️ No cached images found for recipe:', recipeId);
         return;
@@ -474,7 +458,7 @@ class RecipeImageCacheService {
       const filesToDelete = recipeImages
         .filter(img => img.file_path !== 'skipped')
         .map(img => img.file_path);
-      
+
       if (filesToDelete.length > 0) {
         const { error } = await supabase.storage
           .from(STORAGE_BUCKET)
@@ -490,7 +474,7 @@ class RecipeImageCacheService {
         .from(CACHE_TABLE)
         .delete()
         .eq('recipe_id', recipeId);
-      
+
       console.log(`🗑️ Deleted ${recipeImages.length} images for recipe: ${recipeId}`);
     } catch (error) {
       console.error('Error deleting recipe images:', error);
