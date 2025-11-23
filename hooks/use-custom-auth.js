@@ -439,7 +439,7 @@ export function useCustomAuth() {
       }
 
       // Get website URL from environment or use default
-      const websiteUrl = process.env.EXPO_PUBLIC_WEBSITE_URL || 'http://localhost:5173'
+      const websiteUrl = process.env.EXPO_PUBLIC_WEBSITE_URL || 'https://recipe-download.vercel.app'
 
       // Send password reset email with token link that redirects to website
       const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
@@ -678,7 +678,7 @@ export function useCustomAuth() {
       console.log('📤 Sending password reset email via Supabase...')
 
       // Get website URL from environment or use default
-      const websiteUrl = process.env.EXPO_PUBLIC_WEBSITE_URL || 'http://localhost:5173'
+      const websiteUrl = process.env.EXPO_PUBLIC_WEBSITE_URL || 'https://recipe-download.vercel.app'
 
       // Send password reset email via Supabase auth
       const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
