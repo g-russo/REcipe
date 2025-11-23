@@ -517,14 +517,11 @@ async def deconstruct_dish(request: DeconstructRequest):
     # ✅ Check Rate Limit
     if not check_gemini_rate_limit():
         print("⚠️ Gemini Rate Limit Reached for deconstruct-dish. Using fallback.")
-        return {
-            "is_dish": False,
-            "ingredients": [request.food_name],
-            "reasoning": "Rate limit reached, treating as raw ingredient."
-        }
+        return call_openai_deconstruct(request.food_name)
 
     if not gemini_model:
-        raise HTTPException(status_code=503, detail="Gemini AI not available")
+        print("❌ Gemini AI not available. Using fallback.")
+        return call_openai_deconstruct(request.food_name)
     
     prompt = f"""
     Analyze the food item: "{request.food_name}".
@@ -571,11 +568,96 @@ async def deconstruct_dish(request: DeconstructRequest):
         return json.loads(text)
     except Exception as e:
         print(f"Error deconstructing dish: {e}")
-        # Fallback: treat as raw ingredient
+        print("⚠️ Gemini Failed. Switching to OpenAI Fallback...")
+        return call_openai_deconstruct(request.food_name)
+
+def call_openai_deconstruct(food_name: str):
+    """
+    Fallback to OpenAI GPT-4o for dish deconstruction when Gemini rate limit is reached.
+    """
+    if not OPENAI_API_KEY:
+        print("❌ OpenAI API Key missing for fallback")
         return {
             "is_dish": False,
-            "ingredients": [request.food_name],
-            "reasoning": "Error processing request, treating as raw ingredient."
+            "ingredients": [food_name],
+            "reasoning": "AI service unavailable (Rate limit reached & no fallback key)."
+        }
+        
+    print(f"🤖 Calling OpenAI Deconstruction (Fallback) for: {food_name}...")
+    
+    try:
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {OPENAI_API_KEY}"
+        }
+        
+        prompt_text = f"""
+        Analyze the food item: "{food_name}".
+        
+        1. Is this a cooked dish/leftover or a raw ingredient?
+        2. If it is a dish (especially a Filipino dish), list the main salvageable ingredients that could be repurposed into another meal.
+        3. If it is a raw ingredient, just return the ingredient name.
+        4. Suggest 3-5 creative recipe names that can be made using these leftovers or ingredients.
+        
+        Format the output as a JSON object with these keys:
+        - is_dish: boolean
+        - ingredients: list of strings (the salvageable ingredients or the raw ingredient itself. Keep them simple and concise, e.g., "cooked pork" instead of "cooked meat (pork, beef...)")
+        - suggested_recipes: list of strings (names of recipes to make with these)
+        - reasoning: string (brief explanation)
+        
+        Example 1:
+        Input: "Adobo"
+        Output: {{ 
+            "is_dish": true, 
+            "ingredients": ["cooked chicken", "cooked pork", "adobo sauce"], 
+            "suggested_recipes": ["Adobo Flakes", "Adobo Fried Rice", "Adobo Sandwich"],
+            "reasoning": "Adobo meat can be flaked and fried or used in sandwiches." 
+        }}
+        
+        Example 2:
+        Input: "Tomato"
+        Output: {{ 
+            "is_dish": false, 
+            "ingredients": ["tomato"], 
+            "suggested_recipes": ["Tomato Soup", "Tomato Salsa", "Stuffed Tomatoes"],
+            "reasoning": "It is a raw ingredient." 
+        }}
+        """
+        
+        payload = {
+            "model": "gpt-4o",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": prompt_text
+                }
+            ],
+            "response_format": { "type": "json_object" },
+            "max_tokens": 500
+        }
+        
+        response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
+        
+        if response.status_code != 200:
+            print(f"❌ OpenAI Error: {response.status_code} - {response.text}")
+            return {
+                "is_dish": False,
+                "ingredients": [food_name],
+                "reasoning": "OpenAI fallback failed."
+            }
+            
+        result = response.json()
+        content = result['choices'][0]['message']['content']
+        print(f"✅ OpenAI Raw Response: {content}")
+        
+        return json.loads(content)
+    except Exception as e:
+        print(f"❌ OpenAI Fallback Error: {e}")
+        traceback.print_exc()
+        return {
+            "is_dish": False,
+            "ingredients": [food_name],
+            "reasoning": "Error in OpenAI fallback."
         }
 
 # ✅ Run the server
