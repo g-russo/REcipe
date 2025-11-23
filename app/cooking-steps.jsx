@@ -580,7 +580,8 @@ const CookingSteps = () => {
         visible={showIngredientConfirmation}
         onClose={() => {
           setShowIngredientConfirmation(false);
-          setShowCompleteModal(true);
+          setCompletionMessage('Recipe saved to your cooking history!');
+          showCompletionModal();
         }}
         substitutedIngredients={substitutedIngredients}
         onConfirm={handleIngredientConfirmation}
