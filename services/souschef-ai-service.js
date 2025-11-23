@@ -930,7 +930,7 @@ Examples:
 "bangus" → {"isValid": true, "reason": "Bangus (milkfish) is a common Filipino fish"}
 "asdfgh" → {"isValid": false, "reason": "Not a recognizable food term"}
 "table" → {"isValid": false, "reason": "Not a food ingredient or dish"}
-"tapang kabayo" → {"isValid": true, "reason": "Filipino cured horse meat dish"}`;
+"beef tapa" → {"isValid": true, "reason": "Filipino cured or smoked beef dish"}`;
 
       const response = await fetch(OPENAI_API_URL, {
         method: 'POST',
