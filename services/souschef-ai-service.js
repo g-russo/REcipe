@@ -5,9 +5,9 @@ import Constants from 'expo-constants';
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
 
 // ✅ FIX: Use the same logic as food-recog-api.js
-const API_BASE_URL = Constants.expoConfig?.extra?.foodApiUrl || 
-                     process.env.EXPO_PUBLIC_FOOD_API_URL || 
-                     'http://54.153.205.43:8000';
+const API_BASE_URL = Constants.expoConfig?.extra?.foodApiUrl ||
+  process.env.EXPO_PUBLIC_FOOD_API_URL ||
+  'http://54.153.205.43:8000';
 
 console.log('🔧 SousChef API Configuration:');
 console.log('📍 API_BASE_URL:', API_BASE_URL);
@@ -22,7 +22,7 @@ class SousChefAIService {
     try {
       console.log(`🔍 Deconstructing dish: ${foodName}`);
       console.log(`📡 Using API: ${API_BASE_URL}/deconstruct-dish`);
-      
+
       const response = await fetch(`${API_BASE_URL}/deconstruct-dish`, {
         method: 'POST',
         headers: {
@@ -915,7 +915,7 @@ Return ONLY valid JSON. No additional text.`;
     try {
       console.log(`🔍 Validating food ingredient: "${searchTerm}"`);
 
-      const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+      const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
       if (!apiKey) {
         console.error('❌ OpenAI API key not found');
         return { isValid: true, reason: 'Validation skipped - API key missing' };
@@ -999,7 +999,7 @@ Examples:
     try {
       console.log(`🔮 Predicting details for: "${itemName}" ${imageBase64 ? '(with image)' : ''}`);
 
-      const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+      const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
       if (!apiKey) {
         console.error('❌ OpenAI API key not found');
         return { category: 'Other', shelfLifeDays: 7, reasoning: 'API key missing' };
