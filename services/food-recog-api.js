@@ -2,8 +2,11 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
 // ✅ Add detailed logging
-// TEMPORARY: For Local Testing
-const API_BASE_URL = 'http://192.168.1.4:8000'; // ✅ Include http:// protocol
+// ✅ PRODUCTION: Use AWS EC2 Server
+const API_BASE_URL = 'http://54.153.205.43:8000';
+
+// TEMPORARY: For Local Testing (uncomment when testing locally)
+// const API_BASE_URL = 'http://192.168.1.4:8000';
 
 //original backend server
 // const API_BASE_URL = Constants.expoConfig?.extra?.foodApiUrl || process.env.EXPO_PUBLIC_FOOD_API_URL || 'http://54.153.205.43:8000';
