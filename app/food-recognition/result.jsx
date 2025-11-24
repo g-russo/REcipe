@@ -82,6 +82,16 @@ export default function FoodRecognitionResult() {
   const [successModalVisible, setSuccessModalVisible] = useState(false);
   const [addedItemName, setAddedItemName] = useState('');
 
+  // Helper to format item name (Capitalize + Remove special chars)
+  const formatItemName = (text) => {
+    if (!text) return '';
+    // Remove characters that are NOT letters, spaces, hyphens, or apostrophes
+    const cleaned = text.replace(/[^a-zA-Z\s'-]/g, '');
+    
+    // Title Case (Capitalize first letter of every word)
+    return cleaned.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+  };
+
   // Animation Values
   const scrollY = useRef(new Animated.Value(0)).current;
 
@@ -441,7 +451,7 @@ export default function FoodRecognitionResult() {
       };
 
       setPrefilledItemData({
-        itemName: selectedFood.label,
+        itemName: formatItemName(selectedFood.label),
         itemCategory: category,
         quantity: '1',
         unit: suggestUnit(category),

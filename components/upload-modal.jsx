@@ -173,6 +173,16 @@ const UploadModal = () => {
         return 'Other';
     };
 
+    // Helper to format item name (Capitalize + Remove special chars)
+    const formatItemName = (text) => {
+        if (!text) return '';
+        // Remove characters that are NOT letters, spaces, hyphens, or apostrophes
+        const cleaned = text.replace(/[^a-zA-Z\s'-]/g, '');
+        
+        // Title Case (Capitalize first letter of every word)
+        return cleaned.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+    };
+
     // Helper function to estimate expiry date
     const estimateExpiryDate = (category) => {
         const now = new Date();
@@ -354,7 +364,8 @@ const UploadModal = () => {
     const handleFoodFound = async (food) => {
         console.log('Food found:', food);
 
-        const foodName = food.food_name || 'Unknown Food';
+        const rawName = food.food_name || 'Unknown Food';
+        const foodName = formatItemName(rawName);
 
         Alert.alert(
             'Food Found!',

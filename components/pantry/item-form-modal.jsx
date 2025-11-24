@@ -380,12 +380,41 @@ const ItemFormModal = ({
     setImagePickerVisible(true);
   };
 
+  // Helper to format item name (Capitalize + Remove special chars)
+  const formatItemName = (text) => {
+    if (!text) return '';
+    // Remove characters that are NOT letters, spaces, hyphens, or apostrophes
+    // (Matching the allowed regex: /^[a-zA-Z\s'-]+$/)
+    const cleaned = text.replace(/[^a-zA-Z\s'-]/g, '');
+    
+    // Title Case (Capitalize first letter of every word)
+    return cleaned.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+  };
+
   // Validate and save (preserve draft on invalid, clear on success)
   const handleSave = async () => {
     console.log('📋 Item Form - Validating and saving...', formData);
-    const isValid = validateForm();
-    if (!isValid) {
+    
+    // 1. Format the name immediately
+    const formattedName = formatItemName(formData.itemName);
+    
+    // 2. Check validation manually for the name since we modified it
+    const nameError = validateItemName(formattedName);
+    const categoryError = validateCategory(formData.itemCategory);
+    const unitError = validateUnit(formData.unit);
+    const expirationError = validateExpiration(formData.itemExpiration);
+    const quantityError = validateQuantity(formData.quantity);
+
+    const nextErrors = {};
+    if (nameError) nextErrors.itemName = nameError;
+    if (categoryError) nextErrors.itemCategory = categoryError;
+    if (unitError) nextErrors.unit = unitError;
+    if (expirationError) nextErrors.itemExpiration = expirationError;
+    if (quantityError) nextErrors.quantity = quantityError;
+
+    if (Object.keys(nextErrors).length > 0) {
       console.log('❌ Validation failed: Missing required fields');
+      setFormErrors(nextErrors);
       await saveDraft();
       setValidationAlert({
         visible: true,
@@ -396,7 +425,13 @@ const ItemFormModal = ({
 
     console.log('✅ Validation passed, calling onSave...');
     try {
-      const saveResult = await onSave(formData);
+      // Use formatted name in save data
+      const dataToSave = {
+        ...formData,
+        itemName: formattedName.trim()
+      };
+
+      const saveResult = await onSave(dataToSave);
 
       // Handle duplicate detection from parent
       if (saveResult?.status === 'duplicate-detected') {

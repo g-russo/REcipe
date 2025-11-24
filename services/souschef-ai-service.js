@@ -622,6 +622,87 @@ class SousChefAIService {
   }
 
   /**
+   * Generate 5 recipe suggestions based on search query and pantry items
+   * @returns {Promise<{success: boolean, suggestions: string[]}>}
+   */
+  async generateRecipeSuggestions(searchQuery, filters = {}, pantryItems = []) {
+    try {
+      console.log(`🤖 Generating recipe suggestions for "${searchQuery}"...`);
+      const apiKey = this.getOpenAiKey();
+      
+      if (!apiKey) {
+        console.error('❌ OpenAI API key not found');
+        return { success: false, suggestions: [], error: 'API key missing' };
+      }
+
+      let prompt = `You are SousChef AI. The user wants to cook something with "${searchQuery}".
+      
+      Based on the search query "${searchQuery}" and their pantry items (if any), suggest 5 distinct, creative, and appetizing recipe titles.
+      
+      CRITICAL:
+      1. The recipes MUST feature "${searchQuery}" as the main component or theme.
+      2. If "${searchQuery}" is a list of ingredients, find recipes that combine them.
+      3. Provide variety (e.g., different cooking methods, cuisines).
+      
+      `;
+
+      if (pantryItems.length > 0) {
+        prompt += `Available Pantry Items: ${pantryItems.slice(0, 30).map(i => i.itemName).join(', ')}\n`;
+      }
+
+      prompt += `
+      Return ONLY a JSON object with this exact format:
+      {
+        "suggestions": [
+          "Recipe Title 1",
+          "Recipe Title 2",
+          "Recipe Title 3",
+          "Recipe Title 4",
+          "Recipe Title 5"
+        ]
+      }`;
+
+      const response = await fetch(OPENAI_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are SousChef AI. Respond ONLY with valid JSON.'
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          temperature: 0.8,
+          max_tokens: 500,
+          response_format: { type: 'json_object' }
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`OpenAI API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const content = JSON.parse(data.choices[0].message.content);
+      
+      console.log('✅ Generated suggestions:', content.suggestions);
+      return { success: true, suggestions: content.suggestions };
+
+    } catch (error) {
+      console.error('❌ Error generating suggestions:', error);
+      return { success: false, suggestions: [], error: error.message };
+    }
+  }
+
+  /**
    * Build prompt for recipe generation (matches Custom GPT instructions)
    */
   buildRecipePrompt(searchQuery, filters, pantryItems, recipeCount = 5) {
