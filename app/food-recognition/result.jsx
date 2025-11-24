@@ -17,7 +17,7 @@ import {
 import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { recognizeFoodCombined } from '../../services/food-recog-api';
-import { supabase } from '../../lib/supabase';
+import { supabase, safeGetUser } from '../../lib/supabase';
 import PantryService from '../../services/pantry-service';
 import LoadingOverlay from '../../components/food-recognition/loading-overlay';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
@@ -331,7 +331,7 @@ export default function FoodRecognitionResult() {
     setLoading(true); // Show loading indicator
 
     try {
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      const { data: { user }, error: userError } = await safeGetUser();
       if (userError || !user) {
         Alert.alert('Error', 'You must be logged in to add items');
         return;
@@ -471,7 +471,7 @@ export default function FoodRecognitionResult() {
   const handleSaveItem = async (itemData) => {
     try {
       // Ensure user session
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      const { data: { user }, error: userError } = await safeGetUser();
       if (userError || !user) {
         throw new Error('You must be logged in');
       }
@@ -658,7 +658,7 @@ export default function FoodRecognitionResult() {
 
   const handleManualEntry = async () => {
     try {
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      const { data: { user }, error: userError } = await safeGetUser();
       if (userError || !user) {
         Alert.alert('Error', 'You must be logged in to add items');
         return;

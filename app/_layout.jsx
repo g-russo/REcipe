@@ -13,7 +13,7 @@ import {
   addNotificationResponseListener,
   addNotificationReceivedListener
 } from '../services/notification-service';
-import { supabase } from '../lib/supabase';
+import { supabase, safeGetUser } from '../lib/supabase';
 import { useRouter } from 'expo-router';
 import { useNetInfo } from '@react-native-community/netinfo';
 import NoInternetModal from '../components/NoInternetModal';
@@ -79,7 +79,7 @@ export default function RootLayout() {
           console.log('✅ Push token received:', token.substring(0, 20) + '...');
 
           // Get current user and save token
-          const { data: { user } } = await supabase.auth.getUser();
+          const { data: { user } } = await safeGetUser();
           if (user) {
             await savePushToken(user.id, token);
             console.log('✅ Push token saved to database');
@@ -159,11 +159,11 @@ export default function RootLayout() {
           <Stack.Screen name="food-recognition/result" options={{ title: 'Result' }} />
           <Stack.Screen name="notifications" options={{ title: 'Notifications' }} />
         </Stack>
-        
+
         {!isSplashAnimationFinished && (
           <AnimatedSplashScreen onFinish={() => setIsSplashAnimationFinished(true)} />
         )}
-        
+
         <StatusBar style="auto" />
         <NoInternetModal isVisible={netInfo.isConnected === false} />
       </SupabaseProvider>

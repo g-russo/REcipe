@@ -183,7 +183,7 @@ def call_gemini_vision(image: Image.Image):
     2. Look for visual cues common in Filipino cooking: specific vegetables (eggplant, okra, kangkong), sauces (adobo, sinigang, kare-kare), or side dishes (rice, dipping sauces).
     3. If it is a regional Filipino specialty, provide the specific local name.
     4. If it is definitely NOT Filipino, identify it correctly as its international name.
-    5. If the image is NOT food intended for human consumption, or is clearly food intended for other species (e.g., pet food, animal feed, treats for animals, fertilizer, supplements), or the image only shows packaging/labels/logos without edible content, return "Not a Food" as the name. When returning "Not a Food", include a short "reason" field explaining why (e.g., "pet food - dry kibble", "packaging only"), and do NOT attempt to classify it as a human dish or ingredient.
+    5. If the image is NOT food intended for human consumption, or is clearly food intended for other species (e.g., pet food, animal feed, treats for animals, fertilizer, supplements), or the image only shows labels/logos without edible content, return "Not a Food" as the name. When returning "Not a Food", include a short "reason" field explaining why (e.g., "pet food - dry kibble", " only"), and do NOT attempt to classify it as a human dish or ingredient.
     6. If you cannot identify the food at all, return "Unknown Food" as the name.
     7. Provide top 5 possible identifications, sorted by confidence (highest first).
     8. Assign a realistic confidence score (0.0 to 0.99) for each prediction based on how certain you are. Do not default to 0.99 unless absolutely certain.
@@ -248,7 +248,7 @@ Key Instructions:
 2. Look for visual cues common in Filipino cooking: specific vegetables (eggplant, okra, kangkong), sauces (adobo, sinigang, kare-kare), or side dishes (rice, dipping sauces).
 3. If it is a regional Filipino specialty, provide the specific local name.
 4. If it is definitely NOT Filipino, identify it correctly as its international name.
-5. If the image is NOT food intended for human consumption, or is clearly food intended for other species (e.g., pet food, animal feed, treats for animals, fertilizer), or the image only shows packaging/labels/logos without edible content, return "Not a Food" as the name. When returning "Not a Food", include a short "reason" string explaining why (e.g., "pet food - dog kibble", "packaging only"). Do NOT attempt to classify it as a human dish or ingredient.
+5. If the image is NOT food intended for human consumption, or is clearly food intended for other species (e.g., pet food, animal feed, treats for animals, fertilizer), or the image only shows labels/logos without edible content, return "Not a Food" as the name. When returning "Not a Food", include a short "reason" string explaining why (e.g., "pet food - dog kibble", " only"). Do NOT attempt to classify it as a human dish or ingredient.
 6. If you cannot identify the food at all, return "Unknown Food" as the name.
 7. Provide top 5 possible identifications, sorted by confidence (highest first).
 8. Assign a realistic confidence score (0.0 to 0.99) for each prediction based on how certain you are. Do not default to 0.99 unless absolutely certain.
