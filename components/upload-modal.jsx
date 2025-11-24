@@ -17,7 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTabContext } from '../contexts/tab-context';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
-import { supabase } from '../lib/supabase';
+import { supabase, safeGetUser } from '../lib/supabase';
 import * as Haptics from 'expo-haptics';
 
 // Import Scanners
@@ -215,7 +215,7 @@ const UploadModal = () => {
     const addItemToInventory = async (itemName, metadata = {}) => {
         try {
             // Get current user
-            const { data: { user }, error: userError } = await supabase.auth.getUser();
+            const { data: { user }, error: userError } = await safeGetUser();
             if (userError || !user) {
                 Alert.alert('Error', 'You must be logged in to add items');
                 return false;

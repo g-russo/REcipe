@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { supabase, safeGetUser } from '../lib/supabase';
 import ImageConverter from '../utils/image-converter';
 
 /**
@@ -19,8 +19,8 @@ class PantryService {
   async getUserID(authUUID) {
     try {
       // Get current authenticated user's email
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-      
+      const { data: { user }, error: authError } = await safeGetUser();
+
       if (authError || !user?.email) {
         console.error('❌ No authenticated user found');
         throw new Error('User not authenticated');
@@ -58,7 +58,7 @@ class PantryService {
    */
   async checkUserVerified(authUUID) {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await safeGetUser();
       if (!user?.email) return false;
 
       const { data, error } = await supabase
@@ -95,6 +95,19 @@ class PantryService {
     try {
       console.log('📤 Uploading pantry item image...');
 
+      // Ensure user is authenticated before attempting storage upload
+      try {
+        const { data: { user }, error: authError } = await safeGetUser();
+        if (authError || !user) {
+          console.error('❌ Cannot upload image: user not authenticated or refresh token invalid', authError);
+          throw new Error('User not authenticated. Image upload blocked by storage RLS. Please sign in again.');
+        }
+        // Optionally, you could verify that the provided userID matches authenticated user email mapping
+      } catch (au) {
+        console.error('❌ Authentication check failed prior to upload:', au);
+        throw au;
+      }
+
       // Step 1: Convert image to WebP
       const convertedImage = await ImageConverter.convertToWebP(
         imageUri,
@@ -109,7 +122,7 @@ class PantryService {
 
       // Step 3: Convert base64 to ArrayBuffer for React Native
       const base64Data = convertedImage.base64.replace(/^data:image\/\w+;base64,/, '');
-      
+
       // For React Native, we need to upload the base64 directly or use fetch
       // Convert base64 to binary array
       const byteCharacters = atob(base64Data);
@@ -176,7 +189,7 @@ class PantryService {
 
       // Step 3: Convert base64 to ArrayBuffer for React Native
       const base64Data = convertedImage.base64.replace(/^data:image\/\w+;base64,/, '');
-      
+
       const byteCharacters = atob(base64Data);
       const byteNumbers = new Array(byteCharacters.length);
       for (let i = 0; i < byteCharacters.length; i++) {
@@ -225,7 +238,7 @@ class PantryService {
       const url = new URL(imageURL);
       const pathParts = url.pathname.split('/pantry-images/');
       if (pathParts.length < 2) return true;
-      
+
       const filePath = pathParts[1];
 
       const { error } = await supabase.storage
@@ -266,7 +279,7 @@ class PantryService {
   async checkUserVerified(userID) {
     try {
       console.log('🔍 Checking verification for user:', userID);
-      
+
       const { data, error } = await supabase
         .from('tbl_users')
         .select('"isVerified"')
@@ -277,7 +290,7 @@ class PantryService {
         console.error('❌ Error checking verification:', error);
         throw error;
       }
-      
+
       const isVerified = data?.isVerified || false;
       console.log('✅ User verification status:', isVerified);
       return isVerified;
@@ -295,7 +308,7 @@ class PantryService {
   async getUserTotalItemCount(userID) {
     try {
       console.log('🔢 Counting items for user:', userID);
-      
+
       // Get all user's inventories first
       console.log('🔍 Fetching user inventories for count...');
       const { data: inventories, error: invError } = await supabase
@@ -309,7 +322,7 @@ class PantryService {
         console.error('❌ Error fetching inventories:', invError);
         throw invError;
       }
-      
+
       if (!inventories || inventories.length === 0) {
         console.log('📦 No inventories found, count = 0');
         return 0;
@@ -331,7 +344,7 @@ class PantryService {
         console.error('❌ Error counting items:', error);
         throw error;
       }
-      
+
       console.log('✅ Total item count:', count);
       return count || 0;
     } catch (error) {
@@ -350,13 +363,13 @@ class PantryService {
     try {
       console.log('🔍 Fetching inventories for userID:', userID);
       console.log('🔍 User ID type:', typeof userID);
-      
+
       // Validate that we received a number, not a UUID
       if (typeof userID !== 'number') {
         console.error('❌ getUserInventories expects numeric userID, got:', typeof userID);
         throw new Error('getUserInventories requires numeric userID. Use getUserID() to convert Auth UUID first.');
       }
-      
+
       const { data, error } = await supabase
         .from('tbl_inventories')
         .select('*')
@@ -369,7 +382,7 @@ class PantryService {
         console.error('❌ Error details:', error.details);
         throw error;
       }
-      
+
       console.log('✅ Inventories fetched:', data?.length || 0, 'records');
       return data || [];
     } catch (error) {
@@ -387,7 +400,7 @@ class PantryService {
   async createInventory(userID, inventoryData = {}) {
     try {
       console.log('📦 Creating inventory for userID:', userID);
-      
+
       // Validate numeric userID
       if (typeof userID !== 'number') {
         throw new Error('createInventory requires numeric userID. Use getUserID() to convert Auth UUID first.');
@@ -449,12 +462,12 @@ class PantryService {
     try {
       // Handle image update if new imageUri provided
       if (updates.imageUri && updates.userID) {
-      // Get current inventory to check for old image
-      const { data: currentInv } = await supabase
-        .from('tbl_inventories')
-        .select('imageURL, inventoryName')
-        .eq('"inventoryID"', inventoryID)
-        .single();        // Delete old image if exists
+        // Get current inventory to check for old image
+        const { data: currentInv } = await supabase
+          .from('tbl_inventories')
+          .select('imageURL, inventoryName')
+          .eq('"inventoryID"', inventoryID)
+          .single();        // Delete old image if exists
         if (currentInv?.imageURL) {
           await this.deleteGroupImage(currentInv.imageURL);
         }
@@ -714,7 +727,7 @@ class PantryService {
       let uploadedImageURL = imageURL;
       if (imageURL && imageURL.startsWith('file://')) {
         console.log('🖼️ Uploading new image to Supabase...');
-        
+
         // Get old image URL to delete it
         const { data: oldItem } = await supabase
           .from('tbl_items')
@@ -840,7 +853,7 @@ class PantryService {
    */
   async searchItems(userID, query) {
     try {
-      const { data, error} = await supabase
+      const { data, error } = await supabase
         .from('tbl_items')
         .select(`
           *,
@@ -936,7 +949,7 @@ class PantryService {
   async getUserGroups(userID) {
     try {
       console.log('📂 Getting groups for user:', userID);
-      
+
       // First get user's inventory
       const { data: inventory, error: invError } = await supabase
         .from('tbl_inventories')
@@ -1340,7 +1353,7 @@ class PantryService {
       // Only create notification if within threshold
       if (notificationTitle) {
         console.log(`🔔 Creating expiration notification for "${itemName}"`);
-        
+
         const { data, error } = await supabase
           .from('tbl_notifications')
           .insert({
@@ -1382,14 +1395,14 @@ class PantryService {
 
       // Get all inventories for user
       const inventories = await this.getInventories(userID);
-      
+
       let checkedCount = 0;
       let notificationCount = 0;
 
       for (const inventory of inventories) {
         // Get all items in inventory
         const items = await this.getItems(inventory.inventoryID);
-        
+
         for (const item of items) {
           if (item.itemExpiration) {
             checkedCount++;

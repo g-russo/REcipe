@@ -71,18 +71,46 @@ class SurveyService {
    */
   static async getDaysSinceSignup(userEmail) {
     try {
-      const { data, error } = await supabase
-        .from('tbl_users')
-        .select('created_at')
-        .eq('email', userEmail)
-        .single();
+      // Try common column name variants for created timestamp
+      let data = null;
+      let error = null;
+
+      // First try camelCase column used in this project
+      try {
+        const res = await supabase
+          .from('tbl_users')
+          .select('createdAt')
+          .eq('email', userEmail)
+          .single();
+        data = res.data;
+        error = res.error;
+      } catch (e) {
+        console.warn('Error selecting createdAt, will try created_at:', e?.message || e);
+      }
+
+      // If camelCase failed or returned nothing, try snake_case
+      if ((!data || !data.createdAt) && !error) {
+        try {
+          const res2 = await supabase
+            .from('tbl_users')
+            .select('created_at')
+            .eq('email', userEmail)
+            .single();
+          data = res2.data;
+          error = res2.error;
+        } catch (e) {
+          console.warn('Error selecting created_at:', e?.message || e);
+        }
+      }
 
       if (error || !data) {
         console.warn('Could not get user signup date:', error);
         return 0;
       }
 
-      const signupDate = new Date(data.created_at);
+      // Prefer createdAt, fall back to created_at
+      const createdValue = data.createdAt ?? data.created_at;
+      const signupDate = new Date(createdValue);
       const now = new Date();
       const daysDiff = Math.floor((now - signupDate) / (1000 * 60 * 60 * 24));
 
@@ -349,7 +377,7 @@ class SurveyService {
         await this.updateSurveyStatus(userEmail, survey.surveyID, 'shown', true);
         // Optionally mark as completed since user opened the form
         // await this.updateSurveyStatus(userEmail, survey.surveyID, 'completed');
-        
+
         console.log('📋 Survey form opened in browser');
         return { shouldShow: true, action: 'opened', survey };
       } else if (result.action === 'dismissed') {

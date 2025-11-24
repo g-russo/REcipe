@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
     View,
     Text,
@@ -17,6 +17,15 @@ const DeconstructionModal = ({ visible, onClose, data, onSearchRecipe, onRecipeS
     if (!data) return null;
 
     const { is_dish, ingredients, suggested_recipes, reasoning, originalDish, realRecipes } = data;
+
+    const [confirmVisible, setConfirmVisible] = useState(false);
+    const [pendingRecipe, setPendingRecipe] = useState(null);
+
+    const handleConfirmGenerate = () => {
+        setConfirmVisible(false);
+        if (onGenerateRecipe && pendingRecipe) onGenerateRecipe(pendingRecipe);
+        setPendingRecipe(null);
+    };
 
     return (
         <Modal
@@ -101,7 +110,7 @@ const DeconstructionModal = ({ visible, onClose, data, onSearchRecipe, onRecipeS
                                     <TouchableOpacity
                                         key={index}
                                         style={styles.recipeButton}
-                                        onPress={() => onGenerateRecipe && onGenerateRecipe(recipe)}
+                                        onPress={() => { setPendingRecipe(recipe); setConfirmVisible(true); }}
                                     >
                                         <Text style={styles.recipeButtonText}>{recipe}</Text>
                                         <Ionicons name="arrow-forward-circle" size={20} color="#81A969" />
@@ -109,6 +118,29 @@ const DeconstructionModal = ({ visible, onClose, data, onSearchRecipe, onRecipeS
                                 ))}
                             </View>
                         )}
+
+                        {/* Confirmation Modal for AI generation */}
+                        <Modal
+                            visible={confirmVisible}
+                            transparent={true}
+                            animationType="fade"
+                            onRequestClose={() => setConfirmVisible(false)}
+                        >
+                            <View style={styles.confirmCentered}>
+                                <View style={styles.confirmView}>
+                                    <Text style={styles.confirmTitle}>Generate Recipe?</Text>
+                                    <Text style={styles.confirmText}>Generate a recipe using SousChefAI for "{pendingRecipe}"? This will create a generated recipe automatically.</Text>
+                                    <View style={styles.confirmButtonsRow}>
+                                        <TouchableOpacity style={[styles.confirmButton, styles.confirmCancelButton]} onPress={() => { setConfirmVisible(false); setPendingRecipe(null); }}>
+                                            <Text style={styles.confirmButtonText}>Cancel</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity style={[styles.confirmButton, styles.confirmPrimaryButton]} onPress={handleConfirmGenerate}>
+                                            <Text style={[styles.confirmButtonText, { color: '#fff' }]}>Generate</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+                            </View>
+                        </Modal>
 
                     </ScrollView>
 
@@ -339,6 +371,56 @@ const styles = StyleSheet.create({
         color: '#81A969',
         fontSize: 15,
         fontWeight: '600',
+    },
+    /* Confirmation modal styles */
+    confirmCentered: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0,0,0,0.45)'
+    },
+    confirmView: {
+        width: '85%',
+        backgroundColor: '#FFF',
+        borderRadius: 14,
+        padding: 20,
+        alignItems: 'center',
+        elevation: 6,
+    },
+    confirmTitle: {
+        fontSize: 18,
+        fontWeight: '700',
+        marginBottom: 8,
+        color: '#222'
+    },
+    confirmText: {
+        fontSize: 14,
+        color: '#555',
+        textAlign: 'center',
+        marginBottom: 16,
+    },
+    confirmButtonsRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        width: '100%'
+    },
+    confirmButton: {
+        flex: 1,
+        paddingVertical: 12,
+        borderRadius: 10,
+        alignItems: 'center',
+        marginHorizontal: 6,
+    },
+    confirmPrimaryButton: {
+        backgroundColor: '#81A969'
+    },
+    confirmCancelButton: {
+        backgroundColor: '#F0F0F0'
+    },
+    confirmButtonText: {
+        fontSize: 15,
+        fontWeight: '600',
+        color: '#333'
     },
 });
 

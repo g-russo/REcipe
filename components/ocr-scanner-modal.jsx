@@ -14,7 +14,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { extractText } from '../services/food-recog-api';
-import { supabase } from '../lib/supabase';
+import { supabase, safeGetUser } from '../lib/supabase';
 import PantryService from '../services/pantry-service';
 
 export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
@@ -101,11 +101,11 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
 
     const days = expiryDays[category] || 14;
     now.setDate(now.getDate() + days);
-    
+
     const month = now.getMonth() + 1;
     const day = now.getDate();
     const year = now.getFullYear();
-    
+
     return `${month}/${day}/${year}`;
   };
 
@@ -244,7 +244,7 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
     setAddingToInventory(true);
 
     try {
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      const { data: { user }, error: userError } = await safeGetUser();
       if (userError || !user) {
         Alert.alert('Error', 'You must be logged in to add items');
         setAddingToInventory(false);
@@ -325,7 +325,7 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
           );
 
           if (duplicateItem) {
-            const canMerge = 
+            const canMerge =
               duplicateItem.unit?.trim().toLowerCase() === itemData.unit?.trim().toLowerCase() &&
               !isNaN(Number(duplicateItem.quantity)) &&
               !isNaN(Number(itemData.quantity));
@@ -382,18 +382,18 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
 
       if (!result.canceled && result.assets[0]) {
         const response = await extractText(result.assets[0].uri);
-        
+
         if (response.success && response.text) {
           setScannedText(response.text);
           setOcrSource(response.source);
-          
+
           const items = response.text.split('\n')
             .map(line => line.trim())
             .filter(line => line.length > 0 && line.length < 100); // Filter out very long lines
 
           setDetectedItems(items);
           setSelectedItems(new Set(items)); // Select all by default
-          
+
           onTextExtracted?.(response.text);
         } else {
           Alert.alert('No Text Found', 'Could not extract text from the image.');
@@ -425,18 +425,18 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
 
       if (!result.canceled && result.assets[0]) {
         const response = await extractText(result.assets[0].uri);
-        
+
         if (response.success && response.text) {
           setScannedText(response.text);
           setOcrSource(response.source);
-          
+
           const items = response.text.split('\n')
             .map(line => line.trim())
             .filter(line => line.length > 0 && line.length < 100);
 
           setDetectedItems(items);
           setSelectedItems(new Set(items)); // Select all by default
-          
+
           onTextExtracted?.(response.text);
         } else {
           Alert.alert('No Text Found', 'Could not extract text from the image.');
@@ -512,20 +512,20 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
             <View style={styles.resultContainer}>
               {/* AI Source Badge */}
               <View style={styles.sourceBadgeContainer}>
-                <Ionicons 
-                  name={ocrSource === 'gemini' ? 'sparkles' : ocrSource === 'openai' ? 'flash' : 'eye'} 
-                  size={16} 
-                  color={ocrSource === 'gemini' ? '#673AB7' : ocrSource === 'openai' ? '#10a37f' : '#FF6B6B'} 
+                <Ionicons
+                  name={ocrSource === 'gemini' ? 'sparkles' : ocrSource === 'openai' ? 'flash' : 'eye'}
+                  size={16}
+                  color={ocrSource === 'gemini' ? '#673AB7' : ocrSource === 'openai' ? '#10a37f' : '#FF6B6B'}
                 />
                 <Text style={[styles.sourceBadgeText, {
                   color: ocrSource === 'gemini' ? '#673AB7' : ocrSource === 'openai' ? '#10a37f' : '#FF6B6B'
                 }]}>
-                  {ocrSource === 'gemini' ? 'Gemini AI' : ocrSource === 'openai' ? 'OpenAI GPT-4o' : 'Tesseract OCR'}
+                  {ocrSource === 'gemini' ? 'SousChef AI' : ocrSource === 'openai' ? 'SousChef AI' : 'Tesseract OCR'}
                 </Text>
               </View>
 
               <Text style={styles.resultTitle}>Select Items to Add:</Text>
-              
+
               {/* Select All / Deselect All Buttons */}
               <View style={styles.selectionControls}>
                 <TouchableOpacity style={styles.selectButton} onPress={selectAll}>
@@ -642,7 +642,7 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
         <View style={styles.centeredView}>
           <View style={styles.modalView}>
             <Text style={styles.modalTitle}>{groupSelectionAlert.message}</Text>
-            
+
             <ScrollView style={{ width: '100%', maxHeight: 300 }}>
               {groupSelectionAlert.groups.map((group) => (
                 <TouchableOpacity

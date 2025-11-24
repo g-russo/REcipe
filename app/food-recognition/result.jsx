@@ -17,7 +17,7 @@ import {
 import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { recognizeFoodCombined } from '../../services/food-recog-api';
-import { supabase } from '../../lib/supabase';
+import { supabase, safeGetUser } from '../../lib/supabase';
 import PantryService from '../../services/pantry-service';
 import LoadingOverlay from '../../components/food-recognition/loading-overlay';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
@@ -331,7 +331,7 @@ export default function FoodRecognitionResult() {
     setLoading(true); // Show loading indicator
 
     try {
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      const { data: { user }, error: userError } = await safeGetUser();
       if (userError || !user) {
         Alert.alert('Error', 'You must be logged in to add items');
         return;
@@ -471,7 +471,7 @@ export default function FoodRecognitionResult() {
   const handleSaveItem = async (itemData) => {
     try {
       // Ensure user session
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      const { data: { user }, error: userError } = await safeGetUser();
       if (userError || !user) {
         throw new Error('You must be logged in');
       }
@@ -658,7 +658,7 @@ export default function FoodRecognitionResult() {
 
   const handleManualEntry = async () => {
     try {
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      const { data: { user }, error: userError } = await safeGetUser();
       if (userError || !user) {
         Alert.alert('Error', 'You must be logged in to add items');
         return;
@@ -989,7 +989,9 @@ export default function FoodRecognitionResult() {
                   {selectedFood?.isUnknown ? "We couldn't identify this food." : "No foods detected with sufficient confidence"}
                 </Text>
                 <Text style={styles.noResultsSubtext}>
-                  Try taking a clearer photo or add the item manually.
+                  {selectedFood?.isUnknown
+                    ? "This image appears to be not food intended for human consumption; manual entry and detailed model results are disabled for this image."
+                    : "Try taking a clearer photo or add the item manually."}
                 </Text>
               </View>
             )}
@@ -1010,23 +1012,27 @@ export default function FoodRecognitionResult() {
 
             {/* Secondary Actions */}
             <View style={styles.secondaryActions}>
-              <TouchableOpacity
-                style={styles.manualButton}
-                onPress={handleManualEntry}
-              >
-                <Ionicons name="create-outline" size={20} color="#81A969" />
-                <Text style={styles.manualButtonText}>Manual Entry</Text>
-              </TouchableOpacity>
+              {!selectedFood?.isUnknown && (
+                <>
+                  <TouchableOpacity
+                    style={styles.manualButton}
+                    onPress={handleManualEntry}
+                  >
+                    <Ionicons name="create-outline" size={20} color="#81A969" />
+                    <Text style={styles.manualButtonText}>Manual Entry</Text>
+                  </TouchableOpacity>
 
-              {/* View Detailed Results Button */}
-              {result && (
-                <TouchableOpacity
-                  style={styles.detailsButton}
-                  onPress={() => setDetailsModalVisible(true)}
-                >
-                  <Ionicons name="stats-chart-outline" size={20} color="#81A969" />
-                  <Text style={styles.detailsButtonText}>View Detailed Model Results</Text>
-                </TouchableOpacity>
+                  {/* View Detailed Results Button */}
+                  {result && (
+                    <TouchableOpacity
+                      style={styles.detailsButton}
+                      onPress={() => setDetailsModalVisible(true)}
+                    >
+                      <Ionicons name="stats-chart-outline" size={20} color="#81A969" />
+                      <Text style={styles.detailsButtonText}>View Detailed Model Results</Text>
+                    </TouchableOpacity>
+                  )}
+                </>
               )}
             </View>
           </View>

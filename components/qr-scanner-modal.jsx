@@ -14,7 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import BarcodeScannerService from '../services/barcode-scanner-service';
 import PantryService from '../services/pantry-service';
-import { supabase } from '../lib/supabase';
+import { supabase, safeGetUser } from '../lib/supabase';
 import AlertModal from './AlertModal';
 
 export default function QRScannerModal({ visible, onClose, onFoodFound }) {
@@ -124,7 +124,7 @@ export default function QRScannerModal({ visible, onClose, onFoodFound }) {
 
     setAdding(true);
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      const { data: { user }, error: authError } = await safeGetUser();
 
       if (authError || !user) {
         showAlert('Error', 'You must be logged in to add items', 'error');

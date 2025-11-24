@@ -183,23 +183,23 @@ def call_gemini_vision(image: Image.Image):
     2. Look for visual cues common in Filipino cooking: specific vegetables (eggplant, okra, kangkong), sauces (adobo, sinigang, kare-kare), or side dishes (rice, dipping sauces).
     3. If it is a regional Filipino specialty, provide the specific local name.
     4. If it is definitely NOT Filipino, identify it correctly as its international name.
-    5. If the image is NOT food (e.g., a person, car, landscape, blurry object), return "Not a Food" as the name.
+    5. If the image is NOT food intended for human consumption, or is clearly food intended for other species (e.g., pet food, animal feed, treats for animals, fertilizer, supplements), or the image only shows labels/logos without edible content, return "Not a Food" as the name. When returning "Not a Food", include a short "reason" field explaining why (e.g., "pet food - dry kibble", " only"), and do NOT attempt to classify it as a human dish or ingredient.
     6. If you cannot identify the food at all, return "Unknown Food" as the name.
     7. Provide top 5 possible identifications, sorted by confidence (highest first).
     8. Assign a realistic confidence score (0.0 to 0.99) for each prediction based on how certain you are. Do not default to 0.99 unless absolutely certain.
     9. Do NOT return generic cuisine names (e.g., "Italian Cuisine", "American Food") or meal types. Return ONLY specific dish names (e.g., "Carbonara", "Burger") or ingredient names.
     
-    Return strict JSON format:
-    [
-        {
-            "name": "Dish or Ingredient Name",
-            "confidence": 0.6 to 0.99
-        },
-        {
-            "name": "Dish or Ingredient Name that may look similar",
-            "confidence": 0.6 to 0.99
-        }
-    ]
+    Return strict JSON format (array of objects). For normal dish predictions each object should be:
+    {
+        "name": "Dish or Ingredient Name",
+        "confidence": 0.6
+    }
+    If the top result is "Not a Food" include an optional "reason" string, for example:
+    {
+        "name": "Not a Food",
+        "confidence": 0.95,
+        "reason": "pet food - dry kibble"
+    }
     """
     
     try:
@@ -241,33 +241,34 @@ def call_openai_vision(image: Image.Image):
         }
         
         prompt_text = """
-        You are an expert in Filipino cuisine. Analyze this food image and identify the dish/ingredient.
-        
-        Key Instructions:
-        1. Prioritize Filipino dishes/ingredients. If the dish looks like a generic international dish (e.g., Spaghetti, Fried Chicken, Curry) but has Filipino characteristics (e.g., red hotdogs in spaghetti, gravy with chicken), identify it as the Filipino version.
-        2. Look for visual cues common in Filipino cooking: specific vegetables (eggplant, okra, kangkong), sauces (adobo, sinigang, kare-kare), or side dishes (rice, dipping sauces).
-        3. If it is a regional Filipino specialty, provide the specific local name.
-        4. If it is definitely NOT Filipino, identify it correctly as its international name.
-        5. If the image is NOT food (e.g., a person, car, landscape, blurry object), return "Not a Food" as the name.
-        6. If you cannot identify the food at all, return "Unknown Food" as the name.
-        7. Provide top 5 possible identifications, sorted by confidence (highest first).
-        8. Assign a realistic confidence score (0.0 to 0.99) for each prediction based on how certain you are. Do not default to 0.99 unless absolutely certain.
-        9. Do NOT return generic cuisine names (e.g., "Italian Cuisine", "American Food") or meal types. Return ONLY specific dish names (e.g., "Carbonara", "Burger") or ingredient names.
-        
-        Return strict JSON format with a "predictions" key:
+You are an expert in Filipino cuisine. Analyze this food image and identify the dish/ingredient.
+
+Key Instructions:
+1. Prioritize Filipino dishes/ingredients. If the dish looks like a generic international dish (e.g., Spaghetti, Fried Chicken, Curry) but has Filipino characteristics (e.g., red hotdogs in spaghetti, gravy with chicken), identify it as the Filipino version.
+2. Look for visual cues common in Filipino cooking: specific vegetables (eggplant, okra, kangkong), sauces (adobo, sinigang, kare-kare), or side dishes (rice, dipping sauces).
+3. If it is a regional Filipino specialty, provide the specific local name.
+4. If it is definitely NOT Filipino, identify it correctly as its international name.
+5. If the image is NOT food intended for human consumption, or is clearly food intended for other species (e.g., pet food, animal feed, treats for animals, fertilizer), or the image only shows labels/logos without edible content, return "Not a Food" as the name. When returning "Not a Food", include a short "reason" string explaining why (e.g., "pet food - dog kibble", " only"). Do NOT attempt to classify it as a human dish or ingredient.
+6. If you cannot identify the food at all, return "Unknown Food" as the name.
+7. Provide top 5 possible identifications, sorted by confidence (highest first).
+8. Assign a realistic confidence score (0.0 to 0.99) for each prediction based on how certain you are. Do not default to 0.99 unless absolutely certain.
+9. Do NOT return generic cuisine names (e.g., "Italian Cuisine", "American Food") or meal types. Return ONLY specific dish names (e.g., "Carbonara", "Burger") or ingredient names.
+
+Return strict JSON format with a "predictions" key. Example:
+{
+    "predictions": [
         {
-            "predictions": [
-                {
-                    "name": "Dish or Ingredient Name",
-                    "confidence": 0.6 to 0.99
-                },
-                {
-                    "name": "Dish or Ingredient Name that may look similar",
-                    "confidence": 0.6 to 0.99
-                }
-            ]
+            "name": "Dish or Ingredient Name",
+            "confidence": 0.6
+        },
+        {
+            "name": "Dish or Ingredient Name that may look similar",
+            "confidence": 0.55
         }
-        """
+    ]
+}
+If top result is "Not a Food", include an optional "reason" for clarity.
+"""
         
         payload = {
             "model": "gpt-4o",

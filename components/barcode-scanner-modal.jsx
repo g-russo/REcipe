@@ -14,7 +14,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import BarcodeScannerService from '../services/barcode-scanner-service';
-import { supabase } from '../lib/supabase';
+import { supabase, safeGetUser } from '../lib/supabase';
 import PantryService from '../services/pantry-service'; // ✅ Import PantryService
 
 // Helper function to determine category
@@ -77,7 +77,7 @@ export default function BarcodeScannerModal({ visible, onClose, onBarcodeScanned
   // ✅ NEW: Add these states (same as result.jsx)
   const [addingToInventory, setAddingToInventory] = useState(false);
   const [inventories, setInventories] = useState([]);
-  
+
   // ✅ Group Selection Alert State
   const [groupSelectionAlert, setGroupSelectionAlert] = useState({
     visible: false,
@@ -119,7 +119,7 @@ export default function BarcodeScannerModal({ visible, onClose, onBarcodeScanned
     setAddingToInventory(true);
 
     try {
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      const { data: { user }, error: userError } = await safeGetUser();
       if (userError || !user) {
         Alert.alert('Error', 'You must be logged in to add items');
         setAddingToInventory(false);
@@ -212,7 +212,7 @@ export default function BarcodeScannerModal({ visible, onClose, onBarcodeScanned
         );
 
         if (duplicateItem) {
-          const canMerge = 
+          const canMerge =
             duplicateItem.unit?.trim().toLowerCase() === itemData.unit?.trim().toLowerCase() &&
             !isNaN(Number(duplicateItem.quantity)) &&
             !isNaN(Number(itemData.quantity));
@@ -389,7 +389,7 @@ export default function BarcodeScannerModal({ visible, onClose, onBarcodeScanned
       console.log('🔍 Full result object:', JSON.stringify(result, null, 2));
 
       const foodData = result?.food || result?.product || result;
-      
+
       if (foodData && (foodData.food_name || foodData.product_name)) {
         console.log('✅ Food found:', foodData);
         setProductData(foodData);
@@ -608,7 +608,7 @@ export default function BarcodeScannerModal({ visible, onClose, onBarcodeScanned
           <View style={styles.centeredView}>
             <View style={styles.modalView}>
               <Text style={styles.modalTitle}>{groupSelectionAlert.message}</Text>
-              
+
               <ScrollView style={{ width: '100%', maxHeight: 300 }}>
                 {groupSelectionAlert.groups.map((group) => (
                   <TouchableOpacity
@@ -616,9 +616,9 @@ export default function BarcodeScannerModal({ visible, onClose, onBarcodeScanned
                     style={groupSelectionAlertStyles.groupButton}
                     onPress={async () => {
                       const { itemData } = duplicateAlert.visible ? duplicateAlert : { itemData: null };
-                      
+
                       setGroupSelectionAlert({ ...groupSelectionAlert, visible: false });
-                      
+
                       // Add to selected group
                       const item = itemData || {
                         inventoryID: group.inventoryID,
@@ -1223,7 +1223,7 @@ const styles = StyleSheet.create({
     fontSize: 14, // ✅ Reduced from 16
     fontWeight: '600',
   },
-  
+
   // ✅ Modal styles
   centeredView: {
     flex: 1,
