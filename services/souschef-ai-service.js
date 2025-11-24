@@ -478,55 +478,49 @@ class SousChefAIService {
         }
       }
 
-      // ⚡ OPTIMIZATION: Run database save and image generation in PARALLEL
-      console.log('⚡ Running parallel operations: DB save + Image generation...');
-      const parallelStart = Date.now();
+      // Persist the recipe immediately so the UI can render metadata fast.
+      // Image generation is kicked off in the background and will update the DB when ready.
+      console.log('⚡ Saving recipe to database (fast) and returning to UI before image generation...');
+      const savedRecipes = await this.saveRecipesToDatabase(recipesData.recipes, searchQuery, filters);
 
-      const [savedRecipes, imageGenerationResult] = await Promise.all([
-        // Operation 1: Save recipe to database (fast - ~500ms)
-        this.saveRecipesToDatabase(recipesData.recipes, searchQuery, filters),
-
-        // Operation 2: Generate image (slow - ~20s)
-        (async () => {
-          try {
-            console.log('🎨 [Parallel] Generating image...');
-            const recipe = recipesData.recipes[0];
-            const imageUrl = await ImageGenerationService.generateAndStoreRecipeImage(
-              'temp', // Will update with real ID after save
-              recipe.imagePrompt,
-              recipe.recipeName
-            );
-            console.log('✅ [Parallel] Image generated');
-            return imageUrl;
-          } catch (error) {
-            console.error('⚠️ [Parallel] Image generation failed:', error.message);
-            return ImageGenerationService.getFallbackImage();
-          }
-        })()
-      ]);
-
-      const parallelDuration = ((Date.now() - parallelStart) / 1000).toFixed(2);
-      console.log(`⚡ Parallel operations completed in ${parallelDuration}s (vs ~25s sequential)`);
-
-      // Update recipe with image URL
-      const recipeWithImage = {
+      const recipeToReturn = {
         ...savedRecipes[0],
-        image: imageGenerationResult,
-        recipeImage: imageGenerationResult
+        image: savedRecipes[0].recipeImage || null,
+        recipeImage: savedRecipes[0].recipeImage || null
       };
 
-      // Update database with image URL
-      await supabase
-        .from('tbl_recipes')
-        .update({ recipeImage: imageGenerationResult })
-        .eq('recipeID', savedRecipes[0].recipeID);
+      // Background image generation (non-blocking)
+      (async () => {
+        try {
+          console.log('🎨 [Background] Generating image for:', recipeToReturn.recipeName);
+          const imagePrompt = recipesData.recipes[0].imagePrompt || recipesData.recipes[0].recipeName;
+          const imageUrl = await ImageGenerationService.generateAndStoreRecipeImage(
+            recipeToReturn.recipeID || `temp-${Date.now()}`,
+            imagePrompt,
+            recipeToReturn.recipeName
+          );
 
-      console.log(`✅ Recipe ready with image: "${recipeWithImage.recipeName}"`);
-      console.log(`🎯 Verify: Recipe name includes "${searchQuery}"? ${recipeWithImage.recipeName.toLowerCase().includes(searchQuery.toLowerCase()) ? 'YES ✅' : 'NO ⚠️'}`);
+          // Update database record with generated image URL
+          const { error: updateError } = await supabase
+            .from('tbl_recipes')
+            .update({ recipeImage: imageUrl })
+            .eq('recipeID', recipeToReturn.recipeID);
+
+          if (updateError) {
+            console.error('❌ Failed to update recipe with image URL:', updateError);
+          } else {
+            console.log('✅ [Background] Image URL saved to DB:', imageUrl);
+          }
+        } catch (bgError) {
+          console.error('⚠️ [Background] Image generation/update failed:', bgError.message || bgError);
+        }
+      })();
+
+      console.log(`✅ Recipe saved and returned to UI: "${recipeToReturn.recipeName}"`);
 
       return {
         success: true,
-        recipe: recipeWithImage,
+        recipe: recipeToReturn,
         count: 1
       };
     } catch (error) {

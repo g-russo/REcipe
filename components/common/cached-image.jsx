@@ -7,6 +7,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Image, ActivityIndicator, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import recipeImageCacheService from '../../services/recipe-image-cache-service';
 
 export default function CachedImage({ 
@@ -55,19 +56,28 @@ export default function CachedImage({
     setLoading(false);
   };
 
+  // On persistent error show fallbackIcon if provided
   if (error && fallbackIcon) {
     return (
-      <View style={[style, { alignItems: 'center', justifyContent: 'center', backgroundColor: '#f0f0f0' }]}>
+      <View style={[style, { alignItems: 'center', justifyContent: 'center', backgroundColor: '#f0f0f0' }]}> 
         {fallbackIcon}
       </View>
     );
   }
 
+  // Build placeholder (use provided fallbackIcon if available)
+  const Placeholder = fallbackIcon ? (
+    fallbackIcon
+  ) : (
+    <Ionicons name="restaurant-outline" size={40} color="#bfbfbf" />
+  );
+
   return (
     <>
       {loading && showLoader && (
-        <View style={[style, { position: 'absolute', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f0f0f0' }]}>
-          <ActivityIndicator size="small" color="#4CAF50" />
+        <View style={[style, { position: 'absolute', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8f8f8' }]}> 
+          {Placeholder}
+          <ActivityIndicator size="small" color="#4CAF50" style={{ position: 'absolute' }} />
         </View>
       )}
       <Image

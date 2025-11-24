@@ -20,6 +20,7 @@ import google.generativeai as genai
 from google.ai.generativelanguage import Content, Part
 import json
 import base64
+import re
 
 # ✅ Load .env file FIRST
 load_dotenv()
@@ -176,30 +177,43 @@ def call_gemini_vision(image: Image.Image):
         return call_openai_vision(image)
 
     prompt = """
-    You are an expert in Filipino cuisine. Analyze this food image and identify the dish/ingredient.
-    
-    Key Instructions:
-    1. Prioritize Filipino dishes/ingredients. If the dish looks like a generic international dish (e.g., Spaghetti, Fried Chicken, Curry) but has Filipino characteristics (e.g., red hotdogs in spaghetti, gravy with chicken), identify it as the Filipino version.
-    2. Look for visual cues common in Filipino cooking: specific vegetables (eggplant, okra, kangkong), sauces (adobo, sinigang, kare-kare), or side dishes (rice, dipping sauces).
-    3. If it is a regional Filipino specialty, provide the specific local name.
-    4. If it is definitely NOT Filipino, identify it correctly as its international name.
-    5. If the image is NOT food intended for human consumption, or is clearly food intended for other species (e.g., pet food, animal feed, treats for animals, fertilizer, supplements), or the image only shows labels/logos without edible content, return "Not a Food" as the name. When returning "Not a Food", include a short "reason" field explaining why (e.g., "pet food - dry kibble", " only"), and do NOT attempt to classify it as a human dish or ingredient.
-    6. If you cannot identify the food at all, return "Unknown Food" as the name.
-    7. Provide top 5 possible identifications, sorted by confidence (highest first).
-    8. Assign a realistic confidence score (0.0 to 0.99) for each prediction based on how certain you are. Do not default to 0.99 unless absolutely certain.
-    9. Do NOT return generic cuisine names (e.g., "Italian Cuisine", "American Food") or meal types. Return ONLY specific dish names (e.g., "Carbonara", "Burger") or ingredient names.
-    
-    Return strict JSON format (array of objects). For normal dish predictions each object should be:
-    {
-        "name": "Dish or Ingredient Name",
-        "confidence": 0.6
-    }
-    If the top result is "Not a Food" include an optional "reason" string, for example:
-    {
-        "name": "Not a Food",
-        "confidence": 0.95,
-        "reason": "pet food - dry kibble"
-    }
+    You are an expert food recognizer with deep knowledge of Filipino cuisine and plating conventions.
+
+        Task: Analyze the provided image and return a structured JSON object containing a top-level "predictions" array. For each prediction include both a short identification and detailed, sectioned reasoning.
+
+        For each candidate prediction include these fields:
+        - name: short dish or ingredient name (e.g., "Chicken Pastil", "Adobo Flakes"). Use "Not a Food" or "Unknown Food" when appropriate.
+        - confidence: numeric score between 0.0 and 0.99.
+        - defining_dish: key visual elements that define the dish (e.g., banana leaf, mound of white rice, shredded meat, garnishes).
+        - confirming_cuisine: why the cuisine (e.g., Filipino) was chosen; list visual clues and context.
+        - identifying_dish: concise argument for this dish including cultural/contextual notes (origin, common usage).
+        - plating_variations: notes about presentation variations (banana leaf, pater wrap, liner) and whether observed plating is traditional or modern.
+        - verifying_meat: observations about the protein (chicken/pork/tuna) and confidence in that assertion.
+        - alternatives: up to 2 plausible alternative identifications and brief reason.
+        - reason: a short human-readable justification summarizing the strongest clues.
+
+        Requirements:
+        1) Prioritize Filipino dishes when cues indicate Filipino cooking, but return international names if clearly non-Filipino.
+        2) If the image is NOT food intended for human consumption (pet food, fertilizer, labels only), return a single prediction with "name": "Not a Food" and include a "reason" explaining why.
+        3) If the item cannot be identified, return "Unknown Food" with a low confidence and a short explanation.
+        4) Return up to 5 predictions sorted by confidence. Keep the JSON compact and free of extra commentary.
+
+        Example output:
+        {
+            "predictions": [
+                {
+                    "name": "Chicken Pastil",
+                    "confidence": 0.87,
+                    "defining_dish": "Banana leaf liner, mound of white rice, shredded brown meat with green onions",
+                    "confirming_cuisine": "Banana leaf presentation and shredded meat common in Southern Filipino dishes (Maguindanao)",
+                    "identifying_dish": "Matches Chicken Pastil: shredded chicken served on rice on banana leaf; traditional to Maguindanao",
+                    "plating_variations": "Often wrapped in 'pater' or served on a leaf as a liner; modern plating may omit wrap",
+                    "verifying_meat": "Appears to be shredded chicken; texture and color consistent though tuna/pork possible",
+                    "alternatives": ["Adobo Flakes"],
+                    "reason": "Banana leaf + shredded meat + rice strongly suggest Pastil"
+                }
+            ]
+        }
     """
     
     try:
@@ -210,7 +224,75 @@ def call_gemini_vision(image: Image.Image):
         )
         print(f"✅ Gemini Raw Response: {response.text}")
         import json
-        return json.loads(response.text)
+        parsed = json.loads(response.text)
+
+        # Normalize to a list of predictions (backwards compatible)
+        preds = []
+        if isinstance(parsed, dict) and 'predictions' in parsed and isinstance(parsed['predictions'], list):
+            preds = parsed['predictions']
+        elif isinstance(parsed, list):
+            preds = parsed
+        elif isinstance(parsed, dict):
+            for v in parsed.values():
+                if isinstance(v, list):
+                    preds = v
+                    break
+
+        # Post-process predictions: if the model indicates the item is packaged/not prepared food
+        # attempt to infer whether the contents are edible and suggest usages (e.g., canned sardines)
+        def augment_prediction(p):
+            try:
+                # Safely access fields and lowercase a text blob for heuristics
+                name = (p.get('name') or '').lower() if isinstance(p, dict) else ''
+                text_blob = ' '.join([str(p.get(k, '')) for k in ('defining_dish', 'identifying_dish', 'reason', 'confirming_cuisine') if isinstance(p, dict)])
+                text_blob = text_blob.lower()
+
+                packaging_keywords = ['can', 'canned', 'tin', 'packet', 'jar', 'bottle', 'pack', 'packaged', 'label', 'container']
+                contents_usable = False
+                for kw in packaging_keywords:
+                    if kw in text_blob:
+                        contents_usable = True
+                        break
+
+                # Try to extract likely food item names from the textual fields (simple keyword matching)
+                food_regex = r'\b(sardines|sardine|tuna|beans|tomato|sauce|peanut butter|peanut|corn|salmon|mackerel|soup|chicken|beef|pork|tuna)\b'
+                food_matches = re.findall(food_regex, text_blob)
+                # normalize matches
+                usable_items = []
+                for m in food_matches:
+                    m_clean = m.strip().lower()
+                    if m_clean and m_clean not in usable_items:
+                        usable_items.append(m_clean)
+
+                if name == 'not a food' or name == 'unknown food' or contents_usable or usable_items:
+                    p['contents_usable'] = True
+                    suggestions = []
+                    if usable_items:
+                        # Provide simple recipe suggestions based on the first matched item
+                        first = usable_items[0]
+                        if 'sardin' in first or 'tuna' in first or 'mackerel' in first or 'salmon' in first:
+                            suggestions = [f"{first.title()} Pasta", f"{first.title()} Fried Rice", f"{first.title()} Sandwich"]
+                        elif 'beans' in first or 'corn' in first:
+                            suggestions = ["Add to salad", "Make a bean stew", "Mix into fried rice"]
+                        elif 'tomato' in first or 'sauce' in first:
+                            suggestions = ["Use as pasta sauce", "Add to stews", "Use in soup"]
+                        elif 'chicken' in first or 'beef' in first or 'pork' in first:
+                            suggestions = ["Shred and add to fried rice", "Use in sandwich", "Incorporate into pasta"]
+                        else:
+                            suggestions = ["Use contents as ingredient in pasta, fried rice, or sandwiches"]
+                    else:
+                        suggestions = ["Inspect packaging and use contents as ingredient if edible (pasta, fried rice, salad)"]
+
+                    p['usable_as'] = suggestions
+                else:
+                    p['contents_usable'] = False
+
+                return p
+            except Exception:
+                return p
+
+        preds = [augment_prediction(p) for p in preds]
+        return preds
     except Exception as e:
         print(f"❌ Gemini Error: {e}")
         traceback.print_exc()
@@ -241,33 +323,43 @@ def call_openai_vision(image: Image.Image):
         }
         
         prompt_text = """
-You are an expert in Filipino cuisine. Analyze this food image and identify the dish/ingredient.
+You are an expert food recognizer with deep knowledge of Filipino cuisine and plating conventions.
 
-Key Instructions:
-1. Prioritize Filipino dishes/ingredients. If the dish looks like a generic international dish (e.g., Spaghetti, Fried Chicken, Curry) but has Filipino characteristics (e.g., red hotdogs in spaghetti, gravy with chicken), identify it as the Filipino version.
-2. Look for visual cues common in Filipino cooking: specific vegetables (eggplant, okra, kangkong), sauces (adobo, sinigang, kare-kare), or side dishes (rice, dipping sauces).
-3. If it is a regional Filipino specialty, provide the specific local name.
-4. If it is definitely NOT Filipino, identify it correctly as its international name.
-5. If the image is NOT food intended for human consumption, or is clearly food intended for other species (e.g., pet food, animal feed, treats for animals, fertilizer), or the image only shows labels/logos without edible content, return "Not a Food" as the name. When returning "Not a Food", include a short "reason" string explaining why (e.g., "pet food - dog kibble", " only"). Do NOT attempt to classify it as a human dish or ingredient.
-6. If you cannot identify the food at all, return "Unknown Food" as the name.
-7. Provide top 5 possible identifications, sorted by confidence (highest first).
-8. Assign a realistic confidence score (0.0 to 0.99) for each prediction based on how certain you are. Do not default to 0.99 unless absolutely certain.
-9. Do NOT return generic cuisine names (e.g., "Italian Cuisine", "American Food") or meal types. Return ONLY specific dish names (e.g., "Carbonara", "Burger") or ingredient names.
+Task: Analyze the provided image and return a structured JSON object with a top-level "predictions" array. Each prediction must include both a concise identification and detailed, sectioned reasoning.
 
-Return strict JSON format with a "predictions" key. Example:
+For each prediction include these fields:
+- name: short dish or ingredient name (e.g., "Chicken Pastil"). Use "Not a Food" or "Unknown Food" when appropriate.
+- confidence: numeric score between 0.0 and 0.99.
+- defining_dish: key visual elements that define the dish (banana leaf, rice mound, shredded meat, garnishes).
+- confirming_cuisine: why the cuisine (e.g., Filipino) was chosen; visual clues and contextual reasoning.
+- identifying_dish: concise argument for this dish including cultural/contextual notes (origin, common usage).
+- plating_variations: notes about presentation variations (banana leaf, pater wrap, liner) and whether observed plating is traditional or modern.
+- verifying_meat: observations about the protein (chicken/pork/tuna) and confidence in that assertion.
+- alternatives: up to 2 plausible alternative identifications and brief reason.
+- reason: a short human-readable summary of the strongest clues.
+
+Requirements:
+1) Prioritize Filipino dishes when cues indicate Filipino cooking, but return international names if clearly non-Filipino.
+2) If the image is NOT food intended for human consumption (pet food, fertilizer, labels-only), return a single prediction with "name": "Not a Food" and include a "reason" explaining why.
+3) If the item cannot be identified, return "Unknown Food" with low confidence and a short explanation.
+4) Return up to 5 predictions sorted by confidence. Keep the JSON compact; do not include extra commentary.
+
+Example response:
 {
     "predictions": [
         {
-            "name": "Dish or Ingredient Name",
-            "confidence": 0.6
-        },
-        {
-            "name": "Dish or Ingredient Name that may look similar",
-            "confidence": 0.55
+            "name": "Chicken Pastil",
+            "confidence": 0.87,
+            "defining_dish": "Banana leaf liner, mound of white rice, shredded brown meat with green onions",
+            "confirming_cuisine": "Banana leaf presentation and shredded meat common in Southern Filipino dishes (Maguindanao)",
+            "identifying_dish": "Matches Chicken Pastil: shredded chicken served on rice on banana leaf; traditional to Maguindanao",
+            "plating_variations": "Often wrapped in 'pater' or served on a leaf as a liner; modern plating may omit wrap",
+            "verifying_meat": "Appears to be shredded chicken; texture suggests poultry though tuna/pork possible",
+            "alternatives": ["Adobo Flakes"],
+            "reason": "Banana leaf + shredded meat + rice strongly suggest Pastil"
         }
     ]
 }
-If top result is "Not a Food", include an optional "reason" for clarity.
 """
         
         payload = {
