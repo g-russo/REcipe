@@ -12,10 +12,6 @@ const API_BASE_URL = Constants.expoConfig?.extra?.foodApiUrl ||
 console.log('🔧 SousChef API Configuration:');
 console.log('📍 API_BASE_URL:', API_BASE_URL);
 
-// Resolve OpenAI API key (prefer public EXPO variable at runtime)
-const OPENAI_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY || process.env.OPENAI_API_KEY || null;
-const OPENAI_KEY_NAME = process.env.EXPO_PUBLIC_OPENAI_API_KEY ? 'EXPO_PUBLIC_OPENAI_API_KEY' : (process.env.OPENAI_API_KEY ? 'OPENAI_API_KEY' : 'NONE');
-
 class SousChefAIService {
   /**
    * Deconstruct a dish into its salvageable ingredients using the backend AI
@@ -47,6 +43,17 @@ class SousChefAIService {
       // Fallback: treat as raw ingredient
       return { is_dish: false, ingredients: [foodName], reasoning: 'Error connecting to AI service' };
     }
+  }
+
+  // Helper to get OpenAI API key from possible sources embedded at build time
+  getOpenAiKey() {
+    return (
+      process.env.EXPO_PUBLIC_OPENAI_API_KEY ||
+      process.env.OPENAI_API_KEY ||
+      Constants.expoConfig?.extra?.EXPO_PUBLIC_OPENAI_API_KEY ||
+      Constants.expoConfig?.extra?.openaiApiKey ||
+      null
+    );
   }
 
   /**
@@ -352,7 +359,8 @@ class SousChefAIService {
       console.log(`🤖 Generating 1 recipe with SousChef AI (${existingCount + 1}/5)...`);
       console.log(`🎯 PRIMARY FOCUS: "${searchQuery}" (this will be the main ingredient/dish)`);
       console.log(`📦 Supporting ingredients: ${pantryItems.length} pantry items`);
-      console.log('📝 API Key Status:', OPENAI_KEY ? `Loaded (${OPENAI_KEY_NAME}=${OPENAI_KEY.substring(0, 8)}...)` : '❌ Missing');
+      const apiKey = this.getOpenAiKey();
+      console.log('📝 API Key Status:', apiKey ? `Loaded (${String(apiKey).substring(0, 10)}...)` : '❌ Missing');
 
       // Build prompt for 1 recipe only (search query is prioritized)
       const prompt = this.buildRecipePrompt(searchQuery, filters, pantryItems, 1);
@@ -364,7 +372,7 @@ class SousChefAIService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${OPENAI_KEY}`
+          'Authorization': `Bearer ${apiKey}`
         },
         body: JSON.stringify({
           model: 'gpt-4o-mini',
@@ -430,7 +438,7 @@ class SousChefAIService {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${OPENAI_KEY}`
+            'Authorization': `Bearer ${apiKey}`
           },
           body: JSON.stringify({
             model: 'gpt-4o-mini',
@@ -538,7 +546,8 @@ class SousChefAIService {
   async generateCustomRecipes(searchQuery, filters = {}, pantryItems = []) {
     try {
       console.log('🤖 Generating recipes with SousChef AI...');
-      console.log('📝 API Key Status:', OPENAI_KEY ? `Loaded (${OPENAI_KEY_NAME}=${OPENAI_KEY.substring(0, 8)}...)` : '❌ Missing');
+      const apiKey = this.getOpenAiKey();
+      console.log('📝 API Key Status:', apiKey ? `Loaded (${String(apiKey).substring(0, 10)}...)` : '❌ Missing');
 
       // Step 1: Generate recipe content
       const prompt = this.buildRecipePrompt(searchQuery, filters, pantryItems);
@@ -550,7 +559,7 @@ class SousChefAIService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${OPENAI_KEY}`
+          'Authorization': `Bearer ${apiKey}`
         },
         body: JSON.stringify({
           model: 'gpt-4o-mini', // Updated model - cheaper and faster than GPT-4 Turbo
@@ -919,7 +928,7 @@ Return ONLY valid JSON. No additional text.`;
     try {
       console.log(`🔍 Validating food ingredient: "${searchTerm}"`);
 
-      const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+      const apiKey = this.getOpenAiKey();
       if (!apiKey) {
         console.error('❌ OpenAI API key not found');
         return { isValid: true, reason: 'Validation skipped - API key missing' };
@@ -1003,7 +1012,7 @@ Examples:
     try {
       console.log(`🔮 Predicting details for: "${itemName}" ${imageBase64 ? '(with image)' : ''}`);
 
-      const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+      const apiKey = this.getOpenAiKey();
       if (!apiKey) {
         console.error('❌ OpenAI API key not found');
         return { category: 'Other', shelfLifeDays: 7, reasoning: 'API key missing' };
