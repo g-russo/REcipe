@@ -448,6 +448,9 @@ async def extract_text_from_image(file: UploadFile = File(...)):
             img = img.convert('RGB')
         
         # ✅ Try Tesseract first
+        tesseract_text = None
+        tesseract_confidence = 0
+        
         try:
             version = pytesseract.get_tesseract_version()
             print(f"✅ Tesseract version: {version}")
@@ -458,22 +461,24 @@ async def extract_text_from_image(file: UploadFile = File(...)):
             confidences = [int(conf) for conf in data['conf'] if int(conf) > 0]
             avg_confidence = sum(confidences) / len(confidences) if confidences else 0
             
-            print(f"✅ OCR complete: {len(text)} characters extracted")
-            
-            return {
-                "success": True,
-                "text": text.strip(),
-                "confidence": round(avg_confidence, 2),
-                "source": "tesseract"
-            }
+            # ✅ FIX: Only use Tesseract if we got meaningful text
+            if text.strip() and len(text.strip()) > 5:
+                tesseract_text = text.strip()
+                tesseract_confidence = round(avg_confidence, 2)
+                print(f"✅ Tesseract OCR complete: {len(tesseract_text)} characters")
+            else:
+                print(f"⚠️ Tesseract found minimal text, trying AI fallback...")
+                
         except Exception as tesseract_error:
             print(f"⚠️ Tesseract failed: {tesseract_error}")
+        
+        # ✅ If Tesseract failed or gave low confidence, try Gemini
+        if not tesseract_text or tesseract_confidence < 60:
             print("🔄 Falling back to Gemini AI for OCR...")
             
-            # ✅ Fallback to Gemini AI
             gemini_text = call_gemini_ocr(img)
             
-            if gemini_text:
+            if gemini_text and gemini_text != "No text found":
                 return {
                     "success": True,
                     "text": gemini_text,
@@ -482,17 +487,27 @@ async def extract_text_from_image(file: UploadFile = File(...)):
                 }
             else:
                 # ✅ Final fallback to OpenAI
+                print("🔄 Gemini failed, trying OpenAI...")
                 openai_text = call_openai_ocr(img)
                 
-                if openai_text:
+                if openai_text and openai_text != "No text found":
                     return {
                         "success": True,
                         "text": openai_text,
                         "confidence": 95.0,
                         "source": "openai"
                     }
-                else:
-                    raise HTTPException(status_code=500, detail="All OCR methods failed")
+        
+        # ✅ Return Tesseract result if we have it
+        if tesseract_text:
+            return {
+                "success": True,
+                "text": tesseract_text,
+                "confidence": tesseract_confidence,
+                "source": "tesseract"
+            }
+        else:
+            raise HTTPException(status_code=500, detail="All OCR methods failed to extract text")
             
     except HTTPException:
         raise
