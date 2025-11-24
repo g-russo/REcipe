@@ -5,7 +5,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   Modal,
-  Alert,
   ActivityIndicator,
   ScrollView,
   Linking,
@@ -13,7 +12,8 @@ import {
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import BarcodeScannerService from '../services/barcode-scanner-service'; // ✅ FIX: Import the service correctly
+import BarcodeScannerService from '../services/barcode-scanner-service';
+import AlertModal from './AlertModal';
 
 export default function BarcodeScannerModal({ visible, onClose, onBarcodeScanned }) {
   const [permission, requestPermission] = useCameraPermissions();
@@ -23,6 +23,15 @@ export default function BarcodeScannerModal({ visible, onClose, onBarcodeScanned
   const [scannedCode, setScannedCode] = useState(null);
   const cameraRef = useRef(null);
 
+  // Alert modal state
+  const [alertConfig, setAlertConfig] = useState({
+    visible: false,
+    title: '',
+    message: '',
+    type: 'info',
+    buttons: [],
+  });
+
   useEffect(() => {
     if (visible) {
       setScanned(false);
@@ -30,6 +39,20 @@ export default function BarcodeScannerModal({ visible, onClose, onBarcodeScanned
       setScannedCode(null);
     }
   }, [visible]);
+
+  const showAlert = (title, message, type = 'info', buttons = []) => {
+    setAlertConfig({
+      visible: true,
+      title,
+      message,
+      type,
+      buttons: buttons.length > 0 ? buttons : [{ text: 'OK' }],
+    });
+  };
+
+  const hideAlert = () => {
+    setAlertConfig(prev => ({ ...prev, visible: false }));
+  };
 
   const handleBarCodeScanned = async ({ type, data }) => {
     if (scanned || loading) return;
@@ -41,16 +64,16 @@ export default function BarcodeScannerModal({ visible, onClose, onBarcodeScanned
     try {
       console.log('📊 Barcode scanned:', data);
 
-      // ✅ FIX: Use the service correctly
       const product = await BarcodeScannerService.searchByBarcode(data);
 
       if (product && product.food_name) {
         setProductData(product);
         setLoading(false);
       } else {
-        Alert.alert(
+        showAlert(
           'Not Found',
           'This barcode was not found in the database.',
+          'warning',
           [
             {
               text: 'Scan Again', onPress: () => {
@@ -65,9 +88,10 @@ export default function BarcodeScannerModal({ visible, onClose, onBarcodeScanned
       }
     } catch (error) {
       console.error('❌ Barcode lookup error:', error);
-      Alert.alert(
+      showAlert(
         'Error',
         'Failed to lookup barcode: ' + error.message,
+        'error',
         [{
           text: 'Try Again', onPress: () => {
             setScanned(false);
@@ -80,12 +104,11 @@ export default function BarcodeScannerModal({ visible, onClose, onBarcodeScanned
     }
   };
 
-  // ✅ NEW: Gallery picker for barcode images
   const pickImageFromGallery = async () => {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Please allow access to your photos.');
+        showAlert('Permission Required', 'Please allow access to your photos.', 'warning');
         return;
       }
 
@@ -97,14 +120,14 @@ export default function BarcodeScannerModal({ visible, onClose, onBarcodeScanned
 
       if (result.canceled) return;
 
-      Alert.alert(
+      showAlert(
         'Feature Coming Soon',
         'Barcode scanning from gallery images will be available in a future update. Please use the camera for now.',
-        [{ text: 'OK' }]
+        'info'
       );
     } catch (error) {
       console.error('❌ Gallery picker error:', error);
-      Alert.alert('Error', 'Failed to pick image: ' + error.message);
+      showAlert('Error', 'Failed to pick image: ' + error.message, 'error');
     }
   };
 
@@ -133,195 +156,229 @@ export default function BarcodeScannerModal({ visible, onClose, onBarcodeScanned
     );
   }
 
-  // ✅ Product details view
+  // Product details view
   if (productData && !loading) {
     const nutritionFacts = BarcodeScannerService.getNutritionFacts(productData);
     const source = BarcodeScannerService.getSourceAttribution(productData);
 
     return (
-      <Modal visible={visible} animationType="slide">
-        <View style={styles.container}>
-          {/* Header */}
-          <View style={styles.header}>
-            <TouchableOpacity onPress={onClose} style={styles.closeIconButton}>
-              <Ionicons name="close" size={28} color="#fff" />
-            </TouchableOpacity>
-            <Text style={styles.headerTitle}>Product Details</Text>
-            <View style={{ width: 28 }} />
-          </View>
-
-          <ScrollView style={styles.detailsContainer}>
-            {/* Product Header */}
-            <View style={styles.productHeader}>
-              <Ionicons name="nutrition" size={48} color="#4CAF50" />
-              <Text style={styles.productName}>{productData.food_name}</Text>
-
-              {/* Source Badge */}
-              <View style={[styles.sourceBadge, { backgroundColor: source.iconColor + '20' }]}>
-                <Ionicons name={source.iconName} size={16} color={source.iconColor} />
-                <Text style={[styles.sourceBadgeText, { color: source.iconColor }]}>
-                  {source.badgeText}
-                </Text>
-              </View>
+      <>
+        <Modal visible={visible} animationType="slide">
+          <View style={styles.container}>
+            {/* Header */}
+            <View style={styles.header}>
+              <TouchableOpacity onPress={onClose} style={styles.closeIconButton}>
+                <Ionicons name="close" size={28} color="#fff" />
+              </TouchableOpacity>
+              <Text style={styles.headerTitle}>Product Details</Text>
+              <View style={{ width: 28 }} />
             </View>
 
-            {/* Barcode */}
-            <View style={styles.barcodeSection}>
-              <Ionicons name="barcode-outline" size={20} color="#666" />
-              <Text style={styles.barcodeText}>{scannedCode}</Text>
-            </View>
+            <ScrollView style={styles.detailsContainer}>
+              {/* Product Header */}
+              <View style={styles.productHeader}>
+                <View style={styles.productIconContainer}>
+                  <Ionicons name="nutrition" size={48} color="#81A969" />
+                </View>
+                <Text style={styles.productName}>{productData.food_name}</Text>
 
-            {/* Nutrition Facts */}
-            <View style={styles.nutritionCard}>
-              <Text style={styles.sectionTitle}>Nutrition Facts</Text>
-              {nutritionFacts.map((fact, index) => (
-                <View
-                  key={index}
-                  style={[
-                    styles.nutritionRow,
-                    fact.isHeader && styles.nutritionHeader,
-                    fact.indent && styles.nutritionIndent,
-                  ]}
-                >
-                  <Text style={[
-                    styles.nutritionLabel,
-                    fact.bold && styles.nutritionBold,
-                    fact.isHeader && styles.nutritionHeaderText,
-                  ]}>
-                    {fact.label}
-                  </Text>
-                  <Text style={[
-                    styles.nutritionValue,
-                    fact.bold && styles.nutritionBold,
-                    fact.isHeader && styles.nutritionHeaderText,
-                  ]}>
-                    {fact.value}{fact.unit ? ` ${fact.unit}` : ''}
+                {/* Source Badge */}
+                <View style={[styles.sourceBadge, { backgroundColor: source.iconColor + '20' }]}>
+                  <Ionicons name={source.iconName} size={16} color={source.iconColor} />
+                  <Text style={[styles.sourceBadgeText, { color: source.iconColor }]}>
+                    {source.badgeText}
                   </Text>
                 </View>
-              ))}
+              </View>
+
+              {/* Barcode */}
+              <View style={styles.barcodeSection}>
+                <Ionicons name="barcode-outline" size={20} color="#666" />
+                <Text style={styles.barcodeText}>{scannedCode}</Text>
+              </View>
+
+              {/* Nutrition Facts */}
+              <View style={styles.nutritionCard}>
+                <View style={styles.sectionTitleContainer}>
+                  <Ionicons name="restaurant-outline" size={22} color="#81A969" />
+                  <Text style={styles.sectionTitle}>Nutrition Facts</Text>
+                </View>
+                {nutritionFacts.map((fact, index) => (
+                  <View
+                    key={index}
+                    style={[
+                      styles.nutritionRow,
+                      fact.isHeader && styles.nutritionHeader,
+                      fact.indent && styles.nutritionIndent,
+                    ]}
+                  >
+                    <Text style={[
+                      styles.nutritionLabel,
+                      fact.bold && styles.nutritionBold,
+                      fact.isHeader && styles.nutritionHeaderText,
+                    ]}>
+                      {fact.label}
+                    </Text>
+                    <Text style={[
+                      styles.nutritionValue,
+                      fact.bold && styles.nutritionBold,
+                      fact.isHeader && styles.nutritionHeaderText,
+                    ]}>
+                      {fact.value}{fact.unit ? ` ${fact.unit}` : ''}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+
+              {/* Attribution */}
+              <View style={styles.attributionCard}>
+                <View style={styles.sectionTitleContainer}>
+                  <Ionicons name="information-circle-outline" size={22} color="#81A969" />
+                  <Text style={styles.attributionTitle}>Data Source</Text>
+                </View>
+                <Text style={styles.attributionText}>{source.attribution}</Text>
+
+                {source.url && (
+                  <TouchableOpacity onPress={() => Linking.openURL(source.url)}>
+                    <Text style={styles.attributionLink}>Learn more →</Text>
+                  </TouchableOpacity>
+                )}
+
+                {source.license && (
+                  <Text style={styles.licenseText}>License: {source.license}</Text>
+                )}
+              </View>
+            </ScrollView>
+
+            {/* Action Buttons */}
+            <View style={styles.actionButtons}>
+              <TouchableOpacity
+                style={styles.scanAgainButton}
+                onPress={() => {
+                  setScanned(false);
+                  setProductData(null);
+                  setScannedCode(null);
+                }}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="scan" size={20} color="#81A969" />
+                <Text style={styles.scanAgainButtonText}>Scan Another</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.addButton}
+                onPress={() => {
+                  onBarcodeScanned?.(productData);
+                  onClose();
+                }}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="checkmark-circle" size={20} color="#fff" />
+                <Text style={styles.addButtonText}>Use Product</Text>
+              </TouchableOpacity>
             </View>
-
-            {/* Attribution */}
-            <View style={styles.attributionCard}>
-              <Text style={styles.attributionTitle}>Data Source</Text>
-              <Text style={styles.attributionText}>{source.attribution}</Text>
-
-              {source.url && (
-                <TouchableOpacity onPress={() => Linking.openURL(source.url)}>
-                  <Text style={styles.attributionLink}>Learn more →</Text>
-                </TouchableOpacity>
-              )}
-
-              {source.license && (
-                <Text style={styles.licenseText}>License: {source.license}</Text>
-              )}
-            </View>
-          </ScrollView>
-
-          {/* Action Buttons */}
-          <View style={styles.actionButtons}>
-            <TouchableOpacity
-              style={styles.scanAgainButton}
-              onPress={() => {
-                setScanned(false);
-                setProductData(null);
-                setScannedCode(null);
-              }}
-            >
-              <Ionicons name="scan" size={20} color="#4CAF50" />
-              <Text style={styles.scanAgainButtonText}>Scan Another</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.addButton}
-              onPress={() => {
-                onBarcodeScanned?.(productData);
-                onClose();
-              }}
-            >
-              <Ionicons name="add-circle" size={20} color="#fff" />
-              <Text style={styles.addButtonText}>Use Product</Text>
-            </TouchableOpacity>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+
+        {/* Alert Modal */}
+        <AlertModal
+          visible={alertConfig.visible}
+          onClose={hideAlert}
+          title={alertConfig.title}
+          message={alertConfig.message}
+          type={alertConfig.type}
+          buttons={alertConfig.buttons}
+        />
+      </>
     );
   }
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={styles.container}>
-        <CameraView
-          ref={cameraRef}
-          style={styles.camera}
-          facing="back"
-          onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
-          barcodeScannerSettings={{
-            barcodeTypes: [
-              'ean13',
-              'ean8',
-              'upc_a',
-              'upc_e',
-              'code128',
-              'code39',
-              'qr',
-            ],
-          }}
-        />
+    <>
+      <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+        <View style={styles.container}>
+          <CameraView
+            ref={cameraRef}
+            style={styles.camera}
+            facing="back"
+            onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
+            barcodeScannerSettings={{
+              barcodeTypes: [
+                'ean13',
+                'ean8',
+                'upc_a',
+                'upc_e',
+                'code128',
+                'code39',
+                'qr',
+              ],
+            }}
+          />
 
-        {/* Scanning Overlay */}
-        <View style={styles.overlay}>
-          <View style={styles.topOverlay}>
-            <View style={styles.topHeader}>
-              <View style={styles.headerContent}>
-                <Ionicons name="barcode-outline" size={32} color="#FFF" />
-                <Text style={styles.headerTitle}>Scan Barcode</Text>
+          {/* Scanning Overlay */}
+          <View style={styles.overlay}>
+            <View style={styles.topOverlay}>
+              <View style={styles.topHeader}>
+                <View style={styles.headerContent}>
+                  <Ionicons name="barcode-outline" size={32} color="#FFF" />
+                  <Text style={styles.headerTitle}>Scan Barcode</Text>
+                </View>
+              </View>
+            </View>
+            <View style={styles.middleRow}>
+              <View style={styles.sideOverlay} />
+              <View style={styles.scanArea}>
+                <View style={[styles.corner, styles.topLeft]} />
+                <View style={[styles.corner, styles.topRight]} />
+                <View style={[styles.corner, styles.bottomLeft]} />
+                <View style={[styles.corner, styles.bottomRight]} />
+                {scanned && (
+                  <View style={styles.scanningIndicator}>
+                    <ActivityIndicator size="large" color="#81A969" />
+                  </View>
+                )}
+              </View>
+              <View style={styles.sideOverlay} />
+            </View>
+            <View style={styles.bottomOverlay}>
+              <View style={styles.instructionContainer}>
+                <Text style={styles.instructionText}>
+                  {scanned ? 'Looking up product...' : 'Align barcode within the frame'}
+                </Text>
+                {!scanned && (
+                  <Text style={styles.instructionSubtext}>
+                    Supported: EAN, UPC, Code 128, Code 39
+                  </Text>
+                )}
               </View>
             </View>
           </View>
-          <View style={styles.middleRow}>
-            <View style={styles.sideOverlay} />
-            <View style={styles.scanArea}>
-              <View style={[styles.corner, styles.topLeft]} />
-              <View style={[styles.corner, styles.topRight]} />
-              <View style={[styles.corner, styles.bottomLeft]} />
-              <View style={[styles.corner, styles.bottomRight]} />
-              {scanned && (
-                <View style={styles.scanningIndicator}>
-                  <ActivityIndicator size="large" color="#4CAF50" />
-                </View>
-              )}
+
+          {/* Loading Indicator */}
+          {loading && (
+            <View style={styles.loadingOverlay}>
+              <ActivityIndicator size="large" color="#FFF" />
+              <Text style={styles.loadingText}>Looking up barcode...</Text>
             </View>
-            <View style={styles.sideOverlay} />
-          </View>
-          <View style={styles.bottomOverlay}>
-            <View style={styles.instructionContainer}>
-              <Text style={styles.instructionText}>
-                {scanned ? 'Looking up product...' : 'Align barcode within the frame'}
-              </Text>
-              {!scanned && (
-                <Text style={styles.instructionSubtext}>
-                  Supported: EAN, UPC, Code 128, Code 39
-                </Text>
-              )}
-            </View>
-          </View>
+          )}
+
+          {/* Close Button */}
+          <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+            <Ionicons name="close" size={32} color="#FFF" />
+          </TouchableOpacity>
         </View>
+      </Modal>
 
-        {/* Loading Indicator */}
-        {loading && (
-          <View style={styles.loadingOverlay}>
-            <ActivityIndicator size="large" color="#FFF" />
-            <Text style={styles.loadingText}>Looking up barcode...</Text>
-          </View>
-        )}
-
-        {/* Close Button */}
-        <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-          <Ionicons name="close" size={32} color="#FFF" />
-        </TouchableOpacity>
-      </View>
-    </Modal>
+      {/* Alert Modal */}
+      <AlertModal
+        visible={alertConfig.visible}
+        onClose={hideAlert}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        type={alertConfig.type}
+        buttons={alertConfig.buttons}
+      />
+    </>
   );
 }
 
@@ -378,7 +435,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: 40,
     height: 40,
-    borderColor: '#4CAF50',
+    borderColor: '#81A969',
   },
   topLeft: {
     top: 0,
@@ -444,21 +501,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
   },
-  galleryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#4CAF50',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 25,
-    marginTop: 16,
-  },
-  galleryButtonText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 8,
-  },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.8)',
@@ -497,7 +539,7 @@ const styles = StyleSheet.create({
     marginBottom: 30,
   },
   permissionButton: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: '#81A969',
     paddingHorizontal: 32,
     paddingVertical: 14,
     borderRadius: 8,
@@ -515,15 +557,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 50,
     paddingBottom: 16,
-    backgroundColor: '#4CAF50',
+    backgroundColor: '#81A969',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   closeIconButton: {
     padding: 8,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#fff',
   },
   detailsContainer: {
     flex: 1,
@@ -536,12 +578,22 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E0E0E0',
   },
+  productIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#F1F8E9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
   productName: {
     fontSize: 24,
     fontWeight: '700',
-    marginTop: 12,
-    marginBottom: 8,
+    marginTop: 8,
+    marginBottom: 12,
     textAlign: 'center',
+    color: '#333',
   },
   sourceBadge: {
     flexDirection: 'row',
@@ -582,10 +634,16 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  sectionTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
-    marginBottom: 12,
+    color: '#333',
   },
   nutritionRow: {
     flexDirection: 'row',
@@ -634,18 +692,20 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   attributionTitle: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '700',
-    marginBottom: 6,
+    color: '#333',
   },
   attributionText: {
     fontSize: 12,
     color: '#666',
+    marginTop: 8,
     marginBottom: 8,
+    lineHeight: 18,
   },
   attributionLink: {
     fontSize: 12,
-    color: '#4CAF50',
+    color: '#81A969',
     fontWeight: '600',
     marginTop: 4,
   },
@@ -661,39 +721,49 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderTopWidth: 1,
     borderTopColor: '#E0E0E0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 3,
   },
   scanAgainButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: 'transparent',
     borderWidth: 2,
-    borderColor: '#4CAF50',
+    borderColor: '#81A969',
     paddingVertical: 12,
-    borderRadius: 8,
+    borderRadius: 10,
     marginRight: 8,
+    gap: 8,
   },
   scanAgainButtonText: {
-    color: '#4CAF50',
+    color: '#81A969',
     fontSize: 16,
     fontWeight: '600',
-    marginLeft: 8,
   },
   addButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#4CAF50',
+    backgroundColor: '#81A969',
     paddingVertical: 12,
-    borderRadius: 8,
+    borderRadius: 10,
     marginLeft: 8,
+    gap: 8,
+    shadowColor: '#81A969',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
   },
   addButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
-    marginLeft: 8,
   },
 });

@@ -5,7 +5,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   Modal,
-  Alert,
   ActivityIndicator,
   ScrollView,
   Dimensions,
@@ -13,7 +12,8 @@ import {
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { extractText } from '../services/food-recog-api'; // ✅ Use the service
+import { extractText } from '../services/food-recog-api';
+import AlertModal from './AlertModal';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const FRAME_WIDTH = SCREEN_WIDTH * 0.85;
@@ -27,6 +27,15 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
   const [ocrProgress, setOcrProgress] = useState('');
   const cameraRef = useRef(null);
 
+  // Alert modal state
+  const [alertConfig, setAlertConfig] = useState({
+    visible: false,
+    title: '',
+    message: '',
+    type: 'info',
+    buttons: [],
+  });
+
   useEffect(() => {
     if (visible && !permission?.granted) {
       requestPermission();
@@ -39,14 +48,31 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
     }
   }, [visible]);
 
-  // ✅ Gallery picker for OCR
+  const showAlert = (title, message, type = 'info', buttons = []) => {
+    setAlertConfig({
+      visible: true,
+      title,
+      message,
+      type,
+      buttons: buttons.length > 0 ? buttons : [{ text: 'OK' }],
+    });
+  };
+
+  const hideAlert = () => {
+    setAlertConfig(prev => ({ ...prev, visible: false }));
+  };
+
   const pickImageFromGallery = async () => {
     if (scanning) return;
 
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Please allow access to your photos.');
+        showAlert(
+          'Permission Required',
+          'Please allow access to your photos.',
+          'warning'
+        );
         return;
       }
 
@@ -74,10 +100,10 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
           .filter(line => line.length > 0);
 
         if (lines.length === 0) {
-          Alert.alert(
+          showAlert(
             'No Text Found',
             'No text was detected in the image. Try again with better lighting or clearer text.',
-            [{ text: 'OK' }]
+            'warning'
           );
         } else {
           setExtractedLines(lines);
@@ -88,12 +114,12 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
       }
     } catch (error) {
       console.error('❌ OCR gallery error:', error);
-      Alert.alert(
+      showAlert(
         'Error',
         error.message === 'No text detected'
           ? 'No text was detected in the image. Please try again.'
           : 'Failed to process text. Please try again.',
-        [{ text: 'OK' }]
+        'error'
       );
     } finally {
       setScanning(false);
@@ -130,10 +156,10 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
         setOcrProgress('');
 
         if (lines.length === 0) {
-          Alert.alert(
+          showAlert(
             'No Text Found',
             'No text was detected in the image. Try again with better lighting or clearer text.',
-            [{ text: 'OK' }]
+            'warning'
           );
         }
       } else {
@@ -141,10 +167,10 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
       }
     } catch (error) {
       console.error('❌ OCR error:', error);
-      Alert.alert(
+      showAlert(
         'Error',
         'Failed to capture image. Please try again.',
-        [{ text: 'OK' }]
+        'error'
       );
       setScanning(false);
       setOcrProgress('');
@@ -171,7 +197,11 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
 
   const useSelectedText = () => {
     if (selectedLines.size === 0) {
-      Alert.alert('No Text Selected', 'Please select at least one line of text.');
+      showAlert(
+        'No Text Selected',
+        'Please select at least one line of text.',
+        'warning'
+      );
       return;
     }
 
@@ -208,180 +238,204 @@ export default function OCRScannerModal({ visible, onClose, onTextExtracted }) {
   }
 
   return (
-    <Modal visible={visible} animationType="slide">
-      <View style={styles.container}>
-        {/* Camera or Results */}
-        {extractedLines.length === 0 ? (
-          <View style={styles.cameraContainer}>
-            <CameraView
-              ref={cameraRef}
-              style={StyleSheet.absoluteFillObject}
-              facing="back"
-            />
+    <>
+      <Modal visible={visible} animationType="slide">
+        <View style={styles.container}>
+          {/* Camera or Results */}
+          {extractedLines.length === 0 ? (
+            <View style={styles.cameraContainer}>
+              <CameraView
+                ref={cameraRef}
+                style={StyleSheet.absoluteFillObject}
+                facing="back"
+              />
 
-            {/* Overlay */}
-            <View style={styles.overlay}>
-              <View style={styles.unfocusedTop}>
-                <View style={styles.topHeader}>
-                  <View style={styles.headerContent}>
-                    <Ionicons name="document-text-outline" size={32} color="#FFF" />
-                    <Text style={styles.headerTitleOverlay}>Scan Text</Text>
-                  </View>
-                </View>
-              </View>
-              <View style={styles.middleRow}>
-                <View style={styles.unfocusedSide} />
-                <View style={styles.focusedFrame}>
-                  <View style={[styles.corner, styles.topLeft]} />
-                  <View style={[styles.corner, styles.topRight]} />
-                  <View style={[styles.corner, styles.bottomLeft]} />
-                  <View style={[styles.corner, styles.bottomRight]} />
-
-                  {/* Scanning line animation */}
-                  {scanning && <View style={styles.scanLine} />}
-                  {scanning && (
-                    <View style={styles.scanningIndicator}>
-                      <ActivityIndicator size="large" color="#FF9800" />
+              {/* Overlay */}
+              <View style={styles.overlay}>
+                <View style={styles.unfocusedTop}>
+                  <View style={styles.topHeader}>
+                    <View style={styles.headerContent}>
+                      <Ionicons name="document-text-outline" size={32} color="#FFF" />
+                      <Text style={styles.headerTitleOverlay}>Scan Text</Text>
                     </View>
-                  )}
-                </View>
-                <View style={styles.unfocusedSide} />
-              </View>
-              <View style={styles.unfocusedBottom}>
-                <View style={styles.instructionContainer}>
-                  <Text style={styles.instructionText}>
-                    {scanning
-                      ? ocrProgress
-                      : 'Position text within the frame'}
-                  </Text>
-                  {!scanning && (
-                    <Text style={styles.instructionSubtext}>
-                      Works best with clear, well-lit text
-                    </Text>
-                  )}
-                </View>
-              </View>
-            </View>
-
-            {/* Buttons Container */}
-            {!scanning && (
-              <View style={styles.buttonsContainer}>
-                {/* Gallery Button */}
-                <TouchableOpacity
-                  style={styles.galleryButton}
-                  onPress={pickImageFromGallery}
-                >
-                  <Ionicons name="images" size={24} color="#fff" />
-                  <Text style={styles.galleryButtonText}>Gallery</Text>
-                </TouchableOpacity>
-
-                {/* Capture Button */}
-                <TouchableOpacity
-                  style={styles.captureButton}
-                  onPress={captureAndExtractText}
-                >
-                  <View style={styles.captureButtonInner}>
-                    <Ionicons name="scan" size={32} color="#fff" />
                   </View>
-                </TouchableOpacity>
+                </View>
+                <View style={styles.middleRow}>
+                  <View style={styles.unfocusedSide} />
+                  <View style={styles.focusedFrame}>
+                    <View style={[styles.corner, styles.topLeft]} />
+                    <View style={[styles.corner, styles.topRight]} />
+                    <View style={[styles.corner, styles.bottomLeft]} />
+                    <View style={[styles.corner, styles.bottomRight]} />
 
-                {/* Placeholder for symmetry */}
-                <View style={styles.galleryButton} />
+                    {/* Scanning line animation */}
+                    {scanning && <View style={styles.scanLine} />}
+                    {scanning && (
+                      <View style={styles.scanningIndicator}>
+                        <ActivityIndicator size="large" color="#FF9800" />
+                      </View>
+                    )}
+                  </View>
+                  <View style={styles.unfocusedSide} />
+                </View>
+                <View style={styles.unfocusedBottom}>
+                  <View style={styles.instructionContainer}>
+                    <Text style={styles.instructionText}>
+                      {scanning
+                        ? ocrProgress
+                        : 'Position text within the frame'}
+                    </Text>
+                    {!scanning && (
+                      <Text style={styles.instructionSubtext}>
+                        Works best with clear, well-lit text
+                      </Text>
+                    )}
+                  </View>
+                </View>
               </View>
-            )}
 
-            {/* Close Button */}
-            <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-              <Ionicons name="close" size={32} color="#FFF" />
-            </TouchableOpacity>
-          </View>
-        ) : (
-          /* Results View */
-          <View style={styles.resultsContainer}>
-            {/* Header for Results View */}
-            <View style={styles.header}>
-              <TouchableOpacity onPress={onClose} style={styles.closeIconButton}>
-                <Ionicons name="close" size={28} color="#fff" />
-              </TouchableOpacity>
-              <Text style={styles.headerTitle}>Scan Text (OCR)</Text>
-              <View style={{ width: 28 }} />
-            </View>
-            <View style={styles.resultsHeader}>
-              <Text style={styles.resultsTitle}>Select Text Lines</Text>
-              <Text style={styles.resultsSubtitle}>
-                {selectedLines.size} of {extractedLines.length} selected
-              </Text>
-              <View style={styles.selectButtons}>
-                <TouchableOpacity style={styles.selectAllButton} onPress={selectAll}>
-                  <Text style={styles.selectButtonText}>Select All</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.deselectButton} onPress={deselectAll}>
-                  <Text style={styles.selectButtonText}>Deselect All</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <ScrollView style={styles.linesScroll}>
-              {extractedLines.map((line, index) => {
-                const isSelected = selectedLines.has(index);
-                return (
+              {/* Buttons Container */}
+              {!scanning && (
+                <View style={styles.buttonsContainer}>
+                  {/* Gallery Button */}
                   <TouchableOpacity
-                    key={index}
-                    style={[
-                      styles.lineItem,
-                      isSelected && styles.lineItemSelected,
-                    ]}
-                    onPress={() => toggleLine(index)}
+                    style={styles.galleryButton}
+                    onPress={pickImageFromGallery}
                   >
-                    <View style={[
-                      styles.checkbox,
-                      isSelected && styles.checkboxSelected
-                    ]}>
-                      {isSelected && (
-                        <Ionicons name="checkmark" size={18} color="#fff" />
-                      )}
-                    </View>
-                    <Text
-                      style={[
-                        styles.lineText,
-                        isSelected && styles.lineTextSelected,
-                      ]}
-                    >
-                      {line}
-                    </Text>
+                    <Ionicons name="images" size={24} color="#fff" />
+                    <Text style={styles.galleryButtonText}>Gallery</Text>
                   </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
 
-            <View style={styles.resultsActions}>
-              <TouchableOpacity
-                style={[styles.actionButton, styles.retryButton]}
-                onPress={() => {
-                  setExtractedLines([]);
-                  setSelectedLines(new Set());
-                }}
-              >
-                <Ionicons name="camera" size={20} color="#fff" />
-                <Text style={styles.actionButtonText}>Rescan</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.actionButton,
-                  styles.useButton,
-                  selectedLines.size === 0 && styles.useButtonDisabled,
-                ]}
-                onPress={useSelectedText}
-                disabled={selectedLines.size === 0}
-              >
-                <Ionicons name="checkmark" size={20} color="#fff" />
-                <Text style={styles.actionButtonText}>Use Text</Text>
+                  {/* Capture Button */}
+                  <TouchableOpacity
+                    style={styles.captureButton}
+                    onPress={captureAndExtractText}
+                  >
+                    <View style={styles.captureButtonInner}>
+                      <Ionicons name="scan" size={32} color="#fff" />
+                    </View>
+                  </TouchableOpacity>
+
+                  {/* Placeholder for symmetry */}
+                  <View style={styles.galleryButton} />
+                </View>
+              )}
+
+              {/* Close Button */}
+              <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+                <Ionicons name="close" size={32} color="#FFF" />
               </TouchableOpacity>
             </View>
-          </View>
-        )}
-      </View>
-    </Modal>
+          ) : (
+            /* Results View */
+            <View style={styles.resultsContainer}>
+              {/* Header for Results View */}
+              <View style={styles.header}>
+                <TouchableOpacity onPress={onClose} style={styles.closeIconButton}>
+                  <Ionicons name="close" size={28} color="#fff" />
+                </TouchableOpacity>
+                <Text style={styles.headerTitle}>Text Extraction Results</Text>
+                <View style={{ width: 28 }} />
+              </View>
+
+              {/* Results Header with improved design */}
+              <View style={styles.resultsHeader}>
+                <View style={styles.resultsHeaderTop}>
+                  <Ionicons name="checkmark-circle" size={32} color="#81A969" />
+                  <View style={styles.resultsHeaderText}>
+                    <Text style={styles.resultsTitle}>Text Extracted Successfully</Text>
+                    <Text style={styles.resultsSubtitle}>
+                      {selectedLines.size} of {extractedLines.length} line{extractedLines.length !== 1 ? 's' : ''} selected
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.selectButtons}>
+                  <TouchableOpacity style={styles.selectAllButton} onPress={selectAll}>
+                    <Ionicons name="checkmark-done" size={18} color="#fff" />
+                    <Text style={styles.selectButtonText}>Select All</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.deselectButton} onPress={deselectAll}>
+                    <Ionicons name="close-circle-outline" size={18} color="#666" />
+                    <Text style={styles.deselectButtonText}>Clear</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <ScrollView style={styles.linesScroll} contentContainerStyle={styles.linesScrollContent}>
+                {extractedLines.map((line, index) => {
+                  const isSelected = selectedLines.has(index);
+                  return (
+                    <TouchableOpacity
+                      key={index}
+                      style={[
+                        styles.lineItem,
+                        isSelected && styles.lineItemSelected,
+                      ]}
+                      onPress={() => toggleLine(index)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={[
+                        styles.checkbox,
+                        isSelected && styles.checkboxSelected
+                      ]}>
+                        {isSelected && (
+                          <Ionicons name="checkmark" size={18} color="#fff" />
+                        )}
+                      </View>
+                      <Text
+                        style={[
+                          styles.lineText,
+                          isSelected && styles.lineTextSelected,
+                        ]}
+                      >
+                        {line}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+
+              <View style={styles.resultsActions}>
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.retryButton]}
+                  onPress={() => {
+                    setExtractedLines([]);
+                    setSelectedLines(new Set());
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="camera" size={20} color="#666" />
+                  <Text style={styles.retryButtonText}>Rescan</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.actionButton,
+                    styles.useButton,
+                    selectedLines.size === 0 && styles.useButtonDisabled,
+                  ]}
+                  onPress={useSelectedText}
+                  disabled={selectedLines.size === 0}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="checkmark-circle" size={20} color="#fff" />
+                  <Text style={styles.useButtonText}>Use Selected Text</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        </View>
+      </Modal>
+
+      {/* Alert Modal */}
+      <AlertModal
+        visible={alertConfig.visible}
+        onClose={hideAlert}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        type={alertConfig.type}
+        buttons={alertConfig.buttons}
+      />
+    </>
   );
 }
 
@@ -577,7 +631,7 @@ const styles = StyleSheet.create({
   },
   resultsContainer: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#F5F5F5',
   },
   header: {
     flexDirection: 'row',
@@ -586,24 +640,38 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 50,
     paddingBottom: 16,
-    backgroundColor: 'rgba(0,0,0,0.9)',
+    backgroundColor: '#FF9800',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   closeIconButton: {
     padding: 8,
   },
   headerTitle: {
     fontSize: 20,
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#fff',
   },
   resultsHeader: {
-    padding: 16,
+    padding: 20,
     backgroundColor: '#fff',
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: '#E0E0E0',
+  },
+  resultsHeaderTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    gap: 12,
+  },
+  resultsHeaderText: {
+    flex: 1,
   },
   resultsTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '700',
     color: '#333',
     marginBottom: 4,
@@ -611,55 +679,79 @@ const styles = StyleSheet.create({
   resultsSubtitle: {
     fontSize: 14,
     color: '#666',
-    marginBottom: 12,
   },
   selectButtons: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 12,
   },
   selectAllButton: {
     flex: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    backgroundColor: '#FF9800',
-    borderRadius: 6,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    backgroundColor: '#81A969',
+    borderRadius: 8,
+    shadowColor: '#81A969',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
   },
   deselectButton: {
     flex: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    backgroundColor: '#666',
-    borderRadius: 6,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    backgroundColor: 'transparent',
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#E0E0E0',
   },
   selectButtonText: {
     color: '#fff',
     fontSize: 14,
     fontWeight: '600',
   },
+  deselectButtonText: {
+    color: '#666',
+    fontSize: 14,
+    fontWeight: '600',
+  },
   linesScroll: {
     flex: 1,
+  },
+  linesScrollContent: {
     padding: 16,
   },
   lineItem: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff',
-    padding: 12,
-    marginBottom: 8,
-    borderRadius: 8,
+    padding: 14,
+    marginBottom: 10,
+    borderRadius: 12,
     borderWidth: 2,
-    borderColor: '#e0e0e0',
+    borderColor: '#E0E0E0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
   lineItemSelected: {
-    borderColor: '#FF9800',
-    backgroundColor: '#FFF8E1',
+    borderColor: '#81A969',
+    backgroundColor: '#F1F8E9',
   },
   checkbox: {
     width: 24,
     height: 24,
-    borderRadius: 4,
+    borderRadius: 6,
     borderWidth: 2,
     borderColor: '#bbb',
     marginRight: 12,
@@ -668,17 +760,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   checkboxSelected: {
-    backgroundColor: '#FF9800',
-    borderColor: '#FF9800',
+    backgroundColor: '#81A969',
+    borderColor: '#81A969',
   },
   lineText: {
     flex: 1,
     fontSize: 15,
     color: '#333',
-    lineHeight: 20,
+    lineHeight: 22,
   },
   lineTextSelected: {
-    fontWeight: '500',
+    fontWeight: '600',
     color: '#000',
   },
   resultsActions: {
@@ -687,7 +779,12 @@ const styles = StyleSheet.create({
     padding: 16,
     backgroundColor: '#fff',
     borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
+    borderTopColor: '#E0E0E0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 3,
   },
   actionButton: {
     flex: 1,
@@ -695,19 +792,33 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 14,
-    borderRadius: 8,
+    borderRadius: 10,
     gap: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   retryButton: {
-    backgroundColor: '#666',
+    backgroundColor: 'transparent',
+    borderWidth: 2,
+    borderColor: '#E0E0E0',
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  retryButtonText: {
+    color: '#666',
+    fontSize: 16,
+    fontWeight: '600',
   },
   useButton: {
-    backgroundColor: '#FF9800',
+    backgroundColor: '#81A969',
   },
   useButtonDisabled: {
-    backgroundColor: '#ccc',
+    backgroundColor: '#C5E1A5',
   },
-  actionButtonText: {
+  useButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',

@@ -30,7 +30,12 @@ class OpenFoodFactsService {
       });
       
       if (!response.ok) {
-        console.error('❌ [OpenFoodFacts] API error:', response.status);
+        // 404 is expected when product is not in database
+        if (response.status === 404) {
+          console.log('ℹ️ [OpenFoodFacts] Product not in database (404)');
+        } else {
+          console.error('❌ [OpenFoodFacts] API error:', response.status);
+        }
         return null;
       }
       
