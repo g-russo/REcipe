@@ -20,6 +20,7 @@ const PantryAlert = ({
     // Optional: provide a custom icon React element to override default
     customIcon = null,
     cancelLabel = null,
+    hideCloseButton = false,
 }) => {
     const [show, setShow] = useState(visible);
     const opacity = useRef(new Animated.Value(0)).current;
@@ -170,18 +171,20 @@ const PantryAlert = ({
                                     )}
                                     {children}
                                     {/* Return button */}
-                                    <TouchableOpacity
-                                        style={[
-                                            styles.returnButton,
-                                            (actionable && !children) && styles.returnButtonRow
-                                        ]}
-                                        onPress={handleClose}
-                                        activeOpacity={0.7}
-                                    >
-                                        <Text style={styles.returnButtonText}>
-                                            {getCancelText()}
-                                        </Text>
-                                    </TouchableOpacity>
+                                    {!hideCloseButton && (
+                                        <TouchableOpacity
+                                            style={[
+                                                styles.returnButton,
+                                                (actionable && !children) && styles.returnButtonRow
+                                            ]}
+                                            onPress={handleClose}
+                                            activeOpacity={0.7}
+                                        >
+                                            <Text style={styles.returnButtonText}>
+                                                {getCancelText()}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    )}
                                 </View>
                             </View>
                         </Animated.View>

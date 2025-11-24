@@ -131,8 +131,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff', // Cleaner white background
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0', // Lighter border
-    paddingTop: Platform.OS === 'android' ? 10 : 0,
-    height: Platform.OS === 'android' ? 60 : 50,
+    paddingTop: Platform.OS === 'android' ? 50 : 45,
+    height: Platform.OS === 'android' ? 100 : 95,
     zIndex: 1000,
   },
   actionButton: {

@@ -97,32 +97,32 @@ const ItemFormModal = ({
 
   // --- 2. Helper to Get Allowed Units per Category ---
   const getAllowedUnits = (category) => {
-    if (!category) return Object.values(allUnits).flat(); // Return all if no category selected
+    if (!category) return [...new Set(Object.values(allUnits).flat())]; // Return all if no category selected
 
     switch (category) {
       // Cooked Food
       case 'Rice':
       case 'Leftovers':
       case 'Kakanin':
-        return [...allUnits.serving, 'g', 'kg'];
+        return [...new Set([...allUnits.serving, 'g', 'kg'])];
 
       // Liquidy Cooked Food
       case 'Soup':
-        return [...allUnits.serving, ...allUnits.volume];
+        return [...new Set([...allUnits.serving, ...allUnits.volume])];
 
       // Liquids
       case 'Beverages':
       case 'Sauces':
       case 'Condiments':
       case 'Dairy':
-        return [...allUnits.volume, ...allUnits.small];
+        return [...new Set([...allUnits.volume, ...allUnits.small])];
 
       // Raw Meat / Seafood (Strictly Weight/Count)
       case 'Meat':
       case 'Poultry':
       case 'Seafood':
       case 'Frozen':
-        return [...allUnits.weight, 'pieces', 'each', 'tray'];
+        return [...new Set([...allUnits.weight, 'pieces', 'each', 'tray'])];
 
       // Baking / Grains / Spices (Weight + Vol + Small)
       case 'Baking':
@@ -131,12 +131,12 @@ const ItemFormModal = ({
       case 'Noodles':
       case 'Spices':
       case 'Herbs':
-        return [...allUnits.weight, ...allUnits.small, 'cup', 'jar', 'can'];
+        return [...new Set([...allUnits.weight, ...allUnits.small, 'cup', 'jar', 'can'])];
 
       // Produce
       case 'Fruits':
       case 'Vegetables':
-        return [...allUnits.weight, ...allUnits.count, 'cup'];
+        return [...new Set([...allUnits.weight, ...allUnits.count, 'cup'])];
 
       // Eggs
       case 'Eggs':
@@ -148,7 +148,7 @@ const ItemFormModal = ({
         return ['can', 'jar', 'bottle', ...allUnits.weight];
 
       default:
-        return Object.values(allUnits).flat();
+        return [...new Set(Object.values(allUnits).flat())];
     }
   };
 
