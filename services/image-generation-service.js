@@ -22,9 +22,13 @@ class ImageGenerationService {
       const imageUrl = await this.generateImageWithDALLE(prompt);
 
       // Step 2: Download the image as blob
+      console.log('📥 Downloading generated image URL:', imageUrl);
       const response = await fetch(imageUrl);
       if (!response.ok) {
-        throw new Error('Failed to download DALL-E image');
+        let bodyText = '';
+        try { bodyText = await response.text(); } catch (e) { bodyText = '<unreadable body>'; }
+        console.error(`❌ Failed to download DALL·E image (status ${response.status}): ${bodyText}`);
+        throw new Error(`Failed to download DALL-E image: ${response.status}`);
       }
       const imageBlob = await response.blob();
 
@@ -46,9 +50,12 @@ class ImageGenerationService {
    */
   async generateImageWithDALLE(prompt) {
     try {
-      const enhancedPrompt = `Professional food photography of ${prompt} on a plate. High quality, appetizing, natural lighting, top-down view, clean background, commercial style. Focus on the food only, no text or labels.`;
+      const enhancedPrompt = `Professional food photography of ${prompt} on a plate. High quality, appetizing, natural lighting, commercial style. Strict requirements: SHOW ONLY THE FOOD and edible components — no utensils, no cutlery, no napkins, no glasses, no cups, no beverages, no packaging, no props, no hands, no people, no animals, no text, no labels, no logos, and no other unrelated objects. Use a clean neutral or seamless background (white/very light grey) with minimal distractions and natural soft shadows. Crop tightly to the plate with the food centered; prefer top-down or 45-degree close-up framing. Photorealistic, highly detailed, realistic textures, natural colors, no filters, no overlays, no typography. Include only ingredients that belong to the dish.`;
 
       const openAiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY || process.env.OPENAI_API_KEY || Constants.expoConfig?.extra?.EXPO_PUBLIC_OPENAI_API_KEY || Constants.expoConfig?.extra?.openaiApiKey || null;
+
+      // Debug: log whether we resolved an API key (mask most of it)
+      console.log('🔑 DALL·E key status:', openAiKey ? `Loaded (${String(openAiKey).substring(0, 8)}... )` : '❌ Missing');
 
       const response = await fetch(OPENAI_IMAGE_API, {
         method: 'POST',
@@ -67,11 +74,20 @@ class ImageGenerationService {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(`DALL-E API error: ${errorData.error?.message || response.statusText}`);
+        // Try to read text for clearer error messages
+        let bodyText = '';
+        try { bodyText = await response.text(); } catch (e) { bodyText = '<unreadable body>'; }
+        console.error(`❌ DALL·E API responded ${response.status}: ${bodyText}`);
+        throw new Error(`DALL-E API error: ${response.status} - ${bodyText}`);
       }
 
       const data = await response.json();
+      console.log('✅ DALL·E response data keys:', Object.keys(data || {}));
+      if (!data || !data.data || !data.data[0] || !data.data[0].url) {
+        console.error('❌ DALL·E response missing url:', JSON.stringify(data));
+        throw new Error('DALL-E response missing image URL');
+      }
+
       return data.data[0].url;
     } catch (error) {
       console.error('DALL-E generation error:', error);
