@@ -822,16 +822,16 @@ const RecipeSearch = () => {
     return (
       <TouchableOpacity style={styles.recipeCard} onPress={() => handleRecipePress(item)}>
         <View style={styles.recipeImageContainer}>
-          {item.image ? (
+            {item.image ? (
             <CachedImage
               uri={item.image}
               style={styles.recipeImage}
               resizeMode="cover"
-              fallbackIcon={<Ionicons name="image-outline" size={50} color="#ccc" />}
+                fallbackIcon={<Ionicons name="restaurant-outline" size={50} color="#c0c0c0" />}
             />
           ) : (
-            <View style={[styles.recipeImage, { backgroundColor: '#f0f0f0', alignItems: 'center', justifyContent: 'center' }]}>
-              <Ionicons name="image-outline" size={50} color="#ccc" />
+            <View style={[styles.recipeImage, { backgroundColor: '#f8f8f8', alignItems: 'center', justifyContent: 'center' }]}>
+              <Ionicons name="restaurant-outline" size={48} color="#bfbfbf" />
             </View>
           )}
 
@@ -1752,8 +1752,8 @@ const RecipeSearch = () => {
                             onError={(error) => console.log('Popular recipe image load error:', recipe.title, error.nativeEvent?.error)}
                           />
                         ) : (
-                          <View style={[styles.popularRecipeImage, { backgroundColor: '#f0f0f0', alignItems: 'center', justifyContent: 'center' }]}>
-                            <Ionicons name="image-outline" size={20} color="#ccc" />
+                          <View style={[styles.popularRecipeImage, { backgroundColor: '#f8f8f8', alignItems: 'center', justifyContent: 'center' }]}> 
+                            <Ionicons name="restaurant-outline" size={20} color="#bfbfbf" />
                           </View>
                         )}
                       </View>
