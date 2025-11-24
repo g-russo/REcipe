@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { OPENAI_API_KEY } from '@env';
+import Constants from 'expo-constants';
 import EdamamService from './edamam-service';
 import ImageGenerationService from './image-generation-service';
 
@@ -10,7 +10,7 @@ class RecipeMatcherService {
   async checkRecipeMatch(userEmail, recipe) {
     try {
       const pantryItems = await this.getUserPantryItems(userEmail);
-      
+
       if (pantryItems.length === 0) {
         return {
           canMake: false,
@@ -85,11 +85,11 @@ ${JSON.stringify(recipeIngredients, null, 2)}
 
 User's pantry:
 ${JSON.stringify(pantryItems.map(item => ({
-  name: item.itemName,
-  quantity: item.quantity,
-  unit: item.unit,
-  category: item.itemCategory
-})), null, 2)}
+        name: item.itemName,
+        quantity: item.quantity,
+        unit: item.unit,
+        category: item.itemCategory
+      })), null, 2)}
 
 Rules:
 1. Match across languages (e.g., "chicken" = "manok" = "pollo")
@@ -115,11 +115,13 @@ Return ONLY valid JSON:
   "availableIngredients": ["array"]
 }`;
 
+      const openAiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY || process.env.OPENAI_API_KEY || Constants.expoConfig?.extra?.EXPO_PUBLIC_OPENAI_API_KEY || Constants.expoConfig?.extra?.openaiApiKey || null;
+
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+          'Authorization': `Bearer ${openAiKey}`
         },
         body: JSON.stringify({
           model: 'gpt-3.5-turbo', // Cheaper model for matching
@@ -156,7 +158,7 @@ Return ONLY valid JSON:
   fallbackMatch(recipeIngredients, pantryItems) {
     const matches = recipeIngredients.map(ingredient => {
       const ingredientName = ingredient.name.toLowerCase();
-      const pantryMatch = pantryItems.find(item => 
+      const pantryMatch = pantryItems.find(item =>
         item.itemName.toLowerCase().includes(ingredientName) ||
         ingredientName.includes(item.itemName.toLowerCase())
       );
@@ -172,8 +174,8 @@ Return ONLY valid JSON:
     });
 
     const matchedCount = matches.filter(m => m.isMatch).length;
-    const matchPercentage = recipeIngredients.length > 0 
-      ? Math.round((matchedCount / recipeIngredients.length) * 100) 
+    const matchPercentage = recipeIngredients.length > 0
+      ? Math.round((matchedCount / recipeIngredients.length) * 100)
       : 0;
 
     return {
@@ -200,15 +202,15 @@ Return ONLY valid JSON:
 
       // Determine recipe source
       const isAIRecipe = recipe.isCustom || recipe.source === 'SousChef AI';
-      
-      console.log('🔍 Recipe type check:', { 
-        isAIRecipe, 
+
+      console.log('🔍 Recipe type check:', {
+        isAIRecipe,
         hasRecipeID: !!recipe.recipeID,
         hasUri: !!recipe.uri,
         source: recipe.source,
         isCustom: recipe.isCustom
       });
-      
+
       let recipeData;
       if (isAIRecipe) {
         // AI-generated recipe
@@ -224,7 +226,7 @@ Return ONLY valid JSON:
         };
       } else {
         // Edamam recipe - store comprehensive cache data
-        
+
         // 🖼️ Download and store image permanently to avoid expired AWS tokens
         let permanentImageUrl = recipe.image;
         if (recipe.image && recipe.uri) {
@@ -240,7 +242,7 @@ Return ONLY valid JSON:
             // Continue with original URL - better than failing the entire save
           }
         }
-        
+
         recipeData = {
           userID: userData.userID,
           aiRecipeID: null,
@@ -413,7 +415,7 @@ Return ONLY valid JSON:
   async getSavedRecipes(userEmail) {
     try {
       console.log('📥 Getting saved recipes for:', userEmail);
-      
+
       const { data: userData } = await supabase
         .from('tbl_users')
         .select('userID')
@@ -499,27 +501,27 @@ Return ONLY valid JSON:
               // Core identifiers
               recipeID: aiRecipe.recipeID,
               uri: `souschef://recipe/${aiRecipe.recipeID}`,
-              
+
               // Display fields
               label: aiRecipe.recipeName,
               image: aiRecipe.recipeImage,
               source: 'SousChef AI',
-              
+
               // Ingredient fields
-              ingredientLines: aiRecipe.ingredients?.map(ing => 
+              ingredientLines: aiRecipe.ingredients?.map(ing =>
                 `${ing.quantity || ''} ${ing.unit || ''} ${ing.name}${ing.notes ? ` (${ing.notes})` : ''}`.trim()
               ) || [],
-              
+
               // Nutrition fields (already per serving from AI)
               calories: aiRecipe.calories,
               protein: aiRecipe.protein,
               carbs: aiRecipe.carbs,
               fat: aiRecipe.fat,
-              
+
               // Time and serving fields
               totalTime: aiRecipe.cookingTime,
               yield: aiRecipe.servings,
-              
+
               // Labels and categories
               healthLabels: aiRecipe.healthLabels || [],
               dietLabels: aiRecipe.dietLabels || [],
@@ -527,13 +529,13 @@ Return ONLY valid JSON:
               cuisineType: aiRecipe.cuisineType ? [aiRecipe.cuisineType] : [],
               mealType: aiRecipe.mealType ? [aiRecipe.mealType] : [],
               dishType: aiRecipe.dishType ? [aiRecipe.dishType] : [],
-              
+
               // Instructions (AI recipes have instructions in database)
               instructions: aiRecipe.instructions || [],
-              
+
               // AI recipe flag
               isCustom: true,
-              
+
               // No external URL for AI recipes
               url: null
             };
@@ -547,7 +549,7 @@ Return ONLY valid JSON:
             // ⚡ OPTIMIZED: For Edamam recipes, ALWAYS use cached data for fast loading
             // This eliminates slow API calls and provides instant loading
             console.log('📦 Using cached Edamam recipe:', userRecipe.edamamRecipeURI);
-            
+
             // Parse recipeData if it's a string (JSONB from database)
             let cachedRecipe = userRecipe.recipeData;
             if (typeof cachedRecipe === 'string') {
@@ -559,25 +561,25 @@ Return ONLY valid JSON:
                 cachedRecipe = null;
               }
             }
-            
+
             // 🔄 Check if image URL has expired AWS token
             let imageUrl = cachedRecipe?.image;
             let imageRefreshed = false;
-            
+
             if (imageUrl && imageUrl.includes('X-Amz-Date=')) {
               // Extract the date from the URL
               const dateMatch = imageUrl.match(/X-Amz-Date=(\d{8}T\d{6}Z)/);
               const expiresMatch = imageUrl.match(/X-Amz-Expires=(\d+)/);
-              
+
               if (dateMatch && expiresMatch) {
                 const signDate = new Date(
-                  dateMatch[1].replace(/(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z/, 
-                  '$1-$2-$3T$4:$5:$6Z')
+                  dateMatch[1].replace(/(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z/,
+                    '$1-$2-$3T$4:$5:$6Z')
                 );
                 const expiresSeconds = parseInt(expiresMatch[1]);
                 const expiryDate = new Date(signDate.getTime() + expiresSeconds * 1000);
                 const now = new Date();
-                
+
                 if (now > expiryDate) {
                   console.log('⚠️ Image URL expired, needs refresh:', cachedRecipe.label);
                   imageRefreshed = true;
@@ -586,7 +588,7 @@ Return ONLY valid JSON:
                 }
               }
             }
-            
+
             // Debug logging for image issues
             console.log('🔍 Cached recipe data:', {
               hasCachedData: !!cachedRecipe,
@@ -596,18 +598,18 @@ Return ONLY valid JSON:
               label: cachedRecipe?.label,
               dataType: typeof userRecipe.recipeData
             });
-            
+
             // Ensure cached recipe has uri field (critical for favorites)
             if (cachedRecipe && !cachedRecipe.uri && userRecipe.edamamRecipeURI) {
               cachedRecipe.uri = userRecipe.edamamRecipeURI;
               console.log('✅ Added missing URI to cached recipe');
             }
-            
+
             // If image expired, use a flag to indicate refresh needed
             if (imageRefreshed && cachedRecipe) {
               cachedRecipe._imageExpired = true;
             }
-            
+
             return {
               ...userRecipe,
               recipe: cachedRecipe || {
@@ -685,10 +687,10 @@ Return ONLY valid JSON:
 
       try {
         const result = await EdamamService.getRecipeByUri(uri);
-        
+
         if (result.success && result.recipe) {
           console.log(`✅ Image refreshed for: ${item.recipe.label}`);
-          
+
           // Update the recipe with fresh data (especially the image URL)
           return {
             ...item,
@@ -718,7 +720,7 @@ Return ONLY valid JSON:
   async migrateExistingEdamamImages(userEmail) {
     try {
       console.log('🔧 Starting image migration for user:', userEmail);
-      
+
       const { data: userData } = await supabase
         .from('tbl_users')
         .select('userID')
@@ -747,7 +749,7 @@ Return ONLY valid JSON:
       for (const fav of favorites || []) {
         try {
           let recipeData = fav.recipeData;
-          
+
           // Parse if string
           if (typeof recipeData === 'string') {
             recipeData = JSON.parse(recipeData);
@@ -784,10 +786,10 @@ Return ONLY valid JSON:
 
           // Update recipe data with fresh image
           recipeData.image = permanentUrl;
-          
+
           // Also update other fields from fresh data
           recipeData.images = freshData.recipe.images || recipeData.images;
-          
+
           const { error: updateError } = await supabase
             .from('tbl_favorites')
             .update({ recipeData: recipeData })
@@ -819,7 +821,7 @@ Return ONLY valid JSON:
         for (const item of history || []) {
           try {
             let recipeData = item.recipeData;
-            
+
             if (typeof recipeData === 'string') {
               recipeData = JSON.parse(recipeData);
             }
@@ -849,7 +851,7 @@ Return ONLY valid JSON:
 
             recipeData.image = permanentUrl;
             recipeData.images = freshData.recipe.images || recipeData.images;
-            
+
             const { error: updateError } = await supabase
               .from('tbl_recipe_history')
               .update({ recipeData: recipeData })
@@ -871,7 +873,7 @@ Return ONLY valid JSON:
       }
 
       console.log(`✅ Migration complete! Migrated: ${migratedCount}, Failed: ${failedCount}`);
-      
+
       return {
         success: true,
         migrated: migratedCount,

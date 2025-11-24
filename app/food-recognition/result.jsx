@@ -29,6 +29,7 @@ import PantryAlert from '../../components/pantry/pantry-alert';
 import SousChefAIService from '../../services/souschef-ai-service';
 import DeconstructionModal from '../../components/food-recognition/deconstruction-modal';
 import EdamamService from '../../services/edamam-service';
+import * as ImageManipulator from 'expo-image-manipulator';
 
 const CONFIDENCE_THRESHOLD = 0.03; // 3% minimum confidence
 
@@ -321,41 +322,13 @@ export default function FoodRecognitionResult() {
     }
   }, [result]);
 
-  // Helper function to determine category
-  const determineFoodCategory = (foodName) => {
-    const name = foodName.toLowerCase();
-    if (/apple|banana|orange|grape|strawberry|mango|pineapple|watermelon|kiwi|berry|guava|papaya|melon/i.test(name))
-      return 'Fruits';
-    if (/carrot|tomato|potato|onion|lettuce|cabbage|spinach|broccoli|pepper|cucumber|eggplant|squash|pumpkin/i.test(name))
-      return 'Vegetables';
-    if (/chicken|beef|pork|fish|salmon|tuna|egg|tofu|meat|steak|shrimp|lobster|crab/i.test(name))
-      return 'Meat';
-    if (/milk|cheese|yogurt|butter|cream|dairy/i.test(name))
-      return 'Dairy';
-    if (/rice|bread|pasta|noodle|wheat|cereal|oat|quinoa|barley/i.test(name))
-      return 'Grains';
-    if (/juice|soda|coffee|tea|water|drink|beverage|smoothie/i.test(name))
-      return 'Beverages';
-    if (/chip|cookie|candy|chocolate|snack|cracker|popcorn/i.test(name))
-      return 'Snacks';
-    return 'Other';
-  };
-
-  const estimateExpiryDate = (category) => {
-    const now = new Date();
-    const expiryDays = {
-      'Fruits': 7, 'Vegetables': 7, 'Meat': 3, 'Poultry': 3, 'Seafood': 2,
-      'Dairy': 7, 'Grains': 30, 'Beverages': 90, 'Snacks': 60, 'Other': 14
-    };
-    now.setDate(now.getDate() + (expiryDays[category] || 14));
-    return now.toISOString();
-  };
-
   const handleAddToInventory = async () => {
     if (!selectedFood) {
       Alert.alert('No Selection', 'Please select a food item first');
       return;
     }
+
+    setLoading(true); // Show loading indicator
 
     try {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -403,10 +376,29 @@ export default function FoodRecognitionResult() {
 
       setInventories(inventoryList);
 
-      // Prepare prefilled data
-      const category = determineFoodCategory(selectedFood.label);
-      const expiryDate = estimateExpiryDate(category);
-      const formattedExpiry = new Date(expiryDate).toLocaleDateString('en-US', {
+      // Prepare image for AI analysis (convert to base64)
+      let imageBase64 = null;
+      try {
+        const manipResult = await ImageManipulator.manipulateAsync(
+          uri,
+          [{ resize: { width: 500 } }], // Resize to reduce payload size
+          { base64: true, compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+        );
+        imageBase64 = manipResult.base64;
+      } catch (imgError) {
+        console.warn('⚠️ Failed to process image for AI analysis:', imgError);
+        // Continue without image if processing fails
+      }
+
+      // AI Prediction for Category and Shelf Life (with visual context)
+      const prediction = await SousChefAIService.predictItemDetails(selectedFood.label, imageBase64);
+      const category = prediction.category;
+
+      // Calculate expiry date based on AI prediction
+      const expiryDate = new Date();
+      expiryDate.setDate(expiryDate.getDate() + prediction.shelfLifeDays);
+
+      const formattedExpiry = expiryDate.toLocaleDateString('en-US', {
         month: 'numeric',
         day: 'numeric',
         year: 'numeric'
@@ -419,6 +411,8 @@ export default function FoodRecognitionResult() {
           case 'Soup':
           case 'Leftovers':
           case 'Beverages':
+          case 'Condiments':
+          case 'Sauces':
             return 'ml';
           case 'Grains':
           case 'Pasta':
@@ -434,6 +428,13 @@ export default function FoodRecognitionResult() {
           case 'Fruits':
           case 'Vegetables':
             return 'kg';
+          case 'Canned':
+            return 'can';
+          case 'Jarred':
+            return 'jar';
+          case 'Snacks':
+          case 'Frozen':
+            return 'pack';
           default:
             return 'pieces';
         }
@@ -448,12 +449,16 @@ export default function FoodRecognitionResult() {
         itemDescription: `Detected by ${selectedFood.source}`,
         imageURL: uri,
         inventoryID: inventoryList[0].inventoryID,
+        isAI: true, // Flag for UI
+        aiReasoning: prediction.reasoning, // Pass reasoning to modal
       });
 
+      setLoading(false); // Stop loading
       // Open the item form modal
       setItemFormVisible(true);
 
     } catch (error) {
+      setLoading(false); // Stop loading on error
       console.error('❌ Error preparing item form:', error);
       Alert.alert(
         'Error',

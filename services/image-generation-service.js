@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { OPENAI_API_KEY } from '@env';
+import Constants from 'expo-constants';
 import ImageResizer from 'react-native-image-resizer';
 import * as FileSystem from 'expo-file-system';
 import ImageConverter from '../utils/image-converter';
@@ -48,11 +48,13 @@ class ImageGenerationService {
     try {
       const enhancedPrompt = `Professional food photography of ${prompt} on a plate. High quality, appetizing, natural lighting, top-down view, clean background, commercial style. Focus on the food only, no text or labels.`;
 
+      const openAiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY || process.env.OPENAI_API_KEY || Constants.expoConfig?.extra?.EXPO_PUBLIC_OPENAI_API_KEY || Constants.expoConfig?.extra?.openaiApiKey || null;
+
       const response = await fetch(OPENAI_IMAGE_API, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+          'Authorization': `Bearer ${openAiKey}`
         },
         body: JSON.stringify({
           model: 'dall-e-3', // or 'dall-e-2' for cheaper option

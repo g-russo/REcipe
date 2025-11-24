@@ -188,7 +188,7 @@ def call_gemini_vision(image: Image.Image):
     7. Provide top 5 possible identifications, sorted by confidence (highest first).
     8. Assign a realistic confidence score (0.0 to 0.99) for each prediction based on how certain you are. Do not default to 0.99 unless absolutely certain.
     9. Do NOT return generic cuisine names (e.g., "Italian Cuisine", "American Food") or meal types. Return ONLY specific dish names (e.g., "Carbonara", "Burger") or ingredient names.
-    10 
+    
     Return strict JSON format:
     [
         {
@@ -435,7 +435,7 @@ async def recognize_food_combined(file: UploadFile = File(...)):
 
 @app.post("/ocr/extract")
 async def extract_text_from_image(file: UploadFile = File(...)):
-    """Extract text from image using Tesseract OCR."""
+    """Extract text from image using Tesseract OCR with Gemini AI fallback."""
     try:
         try:
             img = pil_from_upload(file)
@@ -447,33 +447,195 @@ async def extract_text_from_image(file: UploadFile = File(...)):
         if img.mode != 'RGB':
             img = img.convert('RGB')
         
-        # ✅ Test if Tesseract is accessible
+        # ✅ Try Tesseract first
+        tesseract_text = None
+        tesseract_confidence = 0
+        
         try:
             version = pytesseract.get_tesseract_version()
             print(f"✅ Tesseract version: {version}")
-        except Exception as version_error:
-            print(f"❌ Tesseract version check failed: {version_error}")
-            raise HTTPException(status_code=500, detail=f"Tesseract not accessible: {str(version_error)}")
+            
+            text = pytesseract.image_to_string(img)
+            
+            data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)
+            confidences = [int(conf) for conf in data['conf'] if int(conf) > 0]
+            avg_confidence = sum(confidences) / len(confidences) if confidences else 0
+            
+            # ✅ FIX: Only use Tesseract if we got meaningful text
+            if text.strip() and len(text.strip()) > 5:
+                tesseract_text = text.strip()
+                tesseract_confidence = round(avg_confidence, 2)
+                print(f"✅ Tesseract OCR complete: {len(tesseract_text)} characters")
+            else:
+                print(f"⚠️ Tesseract found minimal text, trying AI fallback...")
+                
+        except Exception as tesseract_error:
+            print(f"⚠️ Tesseract failed: {tesseract_error}")
         
-        text = pytesseract.image_to_string(img)
+        # ✅ If Tesseract failed or gave low confidence, try Gemini
+        if not tesseract_text or tesseract_confidence < 60:
+            print("🔄 Falling back to Gemini AI for OCR...")
+            
+            gemini_text = call_gemini_ocr(img)
+            
+            if gemini_text and gemini_text != "No text found":
+                return {
+                    "success": True,
+                    "text": gemini_text,
+                    "confidence": 95.0,
+                    "source": "gemini"
+                }
+            else:
+                # ✅ Final fallback to OpenAI
+                print("🔄 Gemini failed, trying OpenAI...")
+                openai_text = call_openai_ocr(img)
+                
+                if openai_text and openai_text != "No text found":
+                    return {
+                        "success": True,
+                        "text": openai_text,
+                        "confidence": 95.0,
+                        "source": "openai"
+                    }
         
-        data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)
-        confidences = [int(conf) for conf in data['conf'] if int(conf) > 0]
-        avg_confidence = sum(confidences) / len(confidences) if confidences else 0
-        
-        print(f"✅ OCR complete: {len(text)} characters extracted")
-        
-        return {
-            "success": True,
-            "text": text.strip(),
-            "confidence": round(avg_confidence, 2)
-        }
+        # ✅ Return Tesseract result if we have it
+        if tesseract_text:
+            return {
+                "success": True,
+                "text": tesseract_text,
+                "confidence": tesseract_confidence,
+                "source": "tesseract"
+            }
+        else:
+            raise HTTPException(status_code=500, detail="All OCR methods failed to extract text")
+            
     except HTTPException:
         raise
     except Exception as e:
         print(f"❌ OCR error: {e}")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"OCR failed: {str(e)}")
+
+def call_gemini_ocr(image: Image.Image):
+    """
+    Use Gemini AI to extract text from image (OCR fallback).
+    """
+    print("✨ call_gemini_ocr triggered")
+    
+    # ✅ Check Rate Limit
+    if not check_gemini_rate_limit():
+        print("⚠️ Gemini Rate Limit Reached. Switching to OpenAI Fallback...")
+        return call_openai_ocr(image)
+
+    if not gemini_model:
+        print("❌ gemini_model is None. Switching to OpenAI Fallback...")
+        return call_openai_ocr(image)
+
+    prompt = """
+    Extract ALL visible text from this image.
+    
+    Instructions:
+    1. Return ONLY the extracted text, exactly as it appears.
+    2. Preserve line breaks and formatting.
+    3. If the text is a list (e.g., shopping list, ingredients), keep each item on a new line.
+    4. Do NOT add any explanations, summaries, or additional commentary.
+    5. If no text is found, return "No text found".
+    
+    Example:
+    If the image shows:
+    ```
+    Eggs
+    Milk
+    Bread
+    Chicken
+    ```
+    
+    Return exactly:
+    ```
+    Eggs
+    Milk
+    Bread
+    Chicken
+    ```
+    """
+    
+    try:
+        print("⏳ Sending OCR request to Gemini...")
+        response = gemini_model.generate_content([prompt, image])
+        text = response.text.strip()
+        print(f"✅ Gemini OCR Response: {text[:100]}...")
+        return text
+    except Exception as e:
+        print(f"❌ Gemini OCR Error: {e}")
+        traceback.print_exc()
+        print("⚠️ Gemini Failed. Switching to OpenAI Fallback...")
+        return call_openai_ocr(image)
+
+def call_openai_ocr(image: Image.Image):
+    """
+    Fallback to OpenAI GPT-4o Vision for OCR when Gemini rate limit is reached.
+    """
+    if not OPENAI_API_KEY:
+        print("❌ OpenAI API Key missing for fallback")
+        return None
+        
+    print("🤖 Calling OpenAI Vision for OCR (Fallback)...")
+    
+    try:
+        base64_image = encode_image(image)
+        
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {OPENAI_API_KEY}"
+        }
+        
+        prompt_text = """
+        Extract ALL visible text from this image.
+        
+        Instructions:
+        1. Return ONLY the extracted text, exactly as it appears.
+        2. Preserve line breaks and formatting.
+        3. If the text is a list (e.g., shopping list, ingredients), keep each item on a new line.
+        4. Do NOT add any explanations, summaries, or additional commentary.
+        5. If no text is found, return "No text found".
+        """
+        
+        payload = {
+            "model": "gpt-4o",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": prompt_text
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{base64_image}"
+                            }
+                        }
+                    ]
+                }
+            ],
+            "max_tokens": 1000
+        }
+        
+        response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
+        
+        if response.status_code != 200:
+            print(f"❌ OpenAI OCR Error: {response.status_code} - {response.text}")
+            return None
+            
+        result = response.json()
+        text = result['choices'][0]['message']['content'].strip()
+        print(f"✅ OpenAI OCR Response: {text[:100]}...")
+        return text
+    except Exception as e:
+        print(f"❌ OpenAI OCR Fallback Error: {e}")
+        traceback.print_exc()
+        return None
 
 # FatSecret API Endpoints
 @app.get("/fatsecret/foods/search")

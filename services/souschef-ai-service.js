@@ -1,9 +1,16 @@
 import { supabase } from '../lib/supabase';
-// Remove @env import - use process.env for EAS compatibility
 import ImageGenerationService from './image-generation-service';
+import Constants from 'expo-constants';
 
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
-const API_BASE_URL = 'http://192.168.1.4:8000'; // Backend API URL
+
+// ✅ FIX: Use the same logic as food-recog-api.js
+const API_BASE_URL = Constants.expoConfig?.extra?.foodApiUrl ||
+  process.env.EXPO_PUBLIC_FOOD_API_URL ||
+  'http://54.153.205.43:8000';
+
+console.log('🔧 SousChef API Configuration:');
+console.log('📍 API_BASE_URL:', API_BASE_URL);
 
 class SousChefAIService {
   /**
@@ -14,6 +21,8 @@ class SousChefAIService {
   async deconstructDish(foodName) {
     try {
       console.log(`🔍 Deconstructing dish: ${foodName}`);
+      console.log(`📡 Using API: ${API_BASE_URL}/deconstruct-dish`);
+
       const response = await fetch(`${API_BASE_URL}/deconstruct-dish`, {
         method: 'POST',
         headers: {
@@ -34,6 +43,17 @@ class SousChefAIService {
       // Fallback: treat as raw ingredient
       return { is_dish: false, ingredients: [foodName], reasoning: 'Error connecting to AI service' };
     }
+  }
+
+  // Helper to get OpenAI API key from possible sources embedded at build time
+  getOpenAiKey() {
+    return (
+      process.env.EXPO_PUBLIC_OPENAI_API_KEY ||
+      process.env.OPENAI_API_KEY ||
+      Constants.expoConfig?.extra?.EXPO_PUBLIC_OPENAI_API_KEY ||
+      Constants.expoConfig?.extra?.openaiApiKey ||
+      null
+    );
   }
 
   /**
@@ -339,7 +359,8 @@ class SousChefAIService {
       console.log(`🤖 Generating 1 recipe with SousChef AI (${existingCount + 1}/5)...`);
       console.log(`🎯 PRIMARY FOCUS: "${searchQuery}" (this will be the main ingredient/dish)`);
       console.log(`📦 Supporting ingredients: ${pantryItems.length} pantry items`);
-      console.log('📝 API Key Status:', process.env.OPENAI_API_KEY ? `Loaded (${process.env.OPENAI_API_KEY.substring(0, 10)}...)` : '❌ Missing');
+      const apiKey = this.getOpenAiKey();
+      console.log('📝 API Key Status:', apiKey ? `Loaded (${String(apiKey).substring(0, 10)}...)` : '❌ Missing');
 
       // Build prompt for 1 recipe only (search query is prioritized)
       const prompt = this.buildRecipePrompt(searchQuery, filters, pantryItems, 1);
@@ -351,7 +372,7 @@ class SousChefAIService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+          'Authorization': `Bearer ${apiKey}`
         },
         body: JSON.stringify({
           model: 'gpt-4o-mini',
@@ -417,7 +438,7 @@ class SousChefAIService {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+            'Authorization': `Bearer ${apiKey}`
           },
           body: JSON.stringify({
             model: 'gpt-4o-mini',
@@ -525,7 +546,8 @@ class SousChefAIService {
   async generateCustomRecipes(searchQuery, filters = {}, pantryItems = []) {
     try {
       console.log('🤖 Generating recipes with SousChef AI...');
-      console.log('📝 API Key Status:', process.env.OPENAI_API_KEY ? `Loaded (${process.env.OPENAI_API_KEY.substring(0, 10)}...)` : '❌ Missing');
+      const apiKey = this.getOpenAiKey();
+      console.log('📝 API Key Status:', apiKey ? `Loaded (${String(apiKey).substring(0, 10)}...)` : '❌ Missing');
 
       // Step 1: Generate recipe content
       const prompt = this.buildRecipePrompt(searchQuery, filters, pantryItems);
@@ -537,7 +559,7 @@ class SousChefAIService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+          'Authorization': `Bearer ${apiKey}`
         },
         body: JSON.stringify({
           model: 'gpt-4o-mini', // Updated model - cheaper and faster than GPT-4 Turbo
@@ -906,7 +928,7 @@ Return ONLY valid JSON. No additional text.`;
     try {
       console.log(`🔍 Validating food ingredient: "${searchTerm}"`);
 
-      const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+      const apiKey = this.getOpenAiKey();
       if (!apiKey) {
         console.error('❌ OpenAI API key not found');
         return { isValid: true, reason: 'Validation skipped - API key missing' };
@@ -977,6 +999,106 @@ Examples:
       console.error('❌ Validation error:', error);
       // Fail-safe: If validation fails, allow generation
       return { isValid: true, reason: 'Validation error - proceeding with generation' };
+    }
+  }
+
+  /**
+   * Predict the best category and estimated shelf life for an item using AI
+   * @param {string} itemName - The name of the item
+   * @param {string} [imageBase64] - Optional base64 image string for visual context
+   * @returns {Promise<{category: string, shelfLifeDays: number, reasoning: string}>}
+   */
+  async predictItemDetails(itemName, imageBase64 = null) {
+    try {
+      console.log(`🔮 Predicting details for: "${itemName}" ${imageBase64 ? '(with image)' : ''}`);
+
+      const apiKey = this.getOpenAiKey();
+      if (!apiKey) {
+        console.error('❌ OpenAI API key not found');
+        return { category: 'Other', shelfLifeDays: 7, reasoning: 'API key missing' };
+      }
+
+      const prompt = `Act as a food safety expert. Perform a deep analysis of the food item '${itemName}' ${imageBase64 ? 'and the provided image' : ''} to determine its optimal inventory category and precise shelf life.
+
+Research & Analysis Steps:
+1. **Identify**: Determine the exact specific type of food and its state (e.g., "Sliced vs Whole", "Cooked vs Raw", "Ripe vs Unripe").
+2. **Consult Guidelines**: Apply standard food safety data (USDA/FDA) for this specific item.
+3. **Visual Inspection**: If an image is provided, analyze for signs of spoilage (bruising, discoloration) or packaging (vacuum sealed, open can) to adjust the estimate.
+
+Respond with ONLY a JSON object in this exact format:
+{
+  "category": "String",
+  "shelfLifeDays": Number,
+  "reasoning": "String"
+}
+
+Constraints:
+1. **Category**: MUST be one of: ['Rice', 'Soup', 'Leftovers', 'Kakanin', 'Baking', 'Beverages', 'Canned', 'Jarred', 'Condiments', 'Sauces', 'Dairy', 'Eggs', 'Fruits', 'Frozen', 'Grains', 'Pasta', 'Noodles', 'Meat', 'Poultry', 'Seafood', 'Snacks', 'Spices', 'Herbs', 'Vegetables', 'Other']
+2. **Shelf Life Logic**:
+   - **Prioritize Specificity**: Look up the specific item's shelf life (e.g., "Strawberries: 3-7 days" vs "Fruit: 14 days").
+   - **Condition Matters**: "Cut/Peeled" items expire much faster than "Whole".
+   - **Leftovers**: Strictly 3-4 days for safety.
+   - **Pantry**: Dry goods (Rice, Pasta) = 365+ days.
+   - **Canned/Jarred**: If unopened (based on visual), use long duration (1-2 years). If looks opened, treat as perishable.
+
+Examples:
+"Apple" -> {"category": "Fruits", "shelfLifeDays": 21, "reasoning": "Whole apples last 3-4 weeks in fridge (USDA)"}
+"Cut Apple" -> {"category": "Fruits", "shelfLifeDays": 3, "reasoning": "Cut fruit oxidizes quickly, 3-5 days max"}
+"Chicken Adobo" -> {"category": "Leftovers", "shelfLifeDays": 4, "reasoning": "Cooked meat dishes are safe for 3-4 days (USDA)"}
+"Fresh Salmon" -> {"category": "Seafood", "shelfLifeDays": 2, "reasoning": "Raw fish is highly perishable, 1-2 days"}
+"Canned Corn" -> {"category": "Canned", "shelfLifeDays": 730, "reasoning": "Commercially canned goods last 2-5 years"}
+"Milk (Opened)" -> {"category": "Dairy", "shelfLifeDays": 7, "reasoning": "Opened milk lasts ~7 days past sell-by"}`;
+
+      const messages = [
+        {
+          role: 'system',
+          content: 'You are an expert food inventory assistant. Respond ONLY with valid JSON.'
+        },
+        {
+          role: 'user',
+          content: imageBase64 ? [
+            { type: 'text', text: prompt },
+            {
+              type: 'image_url',
+              image_url: {
+                url: `data:image/jpeg;base64,${imageBase64}`,
+                detail: 'low'
+              }
+            }
+          ] : prompt
+        }
+      ];
+
+      const response = await fetch(OPENAI_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: messages,
+          temperature: 0.3,
+          max_tokens: 300,
+          response_format: { type: 'json_object' }
+        })
+      });
+
+      if (!response.ok) {
+        console.error(`❌ OpenAI API error: ${response.status}`);
+        return { category: 'Other', shelfLifeDays: 7 };
+      }
+
+      const data = await response.json();
+      const content = data.choices[0].message.content.trim();
+      const prediction = JSON.parse(content);
+
+      console.log(`✅ Prediction result:`, prediction);
+      return prediction;
+
+    } catch (error) {
+      console.error('❌ Prediction error:', error);
+      return { category: 'Other', shelfLifeDays: 7 };
     }
   }
 }
