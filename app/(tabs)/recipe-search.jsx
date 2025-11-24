@@ -833,11 +833,11 @@ const RecipeSearch = () => {
               uri={item.image}
               style={styles.recipeImage}
               resizeMode="cover"
-              fallbackIcon={<Ionicons name="image-outline" size={50} color="#ccc" />}
+              fallbackIcon={<Ionicons name="restaurant-outline" size={50} color="#c0c0c0" />}
             />
           ) : (
-            <View style={[styles.recipeImage, { backgroundColor: '#f0f0f0', alignItems: 'center', justifyContent: 'center' }]}>
-              <Ionicons name="image-outline" size={50} color="#ccc" />
+            <View style={[styles.recipeImage, { backgroundColor: '#f8f8f8', alignItems: 'center', justifyContent: 'center' }]}>
+              <Ionicons name="restaurant-outline" size={48} color="#bfbfbf" />
             </View>
           )}
 
@@ -1001,7 +1001,7 @@ const RecipeSearch = () => {
     try {
       const allFoundRecipes = [];
       const seenUris = new Set();
-      
+
       // Rate limiting configuration (10 requests per minute)
       const MAX_RPM = 10;
       const WINDOW_MS = 60000; // 1 minute
@@ -1010,7 +1010,7 @@ const RecipeSearch = () => {
       // Process ingredients sequentially to respect rate limits
       for (let i = 0; i < ingredients.length; i++) {
         const ingredient = ingredients[i];
-        
+
         // Check rate limit
         const now = Date.now();
         // Filter out timestamps older than 1 minute
@@ -1022,9 +1022,9 @@ const RecipeSearch = () => {
           // Rate limit reached - wait until the oldest request expires
           const oldestRequest = requestTimestamps[0];
           const waitTime = (oldestRequest + WINDOW_MS) - now + 1000; // Add 1s buffer
-          
-          console.log(`⏳ Rate limit reached (${MAX_RPM} RPM). Waiting ${Math.ceil(waitTime/1000)}s...`);
-          
+
+          console.log(`⏳ Rate limit reached (${MAX_RPM} RPM). Waiting ${Math.ceil(waitTime / 1000)}s...`);
+
           // Show a toast or update loading text if possible (optional)
           // For now, just wait
           await new Promise(resolve => setTimeout(resolve, waitTime));
@@ -1032,11 +1032,11 @@ const RecipeSearch = () => {
 
         // Proceed with search
         try {
-          console.log(`🔎 Searching for ingredient ${i+1}/${ingredients.length}: ${ingredient}`);
+          console.log(`🔎 Searching for ingredient ${i + 1}/${ingredients.length}: ${ingredient}`);
           requestTimestamps.push(Date.now()); // Record timestamp
-          
+
           const results = await cacheService.getSearchResults(ingredient, { to: 5 });
-          
+
           if (Array.isArray(results)) {
             allFoundRecipes.push(...results);
           }
@@ -1407,7 +1407,28 @@ const RecipeSearch = () => {
     }
   };
 
+  // Handle params for auto-search (e.g. from Pantry)
+  useEffect(() => {
+    if (params?.autoSearch === 'true' && params?.searchQuery) {
+      console.log('🚀 Auto-search triggered from params:', params.searchQuery);
+      
+      const query = params.searchQuery;
+      const isDeconstructed = params.isDeconstructed === 'true';
 
+      // Clear params to prevent re-triggering on re-renders
+      router.setParams({ autoSearch: null, searchQuery: null, isDeconstructed: null });
+
+      // Small delay to ensure component is ready
+      setTimeout(() => {
+        if (isDeconstructed) {
+          handleDeconstructedSearch(query);
+        } else {
+          setSearchQuery(query);
+          handleSearch(query);
+        }
+      }, 500);
+    }
+  }, [params]);
 
   return (
     <AuthGuard>
@@ -1738,8 +1759,8 @@ const RecipeSearch = () => {
                             onError={(error) => console.log('Popular recipe image load error:', recipe.title, error.nativeEvent?.error)}
                           />
                         ) : (
-                          <View style={[styles.popularRecipeImage, { backgroundColor: '#f0f0f0', alignItems: 'center', justifyContent: 'center' }]}>
-                            <Ionicons name="image-outline" size={20} color="#ccc" />
+                          <View style={[styles.popularRecipeImage, { backgroundColor: '#f8f8f8', alignItems: 'center', justifyContent: 'center' }]}>
+                            <Ionicons name="restaurant-outline" size={20} color="#bfbfbf" />
                           </View>
                         )}
                       </View>
