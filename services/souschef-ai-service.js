@@ -1,9 +1,16 @@
 import { supabase } from '../lib/supabase';
-// Remove @env import - use process.env for EAS compatibility
 import ImageGenerationService from './image-generation-service';
+import Constants from 'expo-constants';
 
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
-const API_BASE_URL = 'http://192.168.1.4:8000'; // Backend API URL
+
+// ✅ FIX: Use the same logic as food-recog-api.js
+const API_BASE_URL = Constants.expoConfig?.extra?.foodApiUrl || 
+                     process.env.EXPO_PUBLIC_FOOD_API_URL || 
+                     'http://54.153.205.43:8000';
+
+console.log('🔧 SousChef API Configuration:');
+console.log('📍 API_BASE_URL:', API_BASE_URL);
 
 class SousChefAIService {
   /**
@@ -14,6 +21,8 @@ class SousChefAIService {
   async deconstructDish(foodName) {
     try {
       console.log(`🔍 Deconstructing dish: ${foodName}`);
+      console.log(`📡 Using API: ${API_BASE_URL}/deconstruct-dish`);
+      
       const response = await fetch(`${API_BASE_URL}/deconstruct-dish`, {
         method: 'POST',
         headers: {
