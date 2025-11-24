@@ -989,7 +989,9 @@ export default function FoodRecognitionResult() {
                   {selectedFood?.isUnknown ? "We couldn't identify this food." : "No foods detected with sufficient confidence"}
                 </Text>
                 <Text style={styles.noResultsSubtext}>
-                  Try taking a clearer photo or add the item manually.
+                  {selectedFood?.isUnknown
+                    ? "This image appears to be not food intended for human consumption; manual entry and detailed model results are disabled for this image."
+                    : "Try taking a clearer photo or add the item manually."}
                 </Text>
               </View>
             )}
@@ -1010,23 +1012,27 @@ export default function FoodRecognitionResult() {
 
             {/* Secondary Actions */}
             <View style={styles.secondaryActions}>
-              <TouchableOpacity
-                style={styles.manualButton}
-                onPress={handleManualEntry}
-              >
-                <Ionicons name="create-outline" size={20} color="#81A969" />
-                <Text style={styles.manualButtonText}>Manual Entry</Text>
-              </TouchableOpacity>
+              {!selectedFood?.isUnknown && (
+                <>
+                  <TouchableOpacity
+                    style={styles.manualButton}
+                    onPress={handleManualEntry}
+                  >
+                    <Ionicons name="create-outline" size={20} color="#81A969" />
+                    <Text style={styles.manualButtonText}>Manual Entry</Text>
+                  </TouchableOpacity>
 
-              {/* View Detailed Results Button */}
-              {result && (
-                <TouchableOpacity
-                  style={styles.detailsButton}
-                  onPress={() => setDetailsModalVisible(true)}
-                >
-                  <Ionicons name="stats-chart-outline" size={20} color="#81A969" />
-                  <Text style={styles.detailsButtonText}>View Detailed Model Results</Text>
-                </TouchableOpacity>
+                  {/* View Detailed Results Button */}
+                  {result && (
+                    <TouchableOpacity
+                      style={styles.detailsButton}
+                      onPress={() => setDetailsModalVisible(true)}
+                    >
+                      <Ionicons name="stats-chart-outline" size={20} color="#81A969" />
+                      <Text style={styles.detailsButtonText}>View Detailed Model Results</Text>
+                    </TouchableOpacity>
+                  )}
+                </>
               )}
             </View>
           </View>
