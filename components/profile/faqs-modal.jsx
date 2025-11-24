@@ -52,7 +52,7 @@ const FAQsModal = ({ visible, onClose }) => {
     },
     {
       question: 'How can I provide feedback or report issues?',
-      answer: "We love hearing from our users! You can reach out through the Help Center or email us directly at recipe-app@gmail.com. Your feedback helps us improve REcipe for everyone. We typically respond within 24-48 hours.",
+      answer: "We love hearing from our users! You can reach out through the Help Center or email us directly at queries.recipe@gmail.com. Your feedback helps us improve REcipe for everyone. We typically respond within 24-48 hours.",
     },
   ];
 
@@ -120,7 +120,7 @@ const FAQsModal = ({ visible, onClose }) => {
 
           <View style={styles.footer}>
             <Text style={styles.footerText}>
-              Still have questions? Contact us at recipe-app@gmail.com
+              Still have questions? Contact us at queries.recipe@gmail.com
             </Text>
           </View>
         </ScrollView>

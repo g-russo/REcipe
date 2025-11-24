@@ -10,9 +10,11 @@ import {
   Animated,
   Keyboard,
   Platform,
-  StatusBar
+  StatusBar,
+  Modal
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
+import { Ionicons } from '@expo/vector-icons';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { useCustomAuth } from '../hooks/use-custom-auth';
 import { router } from 'expo-router';
@@ -21,6 +23,7 @@ import { signupStyles } from '../assets/css/signupStyles';
 import TopographicBackground from '../components/TopographicBackground';
 import AppAlert from '../components/common/app-alert';
 import rateLimiterService from '../services/rate-limiter-service';
+import TermsPoliciesModal from '../components/profile/terms-policies-modal';
 
 const SignUp = () => {
   const [name, setName] = useState('');
@@ -42,6 +45,9 @@ const SignUp = () => {
   const [emailError, setEmailError] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [confirmPasswordError, setConfirmPasswordError] = useState('');
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [hasScrolledTerms, setHasScrolledTerms] = useState(false);
   const translateY = useRef(new Animated.Value(0)).current;
 
   const { signUp } = useCustomAuth();
@@ -243,6 +249,12 @@ const SignUp = () => {
       return;
     }
 
+    // Check if terms are accepted
+    if (!termsAccepted) {
+      showStyledError('Please read and accept the Terms & Conditions to continue');
+      return;
+    }
+
     // Birthdate validation (date range, validity, and age check)
     const birthdateValidation = validateBirthdate(birthdate);
     if (!birthdateValidation.valid) {
@@ -346,15 +358,21 @@ const SignUp = () => {
                 placeholder="e.g. Juan Dela Cruz"
                 value={name}
                 onChangeText={(text) => {
-                  setName(text);
-                  if (nameError) setNameError('');
+                  if (text.length <= 50) {
+                    setName(text);
+                    if (nameError) setNameError('');
+                  }
                 }}
                 onFocus={() => setNameFocused(true)}
                 onBlur={() => setNameFocused(false)}
                 autoCapitalize="words"
                 placeholderTextColor="#BDC3C7"
+                maxLength={50}
               />
-              {nameError ? <Text style={{ color: '#E74C3C', fontSize: wp('3.5%'), marginTop: hp('0.5%') }}>{nameError}</Text> : null}
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: hp('0.5%') }}>
+                {nameError ? <Text style={{ color: '#E74C3C', fontSize: wp('3.5%') }}>{nameError}</Text> : <View />}
+                <Text style={{ color: '#999', fontSize: wp('3.2%'), marginLeft: 'auto' }}>{name.length}/50</Text>
+              </View>
             </View>
 
             <View style={[globalStyles.inputContainer, { marginBottom: hp('1%') }]}>
@@ -516,7 +534,41 @@ const SignUp = () => {
               {confirmPasswordError ? <Text style={{ color: '#E74C3C', fontSize: wp('3.5%'), marginTop: hp('0.5%') }}>{confirmPasswordError}</Text> : null}
             </View>
 
-            <View style={[globalStyles.formActions, { marginTop: hp('3.5%'), marginBottom: 0, paddingTop: 0 }]}>
+            {/* Terms and Conditions Checkbox */}
+            <TouchableOpacity
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                marginTop: hp('2%'),
+                paddingVertical: hp('1%'),
+              }}
+              onPress={() => setShowTermsModal(true)}
+              activeOpacity={0.7}
+            >
+              <View style={{
+                width: wp('5.5%'),
+                height: wp('5.5%'),
+                borderRadius: wp('1%'),
+                borderWidth: 2,
+                borderColor: termsAccepted ? '#81A969' : '#BDC3C7',
+                backgroundColor: termsAccepted ? '#81A969' : '#fff',
+                justifyContent: 'center',
+                alignItems: 'center',
+                marginRight: wp('2.5%'),
+              }}>
+                {termsAccepted && (
+                  <Ionicons name="checkmark" size={wp('4%')} color="#fff" />
+                )}
+              </View>
+              <Text style={{ fontSize: wp('3.5%'), color: '#666', flex: 1, lineHeight: wp('5%') }}>
+                I have read and agree to the{' '}
+                <Text style={{ color: '#81A969', fontWeight: '600', textDecorationLine: 'underline' }}>
+                  Terms & Conditions
+                </Text>
+              </Text>
+            </TouchableOpacity>
+
+            <View style={[globalStyles.formActions, { marginTop: hp('2%'), marginBottom: 0, paddingTop: 0 }]}>
               <TouchableOpacity
                 style={[globalStyles.primaryButton, {
                   paddingVertical: hp('1.6%'),
@@ -542,6 +594,201 @@ const SignUp = () => {
           </View>
         </ScrollView>
       </Animated.View>
+
+      {/* Terms and Policies Modal */}
+      <Modal
+        visible={showTermsModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => {
+          if (hasScrolledTerms) {
+            setShowTermsModal(false);
+          }
+        }}
+      >
+        <View style={{
+          flex: 1,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: wp('5%'),
+        }}>
+          <View style={{
+            backgroundColor: '#fff',
+            borderRadius: wp('4%'),
+            width: '100%',
+            maxHeight: hp('80%'),
+            overflow: 'hidden',
+          }}>
+            {/* Modal Header */}
+            <View style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              paddingHorizontal: wp('5%'),
+              paddingVertical: hp('2%'),
+              borderBottomWidth: 1,
+              borderBottomColor: '#eee',
+            }}>
+              <Text style={{ fontSize: wp('5%'), fontWeight: '700', color: '#333' }}>
+                Terms & Conditions
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  if (hasScrolledTerms) {
+                    setShowTermsModal(false);
+                  }
+                }}
+                disabled={!hasScrolledTerms}
+              >
+                <Ionicons name="close" size={wp('6%')} color={hasScrolledTerms ? '#333' : '#ccc'} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Scrollable Content */}
+            <ScrollView
+              style={{ maxHeight: hp('60%') }}
+              contentContainerStyle={{ padding: wp('5%') }}
+              showsVerticalScrollIndicator={true}
+              onScroll={({ nativeEvent }) => {
+                const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
+                const isCloseToBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - 20;
+                if (isCloseToBottom) {
+                  setHasScrolledTerms(true);
+                }
+              }}
+              scrollEventThrottle={16}
+            >
+              <View style={{ marginBottom: hp('2%') }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: hp('2%'), gap: wp('2%') }}>
+                  <Ionicons name="time-outline" size={wp('4%')} color="#999" />
+                  <Text style={{ fontSize: wp('3%'), color: '#999' }}>
+                    Last updated: October 2025
+                  </Text>
+                </View>
+
+                <View style={{ marginBottom: hp('3%') }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: hp('1%') }}>
+                    <View style={{ width: wp('1.5%'), height: wp('1.5%'), borderRadius: wp('0.75%'), backgroundColor: '#81A969', marginRight: wp('2%') }} />
+                    <Text style={{ fontSize: wp('4%'), fontWeight: '700', color: '#333' }}>Acceptance of Terms</Text>
+                  </View>
+                  <Text style={{ fontSize: wp('3.5%'), color: '#666', lineHeight: wp('5.5%'), marginLeft: wp('3.5%') }}>
+                    By downloading, installing, or using REcipe, you agree to be bound by these Terms of Service. If you do not agree to these terms, please do not use the application.
+                  </Text>
+                </View>
+
+                <View style={{ marginBottom: hp('3%') }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: hp('1%') }}>
+                    <View style={{ width: wp('1.5%'), height: wp('1.5%'), borderRadius: wp('0.75%'), backgroundColor: '#81A969', marginRight: wp('2%') }} />
+                    <Text style={{ fontSize: wp('4%'), fontWeight: '700', color: '#333' }}>Use License</Text>
+                  </View>
+                  <Text style={{ fontSize: wp('3.5%'), color: '#666', lineHeight: wp('5.5%'), marginLeft: wp('3.5%') }}>
+                    REcipe grants you a personal, non-exclusive, non-transferable, limited license to use the application for personal, non-commercial purposes. You may not modify, distribute, or reverse engineer the application.
+                  </Text>
+                </View>
+
+                <View style={{ marginBottom: hp('3%') }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: hp('1%') }}>
+                    <View style={{ width: wp('1.5%'), height: wp('1.5%'), borderRadius: wp('0.75%'), backgroundColor: '#81A969', marginRight: wp('2%') }} />
+                    <Text style={{ fontSize: wp('4%'), fontWeight: '700', color: '#333' }}>User Accounts</Text>
+                  </View>
+                  <Text style={{ fontSize: wp('3.5%'), color: '#666', lineHeight: wp('5.5%'), marginLeft: wp('3.5%') }}>
+                    You are responsible for maintaining the confidentiality of your account credentials. You agree to accept responsibility for all activities that occur under your account.
+                  </Text>
+                </View>
+
+                <View style={{ marginBottom: hp('3%') }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: hp('1%') }}>
+                    <View style={{ width: wp('1.5%'), height: wp('1.5%'), borderRadius: wp('0.75%'), backgroundColor: '#81A969', marginRight: wp('2%') }} />
+                    <Text style={{ fontSize: wp('4%'), fontWeight: '700', color: '#333' }}>User Content</Text>
+                  </View>
+                  <Text style={{ fontSize: wp('3.5%'), color: '#666', lineHeight: wp('5.5%'), marginLeft: wp('3.5%') }}>
+                    You retain ownership of any content you create or upload to REcipe, including pantry items, recipes, and images. By uploading content, you grant REcipe a license to use, store, and display this content.
+                  </Text>
+                </View>
+
+                <View style={{ marginBottom: hp('3%') }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: hp('1%') }}>
+                    <View style={{ width: wp('1.5%'), height: wp('1.5%'), borderRadius: wp('0.75%'), backgroundColor: '#81A969', marginRight: wp('2%') }} />
+                    <Text style={{ fontSize: wp('4%'), fontWeight: '700', color: '#333' }}>Prohibited Activities</Text>
+                  </View>
+                  <Text style={{ fontSize: wp('3.5%'), color: '#666', lineHeight: wp('5.5%'), marginLeft: wp('3.5%') }}>
+                    You may not use REcipe for any unlawful purpose, attempt to gain unauthorized access, or interfere with the proper functioning of the application.
+                  </Text>
+                </View>
+
+                <View style={{ marginBottom: hp('3%') }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: hp('1%') }}>
+                    <View style={{ width: wp('1.5%'), height: wp('1.5%'), borderRadius: wp('0.75%'), backgroundColor: '#81A969', marginRight: wp('2%') }} />
+                    <Text style={{ fontSize: wp('4%'), fontWeight: '700', color: '#333' }}>Disclaimer of Warranties</Text>
+                  </View>
+                  <Text style={{ fontSize: wp('3.5%'), color: '#666', lineHeight: wp('5.5%'), marginLeft: wp('3.5%') }}>
+                    REcipe is provided "as is" without warranties of any kind. We do not guarantee that the application will be error-free or uninterrupted.
+                  </Text>
+                </View>
+
+                <View style={{ marginBottom: hp('3%') }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: hp('1%') }}>
+                    <View style={{ width: wp('1.5%'), height: wp('1.5%'), borderRadius: wp('0.75%'), backgroundColor: '#81A969', marginRight: wp('2%') }} />
+                    <Text style={{ fontSize: wp('4%'), fontWeight: '700', color: '#333' }}>Limitation of Liability</Text>
+                  </View>
+                  <Text style={{ fontSize: wp('3.5%'), color: '#666', lineHeight: wp('5.5%'), marginLeft: wp('3.5%') }}>
+                    REcipe shall not be liable for any indirect, incidental, special, consequential, or punitive damages resulting from your use of the application.
+                  </Text>
+                </View>
+
+                <View style={{ marginBottom: hp('3%') }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: hp('1%') }}>
+                    <View style={{ width: wp('1.5%'), height: wp('1.5%'), borderRadius: wp('0.75%'), backgroundColor: '#81A969', marginRight: wp('2%') }} />
+                    <Text style={{ fontSize: wp('4%'), fontWeight: '700', color: '#333' }}>Changes to Terms</Text>
+                  </View>
+                  <Text style={{ fontSize: wp('3.5%'), color: '#666', lineHeight: wp('5.5%'), marginLeft: wp('3.5%') }}>
+                    We reserve the right to modify these terms at any time. Continued use of the application constitutes acceptance of modified terms.
+                  </Text>
+                </View>
+
+                <View style={{ backgroundColor: '#F1F8E9', borderRadius: wp('3%'), padding: wp('4%'), alignItems: 'center', marginTop: hp('2%') }}>
+                  <Ionicons name="mail" size={wp('6%')} color="#81A969" />
+                  <Text style={{ fontSize: wp('4.5%'), fontWeight: '700', color: '#333', marginTop: hp('1%'), marginBottom: hp('0.5%') }}>
+                    Questions?
+                  </Text>
+                  <Text style={{ fontSize: wp('3.5%'), color: '#666', textAlign: 'center', lineHeight: wp('5%') }}>
+                    Contact us at queries.recipe@gmail.com for any questions about our terms.
+                  </Text>
+                </View>
+              </View>
+            </ScrollView>
+
+            {/* Confirm Button */}
+            <View style={{
+              paddingHorizontal: wp('5%'),
+              paddingVertical: hp('2%'),
+              borderTopWidth: 1,
+              borderTopColor: '#eee',
+            }}>
+              <TouchableOpacity
+                style={{
+                  backgroundColor: hasScrolledTerms ? '#81A969' : '#ccc',
+                  paddingVertical: hp('1.6%'),
+                  borderRadius: wp('2.5%'),
+                  alignItems: 'center',
+                }}
+                onPress={() => {
+                  if (hasScrolledTerms) {
+                    setTermsAccepted(true);
+                    setShowTermsModal(false);
+                  }
+                }}
+                disabled={!hasScrolledTerms}
+              >
+                <Text style={{ color: '#fff', fontSize: wp('4.5%'), fontWeight: '600' }}>
+                  {hasScrolledTerms ? 'I Agree' : 'Scroll to Bottom to Continue'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* AppAlert rendered last so it overlays other content */}
       <AppAlert

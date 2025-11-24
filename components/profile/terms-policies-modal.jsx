@@ -152,7 +152,7 @@ const TermsPoliciesModal = ({ visible, onClose }) => {
                 <Ionicons name="mail" size={24} color="#8BC34A" />
                 <Text style={styles.footerTitle}>Questions?</Text>
                 <Text style={styles.footerText}>
-                  Contact us at recipe-app@gmail.com for any questions about our terms or policies.
+                  Contact us at queries.recipe@gmail.com for any questions about our terms or policies.
                 </Text>
               </View>
             </View>

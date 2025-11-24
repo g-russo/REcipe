@@ -266,7 +266,8 @@ const OTPVerification = () => {
               paddingVertical: hp('1.6%'),
               paddingHorizontal: wp('8%'),
               borderRadius: wp('2.5%'),
-              minHeight: hp('5.5%')
+              minHeight: hp('5.5%'),
+              backgroundColor: (loading || otp.join('').length !== 6) ? '#ccc' : '#81A969',
             }]}
             onPress={handleVerifyOTP}
             disabled={loading || otp.join('').length !== 6}
