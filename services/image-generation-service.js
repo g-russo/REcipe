@@ -6,6 +6,9 @@ import ImageConverter from '../utils/image-converter';
 
 const OPENAI_IMAGE_API = 'https://api.openai.com/v1/images/generations';
 
+// Resolve OpenAI key: prefer EXPO public variable at runtime, fall back to native @env
+const OPENAI_IMAGE_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY || process.env.OPENAI_API_KEY || OPENAI_API_KEY || null;
+
 class ImageGenerationService {
   /**
    * Generate recipe image using DALL-E 3 and save to Supabase Storage as WebP
@@ -48,11 +51,15 @@ class ImageGenerationService {
     try {
       const enhancedPrompt = `Professional food photography of ${prompt} on a plate. High quality, appetizing, natural lighting, top-down view, clean background, commercial style. Focus on the food only, no text or labels.`;
 
+      if (!OPENAI_IMAGE_KEY) {
+        throw new Error('OpenAI image API key not found');
+      }
+
       const response = await fetch(OPENAI_IMAGE_API, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+          'Authorization': `Bearer ${OPENAI_IMAGE_KEY}`
         },
         body: JSON.stringify({
           model: 'dall-e-3', // or 'dall-e-2' for cheaper option
