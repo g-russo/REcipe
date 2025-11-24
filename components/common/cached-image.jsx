@@ -10,15 +10,15 @@ import { Image, ActivityIndicator, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import recipeImageCacheService from '../../services/recipe-image-cache-service';
 
-export default function CachedImage({ 
-  uri, 
+export default function CachedImage({
+  uri,
   recipeId = null,
   recipeName = null,
-  style, 
+  style,
   resizeMode = 'cover',
   showLoader = true,
   fallbackIcon = null,
-  ...props 
+  ...props
 }) {
   const [cachedUri, setCachedUri] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -59,7 +59,7 @@ export default function CachedImage({
   // On persistent error show fallbackIcon if provided
   if (error && fallbackIcon) {
     return (
-      <View style={[style, { alignItems: 'center', justifyContent: 'center', backgroundColor: '#f0f0f0' }]}> 
+      <View style={[style, { alignItems: 'center', justifyContent: 'center', backgroundColor: '#f0f0f0' }]}>
         {fallbackIcon}
       </View>
     );
@@ -75,7 +75,7 @@ export default function CachedImage({
   return (
     <>
       {loading && showLoader && (
-        <View style={[style, { position: 'absolute', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8f8f8' }]}> 
+        <View style={[style, { position: 'absolute', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8f8f8' }]}>
           {Placeholder}
           <ActivityIndicator size="small" color="#4CAF50" style={{ position: 'absolute' }} />
         </View>
