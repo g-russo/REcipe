@@ -36,6 +36,7 @@ import ExpiringItemsBanner from '../../components/pantry/expiring-items-banner';
 import AppAlert from '../../components/common/app-alert';
 import PantryAlert, { AnimatedButton } from '../../components/pantry/pantry-alert';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import SousChefAIService from '../../services/souschef-ai-service';
 
 // Category icon mapping for consistent icon usage across alerts
 const getCategoryIcon = (category, size = 64, color = '#81A969') => {
@@ -120,12 +121,25 @@ const Pantry = () => {
   const [itemMenuAlert, setItemMenuAlert] = useState({ visible: false, item: null });
   const [groupSelectionAlert, setGroupSelectionAlert] = useState({ visible: false, message: '', groups: [], onSelectGroup: null });
   const [deleteGroupAlert, setDeleteGroupAlert] = useState({ visible: false, group: null });
+  // Recipe Confirmation Alert
+  const [recipeConfirmationAlert, setRecipeConfirmationAlert] = useState({
+    visible: false,
+    type: '', // 'find' or 'generate'
+    items: [],
+  });
+  // Expired Selection Alert
+  const [expiredSelectionAlert, setExpiredSelectionAlert] = useState({ visible: false, items: [] });
+  // Discard Reminder Alert
+  const [discardReminderAlert, setDiscardReminderAlert] = useState({ visible: false, count: 0 });
 
   // FAB Animation
   const fabScale = useRef(new Animated.Value(0)).current;
   const fabTranslateY = useRef(new Animated.Value(0)).current;
   const fabOpacity = useRef(new Animated.Value(0)).current;
   const floatingAnimation = useRef(null);
+  // FAB Switch Animation (0 = Main Button, 1 = Options)
+  const fabSwitchAnim = useRef(new Animated.Value(0)).current;
+  const [fabOptionsVisible, setFabOptionsVisible] = useState(false);
 
   // Header Animation
   const headerOpacity = useRef(new Animated.Value(1)).current;
@@ -291,6 +305,11 @@ const Pantry = () => {
         fabTranslateY.setValue(0);
         fabOpacity.setValue(0);
         setShowFAB(false);
+        // Reset switch state
+        if (fabOptionsVisible) {
+          fabSwitchAnim.setValue(0);
+          setFabOptionsVisible(false);
+        }
       });
     }
 
@@ -300,6 +319,16 @@ const Pantry = () => {
       }
     };
   }, [selectionMode, selectedItems.length]);
+
+  // When selection items count changes, close options automatically if no items
+  useEffect(() => {
+    if (!selectionMode || selectedItems.length === 0) {
+      if (fabOptionsVisible) {
+        setFabOptionsVisible(false);
+        fabSwitchAnim.setValue(0);
+      }
+    }
+  }, [selectionMode, selectedItems.length, fabOptionsVisible]);
 
   // Handle highlight parameter from notifications
   useEffect(() => {
@@ -955,11 +984,14 @@ const Pantry = () => {
   };
 
   // Handle find recipe with selected items
-  const handleFindRecipe = async () => {
+  const handleFindRecipe = () => {
     if (selectedItems.length === 0) {
       showAlert('info', 'Please select items to find recipes', 'No Items Selected', true);
       return;
     }
+
+    // Check for expired items
+    if (checkForExpiredSelection()) return;
 
     // Get the selected item names
     const selectedItemNames = items
@@ -971,26 +1003,101 @@ const Pantry = () => {
       return;
     }
 
-    // Create a search query from selected items
-    const searchQuery = selectedItemNames.join(', ');
+    setRecipeConfirmationAlert({
+      visible: true,
+      type: 'find',
+      items: selectedItemNames,
+    });
+  };
 
-    // Exit selection mode first
+  // Generate a recipe using ONLY selected items as main ingredients (no pantry augmentation)
+  const handleGenerateRecipeFromSelection = () => {
+    if (selectedItems.length === 0) {
+      showAlert('info', 'Select items first to generate a recipe', 'No Items Selected', true);
+      return;
+    }
+
+    // Check for expired items
+    if (checkForExpiredSelection()) return;
+
+    const selectedItemNames = items
+      .filter(item => selectedItems.includes(item.itemID))
+      .map(item => item.itemName);
+    if (selectedItemNames.length === 0) {
+      showAlert('error', 'Could not find selected items', 'Error', true);
+      return;
+    }
+    
+    setRecipeConfirmationAlert({
+      visible: true,
+      type: 'generate',
+      items: selectedItemNames,
+    });
+  };
+
+  // Check if any selected items are expired
+  const checkForExpiredSelection = () => {
+    const selectedItemObjects = items.filter(item => selectedItems.includes(item.itemID));
+    const expired = selectedItemObjects.filter(item => isItemExpired(item));
+    
+    if (expired.length > 0) {
+      setExpiredSelectionAlert({ visible: true, items: expired });
+      return true;
+    }
+    return false;
+  };
+
+  // Handle deleting expired items from selection
+  const handleDeleteExpiredSelection = async () => {
+    const itemsToDelete = expiredSelectionAlert.items;
+    try {
+      console.log(`Deleting ${itemsToDelete.length} expired items from selection...`);
+      await Promise.all(itemsToDelete.map(item => PantryService.deleteItem(item.itemID)));
+      
+      // Remove from selected items
+      const deletedIds = itemsToDelete.map(i => i.itemID);
+      setSelectedItems(prev => prev.filter(id => !deletedIds.includes(id)));
+      
+      await loadData();
+      
+      setExpiredSelectionAlert({ visible: false, items: [] });
+      // Show discard reminder
+      setTimeout(() => {
+        setDiscardReminderAlert({ visible: true, count: itemsToDelete.length });
+      }, 300);
+      
+    } catch (error) {
+      console.error("Failed to delete expired items", error);
+      showAlert('error', 'Failed to delete items', 'Error', true);
+    }
+  };
+
+  const executeRecipeAction = async () => {
+    const { type, items: selectedItemNames } = recipeConfirmationAlert;
+    const searchQuery = selectedItemNames.join(', ');
+    
+    // Close alert and exit selection mode
+    setRecipeConfirmationAlert({ visible: false, type: '', items: [] });
     exitSelectionMode();
 
-    // Navigate to recipe search tab and trigger search
     try {
-      // Navigate to the recipe-search tab
       router.push('/(tabs)/recipe-search');
-
-      // Wait a moment for the tab to load, then trigger the search
+      
       setTimeout(() => {
-        // The recipe-search screen will need to accept these params
-        // You can use expo-router's useLocalSearchParams to receive them
-        router.setParams({
-          searchQuery: searchQuery,
-          autoSearch: 'true',
-          isDeconstructed: 'true'
-        });
+        if (type === 'find') {
+          router.setParams({
+            searchQuery: searchQuery,
+            autoSearch: 'true',
+            isDeconstructed: 'true',
+            includePantry: 'true'
+          });
+        } else {
+          router.setParams({
+            searchQuery,
+            autoGenerate: 'true',
+            generationMode: 'selected-only'
+          });
+        }
       }, 300);
     } catch (error) {
       console.error('Navigation error:', error);
@@ -1135,19 +1242,87 @@ const Pantry = () => {
                   { translateY: fabTranslateY }
                 ],
                 opacity: fabOpacity,
+                alignItems: 'flex-end', // Align children to right
               }}
             >
-              <TouchableOpacity
-                style={styles.fab}
-                onPress={() => {
-                  console.log('🍽️ FAB pressed!');
-                  handleFindRecipe();
+              {/* Primary FAB - Fades out when options open */}
+              <Animated.View
+                style={{
+                  opacity: fabSwitchAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [1, 0]
+                  }),
+                  transform: [
+                    { scale: fabSwitchAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [1, 0.8]
+                      }) 
+                    }
+                  ],
+                  position: fabOptionsVisible ? 'absolute' : 'relative', // Take out of flow when hidden
+                  zIndex: fabOptionsVisible ? 0 : 2,
+                  pointerEvents: fabOptionsVisible ? 'none' : 'auto',
                 }}
-                activeOpacity={0.8}
               >
-                <Ionicons name="restaurant-outline" size={24} color="#fff" />
-                <Text style={styles.fabText}>Find Recipe ({selectedItems.length})</Text>
-              </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.fab}
+                  onPress={() => {
+                    setFabOptionsVisible(true);
+                    Animated.spring(fabSwitchAnim, {
+                      toValue: 1,
+                      useNativeDriver: true,
+                      tension: 60,
+                      friction: 8
+                    }).start();
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="sparkles-outline" size={24} color="#fff" />
+                  <Text style={styles.fabText}>Prepare a Recipe?</Text>
+                </TouchableOpacity>
+              </Animated.View>
+
+              {/* Expanded Options - Fade in when main button clicked */}
+              <Animated.View
+                style={{
+                  opacity: fabSwitchAnim,
+                  transform: [
+                    { translateY: fabSwitchAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [20, 0]
+                      }) 
+                    },
+                    { scale: fabSwitchAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.9, 1]
+                      })
+                    }
+                  ],
+                  position: fabOptionsVisible ? 'relative' : 'absolute',
+                  zIndex: fabOptionsVisible ? 2 : 0,
+                  pointerEvents: fabOptionsVisible ? 'auto' : 'none',
+                }}
+              >
+                <View style={styles.fabOptionsWrapper}>
+                  <TouchableOpacity
+                    style={[styles.fab, styles.fabOption]}
+                    onPress={handleFindRecipe}
+                    activeOpacity={0.85}
+                  >
+                    <Ionicons name="restaurant-outline" size={22} color="#fff" />
+                    <Text style={styles.fabText}>Find a Recipe</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    style={[styles.fab, styles.fabOption]}
+                    onPress={handleGenerateRecipeFromSelection}
+                    activeOpacity={0.85}
+                  >
+                    <Ionicons name="flame-outline" size={22} color="#fff" />
+                    <Text style={styles.fabText}>Generate a Recipe</Text>
+                  </TouchableOpacity>
+                </View>
+              </Animated.View>
             </Animated.View>
           </View>
         )}
@@ -1175,6 +1350,7 @@ const Pantry = () => {
           if (duplicateAlert.resolve) duplicateAlert.resolve('cancel');
           setTimeout(() => setDuplicateAlert({ visible: false, existingItem: null, incomingItem: null, mergeAvailable: false, resolve: null }), 50);
         }}
+        hideCloseButton={true}
       >
         <View style={{ width: '100%', marginTop: 12, gap: 10 }}>
           {duplicateAlert.mergeAvailable && (
@@ -1222,6 +1398,21 @@ const Pantry = () => {
               fontSize: 16
             }}>Add Anyway</Text>
           </AnimatedButton>
+          <TouchableOpacity
+            style={{
+              paddingVertical: 12,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: '#ccc',
+              backgroundColor: '#fff',
+            }}
+            onPress={() => {
+              if (duplicateAlert.resolve) duplicateAlert.resolve('cancel');
+              setDuplicateAlert({ visible: false, existingItem: null, incomingItem: null, mergeAvailable: false, resolve: null });
+            }}
+          >
+            <Text style={{ color: '#666', textAlign: 'center', fontWeight: '600', fontSize: 16 }}>Cancel</Text>
+          </TouchableOpacity>
         </View>
       </PantryAlert>
 
@@ -1233,6 +1424,7 @@ const Pantry = () => {
         message={deleteAlert.item ? (deleteAlert.item.bulk ? `Are you sure you want to delete ${deleteAlert.item.itemName}?` : `${deleteAlert.expired ? `"${deleteAlert.item.itemName}" has expired. Do you want to delete it?` : `Are you sure you want to delete "${deleteAlert.item.itemName}"?`}`) : ''}
         customIcon={deleteAlert.item && !deleteAlert.item.bulk ? getCategoryIcon(deleteAlert.item.itemCategory) : null}
         onClose={() => setTimeout(() => setDeleteAlert({ visible: false, item: null, expired: false }), 50)}
+        hideCloseButton={true}
       >
         <View style={{ width: '100%', marginTop: 20, gap: 12 }}>
           <TouchableOpacity
@@ -1268,6 +1460,18 @@ const Pantry = () => {
           >
             <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '700', fontSize: 16 }}>Delete</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={{
+              paddingVertical: 16,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: '#ccc',
+              backgroundColor: '#fff',
+            }}
+            onPress={() => setDeleteAlert({ visible: false, item: null, expired: false })}
+          >
+            <Text style={{ color: '#666', textAlign: 'center', fontWeight: '600', fontSize: 16 }}>Cancel</Text>
+          </TouchableOpacity>
         </View>
       </PantryAlert>
 
@@ -1278,6 +1482,7 @@ const Pantry = () => {
         title="Delete All Expired Items"
         message={`Found ${deleteExpiredAlert.count} expired item(s). Delete all of them?`}
         onClose={() => setTimeout(() => setDeleteExpiredAlert({ visible: false, count: 0, items: [] }), 50)}
+        hideCloseButton={true}
       >
         <View style={{ width: '100%', marginTop: 20, gap: 12 }}>
           <TouchableOpacity
@@ -1307,6 +1512,18 @@ const Pantry = () => {
           >
             <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '700', fontSize: 16 }}>Delete {deleteExpiredAlert.count} Item(s)</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={{
+              paddingVertical: 16,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: '#ccc',
+              backgroundColor: '#fff',
+            }}
+            onPress={() => setDeleteExpiredAlert({ visible: false, count: 0, items: [] })}
+          >
+            <Text style={{ color: '#666', textAlign: 'center', fontWeight: '600', fontSize: 16 }}>Cancel</Text>
+          </TouchableOpacity>
         </View>
       </PantryAlert>
 
@@ -1318,6 +1535,7 @@ const Pantry = () => {
         message={itemMenuAlert.item ? `What would you like to do with \"${itemMenuAlert.item.itemName}\"?` : 'What would you like to do?'}
         customIcon={itemMenuAlert.item ? getCategoryIcon(itemMenuAlert.item.itemCategory) : null}
         onClose={() => setItemMenuAlert(prev => ({ ...prev, visible: false }))}
+        hideCloseButton={true}
       >
         <View style={{ width: '100%', marginTop: 12, gap: 10 }}>
           <TouchableOpacity
@@ -1376,6 +1594,18 @@ const Pantry = () => {
           >
             <Text style={{ color: '#dc3545', textAlign: 'center', fontWeight: '700', fontSize: 16 }}>Delete</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={{
+              paddingVertical: 12,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: '#ccc',
+              backgroundColor: '#fff',
+            }}
+            onPress={() => setItemMenuAlert(prev => ({ ...prev, visible: false }))}
+          >
+            <Text style={{ color: '#666', textAlign: 'center', fontWeight: '600', fontSize: 16 }}>Cancel</Text>
+          </TouchableOpacity>
         </View>
       </PantryAlert>
 
@@ -1386,28 +1616,43 @@ const Pantry = () => {
         title={groupSelectionAlert.groups?.length === 0 ? 'No Groups Available' : 'Select Group'}
         message={groupSelectionAlert.message || ''}
         onClose={() => setTimeout(() => setGroupSelectionAlert({ visible: false, message: '', groups: [], onSelectGroup: null }), 50)}
+        hideCloseButton={true}
       >
         <View style={{ width: '100%', marginTop: 20 }}>
           {groupSelectionAlert.groups?.length === 0 ? (
-            <TouchableOpacity
-              style={{
-                backgroundColor: '#81A969',
-                paddingVertical: 16,
-                borderRadius: 12,
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: 0.1,
-                shadowRadius: 4,
-                elevation: 3
-              }}
-              onPress={() => {
-                if (groupSelectionAlert.onSelectGroup) groupSelectionAlert.onSelectGroup();
-                setGroupSelectionAlert({ visible: false, message: '', groups: [], onSelectGroup: null });
-              }}
-              activeOpacity={0.8}
-            >
-              <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '700', fontSize: 16 }}>Create Group</Text>
-            </TouchableOpacity>
+            <View style={{ gap: 12 }}>
+              <TouchableOpacity
+                style={{
+                  backgroundColor: '#81A969',
+                  paddingVertical: 16,
+                  borderRadius: 12,
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.1,
+                  shadowRadius: 4,
+                  elevation: 3
+                }}
+                onPress={() => {
+                  if (groupSelectionAlert.onSelectGroup) groupSelectionAlert.onSelectGroup();
+                  setGroupSelectionAlert({ visible: false, message: '', groups: [], onSelectGroup: null });
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '700', fontSize: 16 }}>Create Group</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{
+                  paddingVertical: 16,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: '#ccc',
+                  backgroundColor: '#fff',
+                }}
+                onPress={() => setGroupSelectionAlert({ visible: false, message: '', groups: [], onSelectGroup: null })}
+              >
+                <Text style={{ color: '#666', textAlign: 'center', fontWeight: '600', fontSize: 16 }}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
           ) : (
             <View style={{ gap: 12 }}>
               {groupSelectionAlert.groups?.map((group, index) => (
@@ -1434,6 +1679,18 @@ const Pantry = () => {
                   </Text>
                 </TouchableOpacity>
               ))}
+              <TouchableOpacity
+                style={{
+                  paddingVertical: 16,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: '#ccc',
+                  backgroundColor: '#fff',
+                }}
+                onPress={() => setGroupSelectionAlert({ visible: false, message: '', groups: [], onSelectGroup: null })}
+              >
+                <Text style={{ color: '#666', textAlign: 'center', fontWeight: '600', fontSize: 16 }}>Cancel</Text>
+              </TouchableOpacity>
             </View>
           )}
         </View>
@@ -1446,6 +1703,7 @@ const Pantry = () => {
         title="Delete Group"
         message={deleteGroupAlert.group ? `Delete "${deleteGroupAlert.group.groupTitle}"? Choose whether to keep or delete the items in this group.` : ''}
         onClose={() => setTimeout(() => setDeleteGroupAlert({ visible: false, group: null }), 50)}
+        hideCloseButton={true}
       >
         <View style={{ width: '100%', marginTop: 20, gap: 12 }}>
           <TouchableOpacity
@@ -1500,6 +1758,137 @@ const Pantry = () => {
           >
             <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '700', fontSize: 16 }}>Delete Group & All Items</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={{
+              paddingVertical: 16,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: '#ccc',
+              backgroundColor: '#fff',
+            }}
+            onPress={() => setDeleteGroupAlert({ visible: false, group: null })}
+          >
+            <Text style={{ color: '#666', textAlign: 'center', fontWeight: '600', fontSize: 16 }}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      </PantryAlert>
+      {/* Recipe Confirmation Alert */}
+      <PantryAlert
+        visible={recipeConfirmationAlert.visible}
+        type="info"
+        title={recipeConfirmationAlert.type === 'find' ? 'Find Recipes?' : 'Generate Recipe?'}
+        message={`Are you sure you want to ${recipeConfirmationAlert.type === 'find' ? 'find recipes' : 'generate a recipe'} with these items?`}
+        onClose={() => setRecipeConfirmationAlert({ visible: false, type: '', items: [] })}
+        hideCloseButton={true}
+      >
+        <View style={{ width: '100%', marginTop: 10, maxHeight: 200 }}>
+          <Text style={{ fontWeight: '600', marginBottom: 8, color: '#555' }}>Selected Ingredients:</Text>
+          <ScrollView style={{ maxHeight: 150, backgroundColor: '#f9f9f9', borderRadius: 8, padding: 10 }}>
+            {recipeConfirmationAlert.items.map((item, index) => (
+              <Text key={index} style={{ fontSize: 15, color: '#333', marginBottom: 4 }}>• {item}</Text>
+            ))}
+          </ScrollView>
+          
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 15 }}>
+             <TouchableOpacity
+              style={{
+                flex: 1,
+                backgroundColor: '#fff',
+                borderWidth: 1,
+                borderColor: '#ccc',
+                paddingVertical: 12,
+                borderRadius: 12,
+              }}
+              onPress={() => setRecipeConfirmationAlert({ visible: false, type: '', items: [] })}
+            >
+              <Text style={{ color: '#666', textAlign: 'center', fontWeight: '600', fontSize: 16 }}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{
+                flex: 1,
+                backgroundColor: '#81A969',
+                paddingVertical: 12,
+                borderRadius: 12,
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.1,
+                shadowRadius: 4,
+                elevation: 3
+              }}
+              onPress={executeRecipeAction}
+            >
+              <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '700', fontSize: 16 }}>
+                {recipeConfirmationAlert.type === 'find' ? 'Find' : 'Generate'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </PantryAlert>
+
+      {/* Expired Selection Alert */}
+      <PantryAlert
+        visible={expiredSelectionAlert.visible}
+        type="error"
+        title="Expired Items Detected"
+        message={`You have selected ${expiredSelectionAlert.items.length} expired item(s). These cannot be used for recipes.`}
+        hideCloseButton={true}
+        onClose={() => {}} // Prevent closing by tapping outside
+      >
+         <View style={{ width: '100%', marginTop: 12, gap: 10 }}>
+            <ScrollView style={{ maxHeight: 100, marginBottom: 10 }}>
+                {expiredSelectionAlert.items.map(item => (
+                    <Text key={item.itemID} style={{color: '#dc3545', fontWeight: '600', marginBottom: 4}}>• {item.itemName}</Text>
+                ))}
+            </ScrollView>
+            <TouchableOpacity
+                style={{
+                  backgroundColor: '#dc3545',
+                  paddingVertical: 16,
+                  borderRadius: 12,
+                  shadowColor: '#dc3545',
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.3,
+                  shadowRadius: 6,
+                  elevation: 4
+                }}
+                onPress={handleDeleteExpiredSelection}
+                activeOpacity={0.8}
+            >
+                <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '700', fontSize: 16 }}>
+                    Delete {expiredSelectionAlert.items.length > 1 ? 'All ' : ''}Expired Item{expiredSelectionAlert.items.length > 1 ? 's' : ''}
+                </Text>
+            </TouchableOpacity>
+         </View>
+      </PantryAlert>
+
+      {/* Discard Reminder Alert */}
+      <PantryAlert
+        visible={discardReminderAlert.visible}
+        type="warning"
+        title="Safety Reminder"
+        message="Please remember to discard these items from your physical pantry/fridge to avoid accidental consumption."
+        hideCloseButton={true}
+        onClose={() => setDiscardReminderAlert({ visible: false, count: 0 })}
+      >
+        <View style={{ width: '100%', marginTop: 20 }}>
+            <TouchableOpacity
+                style={{
+                  backgroundColor: '#81A969',
+                  paddingVertical: 16,
+                  borderRadius: 12,
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.1,
+                  shadowRadius: 4,
+                  elevation: 3
+                }}
+                onPress={() => setDiscardReminderAlert({ visible: false, count: 0 })}
+                activeOpacity={0.8}
+            >
+                <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '700', fontSize: 16 }}>
+                    I've Discarded Them
+                </Text>
+            </TouchableOpacity>
         </View>
       </PantryAlert>
     </AuthGuard>
@@ -1559,6 +1948,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginLeft: 10,
+  },
+  fabOptionsWrapper: {
+    alignItems: 'flex-end',
+    gap: 12,
+  },
+  fabOption: {
+    backgroundColor: '#81A969', // Ensure same color
+    minWidth: 220, // Slightly wider for options
   },
 });
 
