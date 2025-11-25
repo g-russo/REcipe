@@ -1066,13 +1066,29 @@ const RecipeSearch = () => {
   };
 
   const handleSearch = async (query = searchQuery) => {
-    if (!query.trim()) {
-      Alert.alert('Search Required', 'Please enter a recipe name or ingredient to search for.');
-      return;
+    // If user didn't type anything but has filters selected, compose a query from filters
+    let queryToUse = typeof query === 'string' ? query : (searchQuery || '');
+
+    if (!queryToUse.trim()) {
+      const selectedFilters = [
+        ...(filters.allergy || []),
+        ...(filters.dietary || []),
+        ...(filters.diet || [])
+      ];
+
+      if (selectedFilters.length > 0) {
+        // Normalize labels (turn hyphens into spaces) to make the query more natural
+        const normalized = selectedFilters.map(f => f.replace(/-/g, ' '));
+        queryToUse = normalized.join(' ');
+        setSearchQuery(queryToUse); // show the composed query in the input
+      } else {
+        Alert.alert('Search Required', 'Please enter a recipe name or ingredient to search for.');
+        return;
+      }
     }
 
-    // Proceed with search
-    performSearch(query.trim());
+    // Proceed with search using the constructed query
+    performSearch(queryToUse.trim());
   };
 
   const performSearch = async (query) => {
