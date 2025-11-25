@@ -629,21 +629,27 @@ class SousChefAIService {
     try {
       console.log(`🤖 Generating recipe suggestions for "${searchQuery}"...`);
       const apiKey = this.getOpenAiKey();
-      
+
       if (!apiKey) {
         console.error('❌ OpenAI API key not found');
         return { success: false, suggestions: [], error: 'API key missing' };
       }
 
       let prompt = `You are SousChef AI. The user wants to cook something with "${searchQuery}".
-      
+
       Based on the search query "${searchQuery}" and their pantry items (if any), suggest 5 distinct, creative, and appetizing recipe titles.
-      
+
       CRITICAL:
       1. The recipes MUST feature "${searchQuery}" as the main component or theme.
       2. If "${searchQuery}" is a list of ingredients, find recipes that combine them.
       3. Provide variety (e.g., different cooking methods, cuisines).
-      
+
+      IMPORTANT CUISINE PRIORITY:
+      - Always consider Filipino dishes first: analyze the search query and available pantry items for clues that point to Filipino ingredients or Filipino-style preparations (examples: patis, calamansi, banana leaf, gata/coconut milk, bagoong, banana leaf, pancit noodles, longganisa, adobo-style, tapa, sinigang elements, sardines in tomato sauce, etc.).
+      - If any reasonable Filipino adaptation is possible using the provided ingredients, prioritize it. Aim to include at least 2-3 Filipino or Filipino-inspired recipe titles among the 5 suggestions when the ingredients or query allow.
+      - Only fall back to non-Filipino cuisines when no good Filipino adaptation exists.
+      - When outputting Filipino-inspired titles, be specific and culturally accurate (e.g., "Adobo Fried Rice with Shredded Chicken", "Sardines Tomato Pasta (Filipino-style)").
+
       `;
 
       if (pantryItems.length > 0) {
@@ -692,7 +698,7 @@ class SousChefAIService {
 
       const data = await response.json();
       const content = JSON.parse(data.choices[0].message.content);
-      
+
       console.log('✅ Generated suggestions:', content.suggestions);
       return { success: true, suggestions: content.suggestions };
 
