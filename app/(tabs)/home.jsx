@@ -20,7 +20,7 @@ import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-nat
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useCustomAuth } from '../../hooks/use-custom-auth';
-import { router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useTabContext } from '../../contexts/tab-context';
 import AuthGuard from '../../components/auth-guard';
 import NotificationDatabaseService from '../../services/notification-database-service';
@@ -144,6 +144,20 @@ const TryNewCard = ({ recipe, isFavorited, onToggleFavorite, onPress }) => {
 const Home = () => {
   const { user, customUserData } = useCustomAuth();
   const { showUploadModal } = useTabContext();
+  const params = useLocalSearchParams();
+
+  // If navigated with openUpload param, show the upload modal and clear param
+  useEffect(() => {
+    try {
+      if (params?.openUpload === 'true') {
+        showUploadModal();
+        // Clear the param to avoid reopening on subsequent focuses
+        router.setParams({ openUpload: undefined });
+      }
+    } catch (e) {
+      console.warn('Failed to auto-open upload modal from params', e);
+    }
+  }, [params?.openUpload]);
   const [userName, setUserName] = useState('');
   const [greeting, setGreeting] = useState('Good Morning');
   const [unreadCount, setUnreadCount] = useState(0);
@@ -530,9 +544,9 @@ const Home = () => {
 
     try {
       console.log('🔄 Loading Try Something New recipes...');
-      
+
       // Get 10 recommendations (ultra-simple, no database needed!)
-      const recipeList = forceRefresh 
+      const recipeList = forceRefresh
         ? await SimpleTrySomethingNew.forceRefresh(10)
         : await SimpleTrySomethingNew.getRecommendations(10);
 
@@ -549,7 +563,7 @@ const Home = () => {
       setTimeout(() => {
         setLoadingPopularRecipes(false);
         console.log(`✅ ${recipeList.length} Try Something New recipes loaded successfully`);
-      }, 500); 
+      }, 500);
     } catch (error) {
       console.error('❌ Error loading Try Something New recipes:', error);
       setPopularRecipes([]);

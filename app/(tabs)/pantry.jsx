@@ -1299,7 +1299,7 @@ const Pantry = () => {
                     <View style={styles.modalIconContainer}>
                       <Ionicons name="sparkles" size={18} color="#fff" />
                     </View>
-                    <Text style={styles.modalTitle}>Chef's Suggestions</Text>
+                    <Text style={styles.modalTitle}>SousChef AI Suggestions</Text>
                   </View>
                   <TouchableOpacity 
                     onPress={() => setSuggestionsModalVisible(false)} 

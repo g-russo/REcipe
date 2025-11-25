@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useTabContext } from '../../contexts/tab-context';
 import { recognizeFoodCombined } from '../../services/food-recog-api';
 import { supabase, safeGetUser } from '../../lib/supabase';
 import PantryService from '../../services/pantry-service';
@@ -39,6 +40,9 @@ export default function FoodRecognitionResult() {
   const uri = params.uri;
 
   const insets = useSafeAreaInsets();
+
+  // Tab context to control global upload/scan modal
+  const { showUploadModal } = useTabContext();
 
   const [loading, setLoading] = useState(true);
   const [result, setResult] = useState(null);
@@ -87,7 +91,7 @@ export default function FoodRecognitionResult() {
     if (!text) return '';
     // Remove characters that are NOT letters, spaces, hyphens, or apostrophes
     const cleaned = text.replace(/[^a-zA-Z\s'-]/g, '');
-    
+
     // Title Case (Capitalize first letter of every word)
     return cleaned.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
   };
@@ -1024,13 +1028,31 @@ export default function FoodRecognitionResult() {
             <View style={styles.secondaryActions}>
               {!selectedFood?.isUnknown && (
                 <>
-                  <TouchableOpacity
-                    style={styles.manualButton}
-                    onPress={handleManualEntry}
-                  >
-                    <Ionicons name="create-outline" size={20} color="#81A969" />
-                    <Text style={styles.manualButtonText}>Manual Entry</Text>
-                  </TouchableOpacity>
+                  <View style={{ width: '100%' }}>
+                    <TouchableOpacity
+                      style={styles.manualButton}
+                      onPress={handleManualEntry}
+                    >
+                      <Ionicons name="create-outline" size={20} color="#81A969" />
+                      <Text style={styles.manualButtonText}>Manual Entry</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.scanAgainButton}
+                      onPress={() => {
+                        try {
+                          // Navigate to Home and include a param so Home can open the upload modal
+                          router.push({ pathname: '/(tabs)/home', params: { openUpload: 'true' } });
+                        } catch (e) {
+                          console.warn('Scan Again navigation error:', e);
+                          router.back();
+                        }
+                      }}
+                    >
+                      <Ionicons name="camera-reverse-outline" size={18} color="#81A969" />
+                      <Text style={styles.scanAgainButtonText}>Scan Again</Text>
+                    </TouchableOpacity>
+                  </View>
 
                   {/* View Detailed Results Button */}
                   {result && (
@@ -1675,6 +1697,23 @@ const styles = StyleSheet.create({
     fontSize: wp('4%'),
     fontWeight: 'bold',
     marginLeft: 6,
+  },
+  scanAgainButton: {
+    marginTop: hp('1%'),
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+    borderWidth: 2,
+    borderColor: '#81A969',
+    paddingVertical: hp('1.2%'),
+    borderRadius: 12,
+  },
+  scanAgainButtonText: {
+    color: '#81A969',
+    fontSize: wp('4%'),
+    fontWeight: 'bold',
+    marginLeft: 8,
   },
   searchButton: {
     flexDirection: 'row',
