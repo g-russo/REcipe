@@ -11,6 +11,8 @@ import {
   Platform,
   Animated,
   RefreshControl,
+  Modal,
+  ActivityIndicator
 } from 'react-native';
 import { useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useCustomAuth } from '../../hooks/use-custom-auth';
@@ -101,6 +103,11 @@ const Pantry = () => {
   const [groupItemsModalVisible, setGroupItemsModalVisible] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [searchModalVisible, setSearchModalVisible] = useState(false);
+
+  // Suggestions Modal State
+  const [suggestionsModalVisible, setSuggestionsModalVisible] = useState(false);
+  const [recipeSuggestions, setRecipeSuggestions] = useState([]);
+  const [isGeneratingSuggestions, setIsGeneratingSuggestions] = useState(false);
 
   // Selection mode
   const [selectionMode, setSelectionMode] = useState(false);
@@ -1076,28 +1083,64 @@ const Pantry = () => {
     const { type, items: selectedItemNames } = recipeConfirmationAlert;
     const searchQuery = selectedItemNames.join(', ');
     
-    // Close alert and exit selection mode
+    // Close alert
     setRecipeConfirmationAlert({ visible: false, type: '', items: [] });
-    exitSelectionMode();
 
-    try {
-      router.push('/(tabs)/recipe-search');
-      
-      setTimeout(() => {
-        if (type === 'find') {
+    if (type === 'generate') {
+      // Show loading
+      setIsGeneratingSuggestions(true);
+      try {
+        // Fetch suggestions using selected items as the query and full pantry as context
+        const result = await SousChefAIService.generateRecipeSuggestions(searchQuery, {}, items);
+        
+        if (result.success) {
+          setRecipeSuggestions(result.suggestions);
+          setSuggestionsModalVisible(true);
+          // Don't exit selection mode yet, let user choose
+        } else {
+          showAlert('error', 'Failed to generate suggestions', 'Error', true);
+          exitSelectionMode();
+        }
+      } catch (e) {
+        console.error('Error generating suggestions:', e);
+        showAlert('error', 'Failed to generate suggestions', 'Error', true);
+        exitSelectionMode();
+      } finally {
+        setIsGeneratingSuggestions(false);
+      }
+    } else {
+      // 'find' mode - existing behavior
+      exitSelectionMode();
+      try {
+        router.push('/(tabs)/recipe-search');
+        
+        setTimeout(() => {
           router.setParams({
             searchQuery: searchQuery,
             autoSearch: 'true',
             isDeconstructed: 'true',
             includePantry: 'true'
           });
-        } else {
-          router.setParams({
-            searchQuery,
-            autoGenerate: 'true',
-            generationMode: 'selected-only'
-          });
-        }
+        }, 300);
+      } catch (error) {
+        console.error('Navigation error:', error);
+        showAlert('error', 'Could not navigate to recipe search', 'Error', true);
+      }
+    }
+  };
+
+  const handleSelectSuggestion = (suggestion) => {
+    setSuggestionsModalVisible(false);
+    exitSelectionMode();
+    
+    try {
+      router.push('/(tabs)/recipe-search');
+      setTimeout(() => {
+        router.setParams({
+          searchQuery: suggestion,
+          autoGenerate: 'true'
+          // Removed generationMode: 'selected-only' to allow using full pantry context for the specific recipe
+        });
       }, 300);
     } catch (error) {
       console.error('Navigation error:', error);
@@ -1230,6 +1273,57 @@ const Pantry = () => {
             }}
             onDeleteGroup={() => handleDeleteGroup(selectedGroup)}
           />
+
+          {/* Recipe Suggestions Modal */}
+          <Modal
+            animationType="slide"
+            transparent={true}
+            visible={suggestionsModalVisible}
+            onRequestClose={() => setSuggestionsModalVisible(false)}
+          >
+            <View style={styles.centeredView}>
+              <View style={styles.modalView}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Choose a Recipe</Text>
+                  <TouchableOpacity 
+                    onPress={() => setSuggestionsModalVisible(false)} 
+                    style={styles.closeButton}
+                  >
+                    <Ionicons name="close" size={24} color="#999" />
+                  </TouchableOpacity>
+                </View>
+                
+                <Text style={styles.modalSubtitle}>
+                  Here are some ideas using your selected ingredients:
+                </Text>
+
+                <ScrollView style={styles.suggestionsList} contentContainerStyle={{paddingBottom: 20}}>
+                  {recipeSuggestions.map((suggestion, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      style={styles.suggestionButton}
+                      onPress={() => handleSelectSuggestion(suggestion)}
+                    >
+                      <View style={styles.suggestionContent}>
+                          <Text style={styles.suggestionText}>{suggestion}</Text>
+                          <Ionicons name="arrow-forward-circle" size={24} color="#81A969" />
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            </View>
+          </Modal>
+
+          {/* Loading Overlay for Suggestions */}
+          {isGeneratingSuggestions && (
+            <View style={styles.loadingOverlay}>
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#81A969" />
+                <Text style={styles.loadingText}>Thinking of recipes...</Text>
+              </View>
+            </View>
+          )}
         </SafeAreaView>
 
         {/* 💡 FAB (FIXED) - Sibling to SafeAreaView, positioned by container */}
@@ -1956,6 +2050,104 @@ const styles = StyleSheet.create({
   fabOption: {
     backgroundColor: '#81A969', // Ensure same color
     minWidth: 220, // Slightly wider for options
+  },
+  
+  // Modal Styles
+  centeredView: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    padding: 20,
+  },
+  modalView: {
+    width: '100%',
+    backgroundColor: 'white',
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  closeButton: {
+    padding: 5,
+  },
+  modalSubtitle: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 20,
+  },
+  suggestionsList: {
+    width: '100%',
+  },
+  suggestionButton: {
+    backgroundColor: '#f8f9fa',
+    padding: 15,
+    borderRadius: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+  },
+  suggestionContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  suggestionText: {
+    fontSize: 16,
+    color: '#333',
+    fontWeight: '500',
+    flex: 1,
+    marginRight: 10,
+  },
+  // Loading overlay styles
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(255,255,255,0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 2000,
+  },
+  loadingContainer: {
+    backgroundColor: 'white',
+    padding: 20,
+    borderRadius: 12,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#666',
+    fontWeight: '500',
   },
 });
 
