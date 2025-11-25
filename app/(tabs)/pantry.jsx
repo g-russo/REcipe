@@ -1129,22 +1129,33 @@ const Pantry = () => {
     }
   };
 
-  const handleSelectSuggestion = (suggestion) => {
+  const handleSelectSuggestion = async (suggestion) => {
     setSuggestionsModalVisible(false);
-    exitSelectionMode();
+    setIsGeneratingSuggestions(true);
     
     try {
-      router.push('/(tabs)/recipe-search');
-      setTimeout(() => {
-        router.setParams({
-          searchQuery: suggestion,
-          autoGenerate: 'true'
-          // Removed generationMode: 'selected-only' to allow using full pantry context for the specific recipe
+      // Use the faster single recipe generation service directly
+      // This skips the search screen and generates the recipe immediately
+      const result = await SousChefAIService.generateSingleRecipe(
+        suggestion, 
+        {}, 
+        items
+      );
+
+      if (result.success && result.recipe) {
+        exitSelectionMode();
+        router.push({
+          pathname: '/recipe-detail',
+          params: { recipeData: JSON.stringify(result.recipe) }
         });
-      }, 300);
+      } else {
+        showAlert('error', 'Failed to generate recipe', 'Error', true);
+      }
     } catch (error) {
-      console.error('Navigation error:', error);
-      showAlert('error', 'Could not navigate to recipe search', 'Error', true);
+      console.error('Error generating recipe:', error);
+      showAlert('error', 'Failed to generate recipe', 'Error', true);
+    } finally {
+      setIsGeneratingSuggestions(false);
     }
   };
 
@@ -1276,7 +1287,7 @@ const Pantry = () => {
 
           {/* Recipe Suggestions Modal */}
           <Modal
-            animationType="slide"
+            animationType="fade"
             transparent={true}
             visible={suggestionsModalVisible}
             onRequestClose={() => setSuggestionsModalVisible(false)}
@@ -1284,30 +1295,44 @@ const Pantry = () => {
             <View style={styles.centeredView}>
               <View style={styles.modalView}>
                 <View style={styles.modalHeader}>
-                  <Text style={styles.modalTitle}>Choose a Recipe</Text>
+                  <View style={styles.modalTitleContainer}>
+                    <View style={styles.modalIconContainer}>
+                      <Ionicons name="sparkles" size={18} color="#fff" />
+                    </View>
+                    <Text style={styles.modalTitle}>Chef's Suggestions</Text>
+                  </View>
                   <TouchableOpacity 
                     onPress={() => setSuggestionsModalVisible(false)} 
                     style={styles.closeButton}
                   >
-                    <Ionicons name="close" size={24} color="#999" />
+                    <Ionicons name="close" size={20} color="#666" />
                   </TouchableOpacity>
                 </View>
                 
                 <Text style={styles.modalSubtitle}>
-                  Here are some ideas using your selected ingredients:
+                  We found 5 delicious recipes you can make with your selected ingredients:
                 </Text>
 
-                <ScrollView style={styles.suggestionsList} contentContainerStyle={{paddingBottom: 20}}>
+                <ScrollView 
+                  style={styles.suggestionsList} 
+                  contentContainerStyle={styles.suggestionsListContent}
+                  showsVerticalScrollIndicator={false}
+                >
                   {recipeSuggestions.map((suggestion, index) => (
                     <TouchableOpacity
                       key={index}
-                      style={styles.suggestionButton}
+                      style={styles.suggestionCard}
                       onPress={() => handleSelectSuggestion(suggestion)}
+                      activeOpacity={0.7}
                     >
-                      <View style={styles.suggestionContent}>
-                          <Text style={styles.suggestionText}>{suggestion}</Text>
-                          <Ionicons name="arrow-forward-circle" size={24} color="#81A969" />
+                      <View style={styles.suggestionNumberContainer}>
+                        <Text style={styles.suggestionNumber}>{index + 1}</Text>
                       </View>
+                      <View style={styles.suggestionTextContainer}>
+                        <Text style={styles.suggestionTitle}>{suggestion}</Text>
+                        <Text style={styles.suggestionActionText}>Tap to generate recipe</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={20} color="#ccc" />
                     </TouchableOpacity>
                   ))}
                 </ScrollView>
@@ -2057,65 +2082,117 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.6)',
     padding: 20,
   },
   modalView: {
     width: '100%',
-    backgroundColor: 'white',
-    borderRadius: 20,
-    padding: 20,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 24,
+    padding: 0,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 2,
+      height: 10,
     },
     shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
+    shadowRadius: 10,
+    elevation: 10,
     maxHeight: '80%',
+    overflow: 'hidden',
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 15,
+    padding: 20,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  modalTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  modalIconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#81A969',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   modalTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 'bold',
-    color: '#333',
+    color: '#2c3e50',
   },
   closeButton: {
-    padding: 5,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#f0f0f0',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   modalSubtitle: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#666',
-    marginBottom: 20,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 10,
+    lineHeight: 20,
   },
   suggestionsList: {
     width: '100%',
   },
-  suggestionButton: {
-    backgroundColor: '#f8f9fa',
-    padding: 15,
-    borderRadius: 12,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: '#e9ecef',
+  suggestionsListContent: {
+    padding: 20,
+    paddingTop: 5,
   },
-  suggestionContent: {
+  suggestionCard: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    backgroundColor: '#fff',
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
-  suggestionText: {
-    fontSize: 16,
-    color: '#333',
-    fontWeight: '500',
+  suggestionNumberContainer: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#E8F5E9',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  suggestionNumber: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#81A969',
+  },
+  suggestionTextContainer: {
     flex: 1,
     marginRight: 10,
+  },
+  suggestionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#2c3e50',
+    marginBottom: 2,
+  },
+  suggestionActionText: {
+    fontSize: 12,
+    color: '#999',
   },
   // Loading overlay styles
   loadingOverlay: {

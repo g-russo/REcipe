@@ -1,43 +1,10 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Image, ActivityIndicator, StyleSheet } from 'react-native';
+import React from 'react';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
-
-// Cache for similar recipe images with 5 minute TTL
-const imageCache = new Map();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes in milliseconds
+import CachedImage from '../common/cached-image';
 
 const SimilarRecipeCard = ({ recipe, onRecipePress }) => {
-  const [imageLoaded, setImageLoaded] = useState(false);
-  const [imageError, setImageError] = useState(false);
-
-  // Check cache first
-  const cacheKey = recipe.image;
-  const cached = imageCache.get(cacheKey);
-  const now = Date.now();
-
-  // Use cached image if valid
-  if (cached && (now - cached.timestamp) < CACHE_TTL) {
-    // Cache is still valid
-  } else if (cached) {
-    // Cache expired, remove it
-    imageCache.delete(cacheKey);
-  }
-
-  const handleImageLoad = () => {
-    setImageLoaded(true);
-    // Cache the successfully loaded image
-    imageCache.set(cacheKey, {
-      uri: recipe.image,
-      timestamp: Date.now(),
-    });
-  };
-
-  const handleImageError = () => {
-    setImageError(true);
-    setImageLoaded(true);
-  };
-
   return (
     <TouchableOpacity
       style={styles.similarRecipeCard}
@@ -45,19 +12,13 @@ const SimilarRecipeCard = ({ recipe, onRecipePress }) => {
       activeOpacity={0.9}
     >
       <View style={styles.imageContainer}>
-        {!imageLoaded && !imageError && (
-          <View style={styles.imagePlaceholder}>
-            <ActivityIndicator size="small" color="#81A969" />
-          </View>
-        )}
-        <Image 
-          source={{ uri: recipe.image }} 
-          style={[
-            styles.similarRecipeImage,
-            { opacity: imageLoaded ? 1 : 0 }
-          ]}
-          onLoad={handleImageLoad}
-          onError={handleImageError}
+        <CachedImage
+          uri={recipe.image}
+          recipeId={recipe.id || recipe.uri}
+          recipeName={recipe.label}
+          style={styles.similarRecipeImage}
+          resizeMode="cover"
+          showLoader={true}
         />
       </View>
       <View style={styles.similarRecipeInfo}>
