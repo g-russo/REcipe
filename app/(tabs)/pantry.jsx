@@ -12,7 +12,8 @@ import {
   Animated,
   RefreshControl,
   Modal,
-  ActivityIndicator
+  ActivityIndicator,
+  Image
 } from 'react-native';
 import { useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useCustomAuth } from '../../hooks/use-custom-auth';
@@ -151,6 +152,24 @@ const Pantry = () => {
   // Header Animation
   const headerOpacity = useRef(new Animated.Value(1)).current;
   const headerTranslateY = useRef(new Animated.Value(0)).current;
+
+  // Loading Animation
+  const loadingProgress = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (isGeneratingSuggestions) {
+      loadingProgress.setValue(0);
+      Animated.loop(
+        Animated.timing(loadingProgress, {
+          toValue: 1,
+          duration: 2000,
+          useNativeDriver: false,
+        })
+      ).start();
+    } else {
+      loadingProgress.stopAnimation();
+    }
+  }, [isGeneratingSuggestions]);
 
   // Initialize notifications on mount
   useEffect(() => {
@@ -1044,10 +1063,19 @@ const Pantry = () => {
 
   // Check if any selected items are expired
   const checkForExpiredSelection = () => {
+    // Ensure we're working with the latest items
     const selectedItemObjects = items.filter(item => selectedItems.includes(item.itemID));
-    const expired = selectedItemObjects.filter(item => isItemExpired(item));
+    
+    // Filter for expired items
+    const expired = selectedItemObjects.filter(item => {
+      if (!item.itemExpiration) return false;
+      const days = ExpirationNotificationService.calculateDaysUntilExpiration(item.itemExpiration);
+      // Strictly less than 0 means expired (yesterday or before)
+      return days < 0;
+    });
     
     if (expired.length > 0) {
+      console.log('⚠️ Expired items selected:', expired.length);
       setExpiredSelectionAlert({ visible: true, items: expired });
       return true;
     }
@@ -1343,9 +1371,24 @@ const Pantry = () => {
           {/* Loading Overlay for Suggestions */}
           {isGeneratingSuggestions && (
             <View style={styles.loadingOverlay}>
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color="#81A969" />
-                <Text style={styles.loadingText}>Thinking of recipes...</Text>
+              <Image
+                source={require('../../assets/recipe_loading.gif')}
+                style={styles.loadingGif}
+                resizeMode="contain"
+              />
+              <Text style={styles.loadingText}>Thinking of recipes...</Text>
+              <View style={styles.progressBarContainer}>
+                <Animated.View 
+                  style={[
+                    styles.progressBarFill, 
+                    {
+                      width: loadingProgress.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: ['0%', '100%']
+                      })
+                    }
+                  ]} 
+                />
               </View>
             </View>
           )}
@@ -1951,7 +1994,7 @@ const Pantry = () => {
         title="Expired Items Detected"
         message={`You have selected ${expiredSelectionAlert.items.length} expired item(s). These cannot be used for recipes.`}
         hideCloseButton={true}
-        onClose={() => {}} // Prevent closing by tapping outside
+        onClose={() => {}}
       >
          <View style={{ width: '100%', marginTop: 12, gap: 10 }}>
             <ScrollView style={{ maxHeight: 100, marginBottom: 10 }}>
@@ -2201,30 +2244,34 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(255,255,255,0.8)',
+    backgroundColor: '#6A0DAD', // Purple background
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 2000,
   },
-  loadingContainer: {
-    backgroundColor: 'white',
-    padding: 20,
-    borderRadius: 12,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 5,
+  loadingGif: {
+    width: wp('50%'),
+    height: wp('50%'),
+    marginBottom: 20,
   },
   loadingText: {
     marginTop: 10,
-    fontSize: 16,
-    color: '#666',
-    fontWeight: '500',
+    fontSize: 18,
+    color: '#fff',
+    fontWeight: '600',
+    marginBottom: 20,
+  },
+  progressBarContainer: {
+    width: wp('70%'),
+    height: 8,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: '#fff',
+    borderRadius: 4,
   },
 });
 
