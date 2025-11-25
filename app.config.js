@@ -74,7 +74,7 @@ export default {
         origin: false
       },
       eas: {
-        projectId: "6a6de2c8-84d3-46ea-b8e4-aea9ba57b8f3" // Cairos nagtry mag package
+        projectId: "917f09cb-447c-4798-bbee-f589e3bfa378" // linked to @karowsuuu/recipe-app
       },
       supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,
       supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
