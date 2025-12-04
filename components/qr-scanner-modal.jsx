@@ -12,6 +12,7 @@ import {
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as WebBrowser from 'expo-web-browser';
 import BarcodeScannerService from '../services/barcode-scanner-service';
 import PantryService from '../services/pantry-service';
 import { supabase, safeGetUser } from '../lib/supabase';
@@ -24,6 +25,7 @@ export default function QRScannerModal({ visible, onClose, onFoodFound }) {
   const [productData, setProductData] = useState(null);
   const [scannedCode, setScannedCode] = useState(null);
   const [adding, setAdding] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const cameraRef = useRef(null);
 
   // Alert modal state
@@ -60,27 +62,41 @@ export default function QRScannerModal({ visible, onClose, onFoodFound }) {
     setAlertConfig(prev => ({ ...prev, visible: false }));
   };
 
-  const handleQRScanned = async ({ type, data }) => {
-    // Only process QR codes
-    if (type !== 'qr' && type !== 256) {
-      return; // Ignore non-QR codes
-    }
-
-    if (scanned) return;
-
+  const handleQRScanned = async ({ data }) => {
+    if (scanned || isProcessing) return;
+    
     setScanned(true);
+    setIsProcessing(true);
     setScannedCode(data);
-    setLoading(true);
 
     try {
-      console.log(`QR code scanned: ${data}`);
+      // 1. Check if it's a URL
+      if (data.startsWith('http://') || data.startsWith('https://')) {
+        console.log('🔗 Opening URL in-app:', data);
+        
+        // ✅ USE THIS instead of Linking.openURL
+        await WebBrowser.openBrowserAsync(data, {
+          presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
+          toolbarColor: '#81A969', // Match your app theme
+          controlsColor: '#FFFFFF' 
+        });
+        
+        // Reset scanner after browser closes
+        setTimeout(() => {
+          setScanned(false);
+          setIsProcessing(false);
+        }, 1000);
+        return;
+      }
+
       const result = await BarcodeScannerService.searchByQRCode(data);
 
       if (!result) {
+        // If not found in food DB, just show the text
         showAlert(
-          'Not Found',
-          'This QR code was not found in FatSecret or OpenFoodFacts databases.',
-          'warning',
+          'Scanned Data',
+          data,
+          'info',
           [
             { text: 'Close', style: 'cancel', onPress: onClose },
             {
