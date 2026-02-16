@@ -1097,39 +1097,61 @@ Examples:
       const apiKey = this.getOpenAiKey();
       if (!apiKey) {
         console.error('❌ OpenAI API key not found');
-        return { category: 'Other', shelfLifeDays: 7, reasoning: 'API key missing' };
+        return { 
+          category: 'Other', 
+          shelfLifeDays: 7, 
+          food_condition: 'Unknown',
+          is_safe: true,
+          reasoning: 'API key missing' 
+        };
       }
 
-      const prompt = `Act as a food safety expert. Perform a deep analysis of the food item '${itemName}' ${imageBase64 ? 'and the provided image' : ''} to determine its optimal inventory category and precise shelf life.
+      const prompt = `Act as a food safety expert. Perform a deep analysis of the food item '${itemName}' ${imageBase64 ? 'and the provided image' : ''} to determine its optimal inventory category, precise shelf life, and detailed condition.
 
 Research & Analysis Steps:
 1. **Identify**: Determine the exact specific type of food and its state (e.g., "Sliced vs Whole", "Cooked vs Raw", "Ripe vs Unripe").
 2. **Consult Guidelines**: Apply standard food safety data (USDA/FDA) for this specific item.
-3. **Visual Inspection**: If an image is provided, analyze for signs of spoilage (bruising, discoloration) or packaging (vacuum sealed, open can) to adjust the estimate.
+3. **Visual Inspection**: If an image is provided, analyze for signs of spoilage (bruising, discoloration, mold) or packaging state.
+4. **Safety Check**: Explicitly determine if the food appears safe to eat.
 
 Respond with ONLY a JSON object in this exact format:
 {
   "category": "String",
   "shelfLifeDays": Number,
-  "reasoning": "String"
+  "food_condition": "String (e.g., 'Fresh and Ripe', 'Slightly Bruised', 'Moldy', 'Leftover - Good')",
+  "is_safe": Boolean,
+  "safety_reason": "String (Required if is_safe is false, short explanation)",
+  "storage_tips": "String (Short, actionable advice)",
+  "reasoning": "String (Brief explanation of the logic)"
 }
 
 Constraints:
 1. **Category**: MUST be one of: ['Rice', 'Soup', 'Leftovers', 'Kakanin', 'Baking', 'Beverages', 'Canned', 'Jarred', 'Condiments', 'Sauces', 'Dairy', 'Eggs', 'Fruits', 'Frozen', 'Grains', 'Pasta', 'Noodles', 'Meat', 'Poultry', 'Seafood', 'Snacks', 'Spices', 'Herbs', 'Vegetables', 'Other']
 2. **Shelf Life Logic**:
-   - **Prioritize Specificity**: Look up the specific item's shelf life (e.g., "Strawberries: 3-7 days" vs "Fruit: 14 days").
+   - **Prioritize Specificity**: Look up the specific item's shelf life.
    - **Condition Matters**: "Cut/Peeled" items expire much faster than "Whole".
    - **Leftovers**: Strictly 3-4 days for safety.
    - **Pantry**: Dry goods (Rice, Pasta) = 365+ days.
-   - **Canned/Jarred**: If unopened (based on visual), use long duration (1-2 years). If looks opened, treat as perishable.
+   - **Safety First**: If signs of spoilage are detected (mold, slime, bad discoloration), set 'is_safe' to false and 'shelfLifeDays' to 0.
 
 Examples:
-"Apple" -> {"category": "Fruits", "shelfLifeDays": 21, "reasoning": "Whole apples last 3-4 weeks in fridge (USDA)"}
-"Cut Apple" -> {"category": "Fruits", "shelfLifeDays": 3, "reasoning": "Cut fruit oxidizes quickly, 3-5 days max"}
-"Chicken Adobo" -> {"category": "Leftovers", "shelfLifeDays": 4, "reasoning": "Cooked meat dishes are safe for 3-4 days (USDA)"}
-"Fresh Salmon" -> {"category": "Seafood", "shelfLifeDays": 2, "reasoning": "Raw fish is highly perishable, 1-2 days"}
-"Canned Corn" -> {"category": "Canned", "shelfLifeDays": 730, "reasoning": "Commercially canned goods last 2-5 years"}
-"Milk (Opened)" -> {"category": "Dairy", "shelfLifeDays": 7, "reasoning": "Opened milk lasts ~7 days past sell-by"}`;
+"Apple" -> {
+  "category": "Fruits", 
+  "shelfLifeDays": 21, 
+  "food_condition": "Fresh", 
+  "is_safe": true, 
+  "storage_tips": "Store in crisper drawer.", 
+  "reasoning": "Whole apples last 3-4 weeks in fridge."
+}
+"Moldy Bread" -> {
+  "category": "Grains", 
+  "shelfLifeDays": 0, 
+  "food_condition": "Moldy", 
+  "is_safe": false, 
+  "safety_reason": "Visible mold growth makes it unsafe.", 
+  "storage_tips": "Discard immediately.", 
+  "reasoning": "Mold indicates spoilage."
+}`;
 
       const messages = [
         {

@@ -43,6 +43,10 @@ const ItemFormModal = ({
   const isEditMode = !!initialData && !!initialData.itemID;
   const isAIRecommendation = !!initialData?.isAI;
   const aiReasoning = initialData?.aiReasoning;
+  const foodCondition = initialData?.foodCondition;
+  const isSafe = initialData?.isSafe;
+  const safetyReason = initialData?.safetyReason;
+  const storageTips = initialData?.storageTips;
 
   const [reasoningModalVisible, setReasoningModalVisible] = useState(false);
 
@@ -560,7 +564,7 @@ const ItemFormModal = ({
                   onPress={() => aiReasoning && setReasoningModalVisible(true)}
                   activeOpacity={aiReasoning ? 0.7 : 1}
                   style={{
-                    backgroundColor: '#E8F5E9',
+                    backgroundColor: isSafe === false ? '#FFEBEE' : '#E8F5E9',
                     padding: 16,
                     marginHorizontal: 24,
                     marginTop: 20,
@@ -569,11 +573,18 @@ const ItemFormModal = ({
                     flexDirection: 'row',
                     alignItems: 'center',
                     borderWidth: 1,
-                    borderColor: '#C8E6C9'
+                    borderColor: isSafe === false ? '#FFCDD2' : '#C8E6C9'
                   }}>
-                  <MaterialCommunityIcons name="robot" size={24} color="#4CAF50" style={{ marginRight: 12 }} />
-                  <Text style={{ color: '#2E7D32', fontSize: 14, flex: 1, lineHeight: 20 }}>
-                    Details predicted by SousChef AI. Please verify and adjust if needed.
+                  <MaterialCommunityIcons 
+                    name={isSafe === false ? "alert-circle" : "robot"} 
+                    size={24} 
+                    color={isSafe === false ? "#D32F2F" : "#4CAF50"} 
+                    style={{ marginRight: 12 }} 
+                  />
+                  <Text style={{ color: isSafe === false ? '#B71C1C' : '#2E7D32', fontSize: 14, flex: 1, lineHeight: 20 }}>
+                    {isSafe === false 
+                        ? `⚠️ Potential Safety Issue: ${safetyReason || "See details"}` 
+                        : "Details predicted by SousChef AI. Please verify and adjust if needed."}
                     {aiReasoning && <Text style={{ fontWeight: '700' }}> (Tap for info)</Text>}
                   </Text>
                 </TouchableOpacity>
@@ -590,9 +601,36 @@ const ItemFormModal = ({
                   <View style={{ backgroundColor: 'white', borderRadius: 20, padding: 24, width: '100%', maxWidth: 400, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 10, elevation: 10 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
                       <MaterialCommunityIcons name="brain" size={28} color="#81A969" style={{ marginRight: 12 }} />
-                      <Text style={{ fontSize: 20, fontWeight: '700', color: '#1A1A1A' }}>AI Prediction Logic</Text>
+                      <Text style={{ fontSize: 20, fontWeight: '700', color: '#1A1A1A' }}>SousChef AI Analysis</Text>
                     </View>
-                    <Text style={{ fontSize: 16, color: '#444', lineHeight: 24 }}>{aiReasoning}</Text>
+                    
+                    <ScrollView style={{ maxHeight: 400 }}>
+                        {foodCondition && (
+                            <View style={{ marginBottom: 16 }}>
+                                <Text style={{ fontSize: 16, fontWeight: '700', color: '#333', marginBottom: 4 }}>Condition:</Text>
+                                <Text style={{ fontSize: 16, color: '#444', lineHeight: 22 }}>{foodCondition}</Text>
+                            </View>
+                        )}
+
+                        {isSafe === false && (
+                            <View style={{ marginBottom: 16, backgroundColor: '#FFEBEE', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#FFCDD2' }}>
+                                <Text style={{ fontSize: 16, fontWeight: '700', color: '#D32F2F', marginBottom: 4 }}>⚠️ Safety Warning:</Text>
+                                <Text style={{ fontSize: 16, color: '#B71C1C', lineHeight: 22 }}>{safetyReason || "Potential safety issue detected."}</Text>
+                            </View>
+                        )}
+
+                        {storageTips && (
+                            <View style={{ marginBottom: 16 }}>
+                                <Text style={{ fontSize: 16, fontWeight: '700', color: '#333', marginBottom: 4 }}>Storage Tips:</Text>
+                                <Text style={{ fontSize: 16, color: '#444', lineHeight: 22 }}>{storageTips}</Text>
+                            </View>
+                        )}
+
+                        <View>
+                            <Text style={{ fontSize: 16, fontWeight: '700', color: '#333', marginBottom: 4 }}>Thinking Result:</Text>
+                            <Text style={{ fontSize: 16, color: '#444', lineHeight: 22 }}>{aiReasoning}</Text>
+                        </View>
+                    </ScrollView>
                     <TouchableOpacity
                       onPress={() => setReasoningModalVisible(false)}
                       style={{ marginTop: 24, backgroundColor: '#81A969', paddingVertical: 14, borderRadius: 12, alignItems: 'center' }}
