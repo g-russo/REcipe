@@ -107,6 +107,7 @@ const styles = StyleSheet.create({
         borderTopLeftRadius: 20,
         borderTopRightRadius: 20,
         maxHeight: '90%',
+        minHeight: 300,
         paddingBottom: 20,
     },
     header: {
@@ -131,7 +132,7 @@ const styles = StyleSheet.create({
         padding: 8,
     },
     itemsList: {
-        flex: 1,
+        width: '100%',
     },
     itemsListContent: {
         padding: 16,

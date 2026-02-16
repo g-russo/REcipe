@@ -156,11 +156,9 @@ const Pantry = () => {
   // Discard Reminder Alert
   const [discardReminderAlert, setDiscardReminderAlert] = useState({ visible: false, count: 0 });
   // Past Best Before Warning Alert
-  const [pastBestBeforeAlert, setPastBestBeforeAlert] = useState({
+  const [expiredOptionAlert, setExpiredOptionAlert] = useState({
     visible: false,
     item: null,
-    onUse: null,
-    onDiscard: null
   });
   // Safety Disclaimer Modal
   const [safetyDisclaimerVisible, setSafetyDisclaimerVisible] = useState(false);
@@ -928,26 +926,11 @@ const Pantry = () => {
     } else {
       const freshnessStatus = getFreshnessStatus(item);
 
-      // If item is past best-before date, show warning
+      // If item is past best-before date, show warning with options
       if (freshnessStatus === 'past') {
-        const daysUntilExpiry = ExpirationNotificationService.calculateDaysUntilExpiration(item.itemExpiration);
-        const daysPast = Math.abs(daysUntilExpiry);
-
-        setPastBestBeforeAlert({
+        setExpiredOptionAlert({
           visible: true,
           item,
-          daysPast,
-          onUse: () => {
-            // Close warning, show safety disclaimer
-            setPastBestBeforeAlert({ visible: false, item: null, onUse: null, onDiscard: null });
-            setDisclaimerItem(item);
-            setSafetyDisclaimerVisible(true);
-          },
-          onDiscard: async () => {
-            // Close warning and delete item
-            setPastBestBeforeAlert({ visible: false, item: null, onUse: null, onDiscard: null });
-            await handleDeleteItem(item);
-          }
         });
       } else {
         // Normal item press - show menu
@@ -1357,7 +1340,10 @@ const Pantry = () => {
             >
               <PantryHeader
                 onSearchPress={() => setSearchModalVisible(true)}
-                onArchivePress={() => setArchiveModalVisible(true)}
+                onArchivePress={() => {
+                  console.log('📦 Archive button pressed');
+                  setArchiveModalVisible(true);
+                }}
                 archivedCount={archivedItems.length}
               />
             </Animated.View>
@@ -1803,6 +1789,22 @@ const Pantry = () => {
             style={{
               backgroundColor: '#fff',
               borderWidth: 2,
+              borderColor: '#FF9800',
+              paddingVertical: 12,
+              borderRadius: 12
+            }}
+            onPress={() => {
+              handleArchiveItem(itemMenuAlert.item);
+              setItemMenuAlert({ visible: false, item: null });
+            }}
+            activeOpacity={0.8}
+          >
+            <Text style={{ color: '#FF9800', textAlign: 'center', fontWeight: '700', fontSize: 16 }}>Archive</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 2,
               borderColor: '#81A969',
               paddingVertical: 12,
               borderRadius: 12
@@ -2130,54 +2132,7 @@ const Pantry = () => {
         </View>
       </PantryAlert>
 
-      {/* Past Best Before Warning Alert */}
-      <PantryAlert
-        visible={pastBestBeforeAlert.visible}
-        type="warning"
-        title="Item Past Best Before Date"
-        message={
-          pastBestBeforeAlert.item
-            ? `"${pastBestBeforeAlert.item.itemName}" is past its best-before date${pastBestBeforeAlert.daysPast
-              ? ` by ${pastBestBeforeAlert.daysPast} day${pastBestBeforeAlert.daysPast > 1 ? 's' : ''}`
-              : ''
-            }.\n\nThe item may have reduced quality or freshness. Please inspect before use.\n\nWould you like to use this item or discard it?`
-            : ''
-        }
-        hideCloseButton={true}
-        onClose={() => setPastBestBeforeAlert({ visible: false, item: null, onUse: null, onDiscard: null })}
-      >
-        <View style={{ flexDirection: 'row', gap: 12, width: '100%', marginTop: 20 }}>
-          <TouchableOpacity
-            style={{
-              flex: 1,
-              backgroundColor: '#f5f5f5',
-              paddingVertical: 14,
-              borderRadius: 10,
-              borderWidth: 1,
-              borderColor: '#ddd',
-            }}
-            onPress={pastBestBeforeAlert.onDiscard}
-          >
-            <Text style={{ color: '#666', textAlign: 'center', fontWeight: '600', fontSize: 15 }}>
-              Discard
-            </Text>
-          </TouchableOpacity>
 
-          <TouchableOpacity
-            style={{
-              flex: 1,
-              backgroundColor: '#FF9800',
-              paddingVertical: 14,
-              borderRadius: 10,
-            }}
-            onPress={pastBestBeforeAlert.onUse}
-          >
-            <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '600', fontSize: 15 }}>
-              Inspect & Use
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </PantryAlert>
 
       {/* Items Past Best Before Detected Alert */}
       <PantryAlert
@@ -2221,6 +2176,81 @@ const Pantry = () => {
             <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '600', fontSize: 15 }}>
               Move to Archive
             </Text>
+          </TouchableOpacity>
+        </View>
+      </PantryAlert>
+
+      {/* Expired Option Alert */}
+      <PantryAlert
+        visible={expiredOptionAlert.visible}
+        type="warning"
+        title="Item Past Best Before Date"
+        message={`"${expiredOptionAlert.item?.itemName}" is past its best before date.`}
+        hideCloseButton={true}
+      >
+        <View style={{ gap: 10, width: '100%', marginTop: 20 }}>
+          <TouchableOpacity
+            style={{
+              backgroundColor: '#81A969',
+              paddingVertical: 14,
+              borderRadius: 12,
+            }}
+            onPress={() => {
+              const item = expiredOptionAlert.item;
+              setExpiredOptionAlert({ visible: false, item: null });
+              setDisclaimerItem(item);
+              setSafetyDisclaimerVisible(true);
+            }}
+          >
+            <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '700', fontSize: 16 }}>Find Recipes</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 2,
+              borderColor: '#81A969',
+              paddingVertical: 12,
+              borderRadius: 12,
+            }}
+            onPress={() => {
+              const item = expiredOptionAlert.item;
+              setExpiredOptionAlert({ visible: false, item: null });
+              setEditingItem(item);
+              setItemFormVisible(true);
+            }}
+          >
+            <Text style={{ color: '#81A969', textAlign: 'center', fontWeight: '700', fontSize: 16 }}>Edit Item</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 2,
+              borderColor: '#FF9800',
+              paddingVertical: 12,
+              borderRadius: 12,
+            }}
+            onPress={() => {
+              const item = expiredOptionAlert.item;
+              setExpiredOptionAlert({ visible: false, item: null });
+              handleArchiveItem(item);
+            }}
+          >
+            <Text style={{ color: '#FF9800', textAlign: 'center', fontWeight: '700', fontSize: 16 }}>Archive</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={{
+              paddingVertical: 12,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: '#ccc',
+              backgroundColor: '#fff',
+            }}
+            onPress={() => setExpiredOptionAlert({ visible: false, item: null })}
+          >
+            <Text style={{ color: '#666', textAlign: 'center', fontWeight: '600', fontSize: 16 }}>Cancel</Text>
           </TouchableOpacity>
         </View>
       </PantryAlert>
