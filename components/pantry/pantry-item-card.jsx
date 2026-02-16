@@ -96,22 +96,41 @@ const PantryItemCard = ({
     return `${dateObj.getMonth() + 1}/${dateObj.getDate()}/${dateObj.getFullYear()}`;
   };
 
-  // Check if item is expiring soon (within 7 days)
-  const isExpiringSoon = () => {
-    if (!item.itemExpiration) return false;
-    const expiryDate = new Date(item.itemExpiration);
+  // Get freshness status based on best before date
+  const getFreshnessStatus = () => {
+    if (!item.itemExpiration) return null;
+
     const today = new Date();
-    const diffTime = expiryDate - today;
+    today.setHours(0, 0, 0, 0);
+    const bestBefore = new Date(item.itemExpiration);
+    bestBefore.setHours(0, 0, 0, 0);
+    const diffTime = bestBefore - today;
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays >= 0 && diffDays <= 7;
+
+    if (diffDays < 0) return 'past'; // Past best before
+    if (diffDays <= 7) return 'nearing'; // Nearing best before
+    return 'fresh'; // Fresh - no badge needed
   };
 
-  // Check if item is expired
-  const isExpired = () => {
-    if (!item.itemExpiration) return false;
-    const expiryDate = new Date(item.itemExpiration);
-    const today = new Date();
-    return expiryDate < today;
+  const freshnessStatus = getFreshnessStatus();
+
+  // Freshness badge configuration
+  const FRESHNESS_BADGES = {
+    fresh: {
+      show: false, // No badge for fresh items
+      color: '#4CAF50',
+      label: 'Fresh'
+    },
+    nearing: {
+      show: true,
+      color: '#FF9800',
+      label: 'Use Soon'
+    },
+    past: {
+      show: true,
+      color: '#F44336',
+      label: 'Past Best Before'
+    }
   };
 
   return (
@@ -158,15 +177,15 @@ const PantryItemCard = ({
           </View>
         )}
 
-        {/* Expiry Badge */}
-        {isExpired() && (
-          <View style={[styles.expiryBadge, styles.expiredBadge]}>
-            <Text style={styles.expiryBadgeText}>Expired</Text>
-          </View>
-        )}
-        {!isExpired() && isExpiringSoon() && (
-          <View style={[styles.expiryBadge, styles.expiringSoonBadge]}>
-            <Text style={styles.expiryBadgeText}>Expiring Soon</Text>
+        {/* Freshness Badge */}
+        {freshnessStatus && FRESHNESS_BADGES[freshnessStatus]?.show && (
+          <View style={[
+            styles.freshnessBadge,
+            { backgroundColor: FRESHNESS_BADGES[freshnessStatus].color }
+          ]}>
+            <Text style={styles.freshnessBadgeText}>
+              {FRESHNESS_BADGES[freshnessStatus].label}
+            </Text>
           </View>
         )}
 
@@ -180,8 +199,8 @@ const PantryItemCard = ({
           <View style={styles.itemFooter}>
             <Text style={[
               styles.expDate,
-              isExpired() && styles.expiredText,
-              isExpiringSoon() && styles.expiringSoonText
+              freshnessStatus === 'past' && styles.pastBestBeforeText,
+              freshnessStatus === 'nearing' && styles.nearingBestBeforeText
             ]}>
               {formatDate(item.itemExpiration)}
             </Text>
@@ -248,7 +267,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  expiryBadge: {
+  freshnessBadge: {
     position: 'absolute',
     top: 8,
     left: 8,
@@ -257,13 +276,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     zIndex: 5,
   },
-  expiredBadge: {
-    backgroundColor: '#ff4d4d',
-  },
-  expiringSoonBadge: {
-    backgroundColor: '#FF9800',
-  },
-  expiryBadgeText: {
+  freshnessBadgeText: {
     color: '#fff',
     fontSize: 10,
     fontWeight: '600',
@@ -291,11 +304,11 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#999',
   },
-  expiredText: {
-    color: '#ff4d4d',
+  pastBestBeforeText: {
+    color: '#F44336',
     fontWeight: '600',
   },
-  expiringSoonText: {
+  nearingBestBeforeText: {
     color: '#FF9800',
     fontWeight: '600',
   },

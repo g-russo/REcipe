@@ -38,6 +38,7 @@ import SearchFilterModal from '../../components/pantry/search-filter-modal-v2';
 import ExpiringItemsBanner from '../../components/pantry/expiring-items-banner';
 import AppAlert from '../../components/common/app-alert';
 import PantryAlert, { AnimatedButton } from '../../components/pantry/pantry-alert';
+import SafetyDisclaimerModal from '../../components/pantry/safety-disclaimer-modal';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import SousChefAIService from '../../services/souschef-ai-service';
 
@@ -139,6 +140,16 @@ const Pantry = () => {
   const [expiredSelectionAlert, setExpiredSelectionAlert] = useState({ visible: false, items: [] });
   // Discard Reminder Alert
   const [discardReminderAlert, setDiscardReminderAlert] = useState({ visible: false, count: 0 });
+  // Past Best Before Warning Alert
+  const [pastBestBeforeAlert, setPastBestBeforeAlert] = useState({
+    visible: false,
+    item: null,
+    onUse: null,
+    onDiscard: null
+  });
+  // Safety Disclaimer Modal
+  const [safetyDisclaimerVisible, setSafetyDisclaimerVisible] = useState(false);
+  const [disclaimerItem, setDisclaimerItem] = useState(null);
 
   // FAB Animation
   const fabScale = useRef(new Animated.Value(0)).current;
@@ -618,7 +629,7 @@ const Pantry = () => {
 
         const resolvedInventoryID = itemData.inventoryID || ensuredInventoryID;
         const potentialDuplicate = findDuplicateItem(itemData.itemName, resolvedInventoryID);
-        
+
         // Check for duplicate without forceSave flag
         if (potentialDuplicate && !itemData.forceSave) {
           console.log('⚠️ Duplicate found:', potentialDuplicate);
@@ -637,7 +648,7 @@ const Pantry = () => {
           console.log('⚠️ Duplicate found but forceSave is true');
           const mergeAvailable = canMergeDuplicateItems(potentialDuplicate, itemData);
           const duplicateAction = itemData.duplicateAction || 'cancel';
-          
+
           if (duplicateAction === 'merge' && mergeAvailable) {
             await mergeDuplicateItem(potentialDuplicate, itemData);
             await loadData();
@@ -777,11 +788,25 @@ const Pantry = () => {
     });
   };
 
-  // Check if item is expired
+  // Get freshness status of an item
+  const getFreshnessStatus = (item) => {
+    if (!item.itemExpiration) return null;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const bestBefore = new Date(item.itemExpiration);
+    bestBefore.setHours(0, 0, 0, 0);
+    const diffTime = bestBefore - today;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 0) return 'past'; // Past best before
+    if (diffDays <= 7) return 'nearing'; // Nearing best before
+    return 'fresh'; // Fresh - no badge needed
+  };
+
+  // Check if item is expired (legacy support for other functions)
   const isItemExpired = (item) => {
-    if (!item.itemExpiration) return false;
-    const daysUntilExpiry = ExpirationNotificationService.calculateDaysUntilExpiration(item.itemExpiration);
-    return daysUntilExpiry < 0;
+    return getFreshnessStatus(item) === 'past';
   };
 
   // Handle delete item
@@ -807,31 +832,33 @@ const Pantry = () => {
     if (selectionMode) {
       toggleItemSelection(item.itemID);
     } else {
-      const expired = isItemExpired(item);
-      const daysUntilExpiry = item.itemExpiration
-        ? ExpirationNotificationService.calculateDaysUntilExpiration(item.itemExpiration)
-        : null;
+      const freshnessStatus = getFreshnessStatus(item);
 
-      let expiryText = 'No expiry';
-      if (item.itemExpiration) {
-        if (expired) {
-          const daysExpired = Math.abs(daysUntilExpiry);
-          expiryText = daysExpired === 0
-            ? '⚠️ EXPIRED TODAY'
-            : `⚠️ EXPIRED ${daysExpired} day(s) ago`;
-        } else if (daysUntilExpiry === 0) {
-          expiryText = '⚠️ Expires TODAY';
-        } else if (daysUntilExpiry === 1) {
-          expiryText = '⏰ Expires TOMORROW';
-        } else if (daysUntilExpiry <= 3) {
-          expiryText = `⏰ Expires in ${daysUntilExpiry} days`;
-        } else {
-          expiryText = item.itemExpiration;
-        }
+      // If item is past best-before date, show warning
+      if (freshnessStatus === 'past') {
+        const daysUntilExpiry = ExpirationNotificationService.calculateDaysUntilExpiration(item.itemExpiration);
+        const daysPast = Math.abs(daysUntilExpiry);
+
+        setPastBestBeforeAlert({
+          visible: true,
+          item,
+          daysPast,
+          onUse: () => {
+            // Close warning, show safety disclaimer
+            setPastBestBeforeAlert({ visible: false, item: null, onUse: null, onDiscard: null });
+            setDisclaimerItem(item);
+            setSafetyDisclaimerVisible(true);
+          },
+          onDiscard: async () => {
+            // Close warning and delete item
+            setPastBestBeforeAlert({ visible: false, item: null, onUse: null, onDiscard: null });
+            await handleDeleteItem(item);
+          }
+        });
+      } else {
+        // Normal item press - show menu
+        setItemMenuAlert({ visible: true, item });
       }
-
-      // Show item details with custom category icon
-      setItemMenuAlert({ visible: true, item });
     }
   };
 
@@ -1053,7 +1080,7 @@ const Pantry = () => {
       showAlert('error', 'Could not find selected items', 'Error', true);
       return;
     }
-    
+
     setRecipeConfirmationAlert({
       visible: true,
       type: 'generate',
@@ -1065,7 +1092,7 @@ const Pantry = () => {
   const checkForExpiredSelection = () => {
     // Ensure we're working with the latest items
     const selectedItemObjects = items.filter(item => selectedItems.includes(item.itemID));
-    
+
     // Filter for expired items
     const expired = selectedItemObjects.filter(item => {
       if (!item.itemExpiration) return false;
@@ -1073,7 +1100,7 @@ const Pantry = () => {
       // Strictly less than 0 means expired (yesterday or before)
       return days < 0;
     });
-    
+
     if (expired.length > 0) {
       console.log('⚠️ Expired items selected:', expired.length);
       setExpiredSelectionAlert({ visible: true, items: expired });
@@ -1088,19 +1115,19 @@ const Pantry = () => {
     try {
       console.log(`Deleting ${itemsToDelete.length} expired items from selection...`);
       await Promise.all(itemsToDelete.map(item => PantryService.deleteItem(item.itemID)));
-      
+
       // Remove from selected items
       const deletedIds = itemsToDelete.map(i => i.itemID);
       setSelectedItems(prev => prev.filter(id => !deletedIds.includes(id)));
-      
+
       await loadData();
-      
+
       setExpiredSelectionAlert({ visible: false, items: [] });
       // Show discard reminder
       setTimeout(() => {
         setDiscardReminderAlert({ visible: true, count: itemsToDelete.length });
       }, 300);
-      
+
     } catch (error) {
       console.error("Failed to delete expired items", error);
       showAlert('error', 'Failed to delete items', 'Error', true);
@@ -1110,7 +1137,7 @@ const Pantry = () => {
   const executeRecipeAction = async () => {
     const { type, items: selectedItemNames } = recipeConfirmationAlert;
     const searchQuery = selectedItemNames.join(', ');
-    
+
     // Close alert
     setRecipeConfirmationAlert({ visible: false, type: '', items: [] });
 
@@ -1120,7 +1147,7 @@ const Pantry = () => {
       try {
         // Fetch suggestions using selected items as the query and full pantry as context
         const result = await SousChefAIService.generateRecipeSuggestions(searchQuery, {}, items);
-        
+
         if (result.success) {
           setRecipeSuggestions(result.suggestions);
           setSuggestionsModalVisible(true);
@@ -1141,7 +1168,7 @@ const Pantry = () => {
       exitSelectionMode();
       try {
         router.push('/(tabs)/recipe-search');
-        
+
         setTimeout(() => {
           router.setParams({
             searchQuery: searchQuery,
@@ -1160,13 +1187,13 @@ const Pantry = () => {
   const handleSelectSuggestion = async (suggestion) => {
     setSuggestionsModalVisible(false);
     setIsGeneratingSuggestions(true);
-    
+
     try {
       // Use the faster single recipe generation service directly
       // This skips the search screen and generates the recipe immediately
       const result = await SousChefAIService.generateSingleRecipe(
-        suggestion, 
-        {}, 
+        suggestion,
+        {},
         items
       );
 
@@ -1329,20 +1356,20 @@ const Pantry = () => {
                     </View>
                     <Text style={styles.modalTitle}>SousChef AI Suggestions</Text>
                   </View>
-                  <TouchableOpacity 
-                    onPress={() => setSuggestionsModalVisible(false)} 
+                  <TouchableOpacity
+                    onPress={() => setSuggestionsModalVisible(false)}
                     style={styles.closeButton}
                   >
                     <Ionicons name="close" size={20} color="#666" />
                   </TouchableOpacity>
                 </View>
-                
+
                 <Text style={styles.modalSubtitle}>
                   We found 5 delicious recipes you can make with your selected ingredients:
                 </Text>
 
-                <ScrollView 
-                  style={styles.suggestionsList} 
+                <ScrollView
+                  style={styles.suggestionsList}
                   contentContainerStyle={styles.suggestionsListContent}
                   showsVerticalScrollIndicator={false}
                 >
@@ -1378,16 +1405,16 @@ const Pantry = () => {
               />
               <Text style={styles.loadingText}>Thinking of recipes...</Text>
               <View style={styles.progressBarContainer}>
-                <Animated.View 
+                <Animated.View
                   style={[
-                    styles.progressBarFill, 
+                    styles.progressBarFill,
                     {
                       width: loadingProgress.interpolate({
                         inputRange: [0, 1],
                         outputRange: ['0%', '100%']
                       })
                     }
-                  ]} 
+                  ]}
                 />
               </View>
             </View>
@@ -1415,10 +1442,11 @@ const Pantry = () => {
                     outputRange: [1, 0]
                   }),
                   transform: [
-                    { scale: fabSwitchAnim.interpolate({
+                    {
+                      scale: fabSwitchAnim.interpolate({
                         inputRange: [0, 1],
                         outputRange: [1, 0.8]
-                      }) 
+                      })
                     }
                   ],
                   position: fabOptionsVisible ? 'absolute' : 'relative', // Take out of flow when hidden
@@ -1449,12 +1477,14 @@ const Pantry = () => {
                 style={{
                   opacity: fabSwitchAnim,
                   transform: [
-                    { translateY: fabSwitchAnim.interpolate({
+                    {
+                      translateY: fabSwitchAnim.interpolate({
                         inputRange: [0, 1],
                         outputRange: [20, 0]
-                      }) 
+                      })
                     },
-                    { scale: fabSwitchAnim.interpolate({
+                    {
+                      scale: fabSwitchAnim.interpolate({
                         inputRange: [0, 1],
                         outputRange: [0.9, 1]
                       })
@@ -1474,7 +1504,7 @@ const Pantry = () => {
                     <Ionicons name="restaurant-outline" size={22} color="#fff" />
                     <Text style={styles.fabText}>Find a Recipe</Text>
                   </TouchableOpacity>
-                  
+
                   <TouchableOpacity
                     style={[styles.fab, styles.fabOption]}
                     onPress={handleGenerateRecipeFromSelection}
@@ -1950,9 +1980,9 @@ const Pantry = () => {
               <Text key={index} style={{ fontSize: 15, color: '#333', marginBottom: 4 }}>• {item}</Text>
             ))}
           </ScrollView>
-          
+
           <View style={{ flexDirection: 'row', gap: 10, marginTop: 15 }}>
-             <TouchableOpacity
+            <TouchableOpacity
               style={{
                 flex: 1,
                 backgroundColor: '#fff',
@@ -1994,33 +2024,33 @@ const Pantry = () => {
         title="Expired Items Detected"
         message={`You have selected ${expiredSelectionAlert.items.length} expired item(s). These cannot be used for recipes.`}
         hideCloseButton={true}
-        onClose={() => {}}
+        onClose={() => { }}
       >
-         <View style={{ width: '100%', marginTop: 12, gap: 10 }}>
-            <ScrollView style={{ maxHeight: 100, marginBottom: 10 }}>
-                {expiredSelectionAlert.items.map(item => (
-                    <Text key={item.itemID} style={{color: '#dc3545', fontWeight: '600', marginBottom: 4}}>• {item.itemName}</Text>
-                ))}
-            </ScrollView>
-            <TouchableOpacity
-                style={{
-                  backgroundColor: '#dc3545',
-                  paddingVertical: 16,
-                  borderRadius: 12,
-                  shadowColor: '#dc3545',
-                  shadowOffset: { width: 0, height: 4 },
-                  shadowOpacity: 0.3,
-                  shadowRadius: 6,
-                  elevation: 4
-                }}
-                onPress={handleDeleteExpiredSelection}
-                activeOpacity={0.8}
-            >
-                <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '700', fontSize: 16 }}>
-                    Delete {expiredSelectionAlert.items.length > 1 ? 'All ' : ''}Expired Item{expiredSelectionAlert.items.length > 1 ? 's' : ''}
-                </Text>
-            </TouchableOpacity>
-         </View>
+        <View style={{ width: '100%', marginTop: 12, gap: 10 }}>
+          <ScrollView style={{ maxHeight: 100, marginBottom: 10 }}>
+            {expiredSelectionAlert.items.map(item => (
+              <Text key={item.itemID} style={{ color: '#dc3545', fontWeight: '600', marginBottom: 4 }}>• {item.itemName}</Text>
+            ))}
+          </ScrollView>
+          <TouchableOpacity
+            style={{
+              backgroundColor: '#dc3545',
+              paddingVertical: 16,
+              borderRadius: 12,
+              shadowColor: '#dc3545',
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.3,
+              shadowRadius: 6,
+              elevation: 4
+            }}
+            onPress={handleDeleteExpiredSelection}
+            activeOpacity={0.8}
+          >
+            <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '700', fontSize: 16 }}>
+              Delete {expiredSelectionAlert.items.length > 1 ? 'All ' : ''}Expired Item{expiredSelectionAlert.items.length > 1 ? 's' : ''}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </PantryAlert>
 
       {/* Discard Reminder Alert */}
@@ -2033,26 +2063,96 @@ const Pantry = () => {
         onClose={() => setDiscardReminderAlert({ visible: false, count: 0 })}
       >
         <View style={{ width: '100%', marginTop: 20 }}>
-            <TouchableOpacity
-                style={{
-                  backgroundColor: '#81A969',
-                  paddingVertical: 16,
-                  borderRadius: 12,
-                  shadowColor: '#000',
-                  shadowOffset: { width: 0, height: 2 },
-                  shadowOpacity: 0.1,
-                  shadowRadius: 4,
-                  elevation: 3
-                }}
-                onPress={() => setDiscardReminderAlert({ visible: false, count: 0 })}
-                activeOpacity={0.8}
-            >
-                <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '700', fontSize: 16 }}>
-                    I've Discarded Them
-                </Text>
-            </TouchableOpacity>
+          <TouchableOpacity
+            style={{
+              backgroundColor: '#81A969',
+              paddingVertical: 16,
+              borderRadius: 12,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.1,
+              shadowRadius: 4,
+              elevation: 3
+            }}
+            onPress={() => setDiscardReminderAlert({ visible: false, count: 0 })}
+            activeOpacity={0.8}
+          >
+            <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '700', fontSize: 16 }}>
+              I've Discarded Them
+            </Text>
+          </TouchableOpacity>
         </View>
       </PantryAlert>
+
+      {/* Past Best Before Warning Alert */}
+      <PantryAlert
+        visible={pastBestBeforeAlert.visible}
+        type="warning"
+        title="Item Past Best Before Date"
+        message={
+          pastBestBeforeAlert.item
+            ? `"${pastBestBeforeAlert.item.itemName}" is past its best-before date${pastBestBeforeAlert.daysPast
+              ? ` by ${pastBestBeforeAlert.daysPast} day${pastBestBeforeAlert.daysPast > 1 ? 's' : ''}`
+              : ''
+            }.\n\nThe item may have reduced quality or freshness. Please inspect before use.\n\nWould you like to use this item or discard it?`
+            : ''
+        }
+        hideCloseButton={true}
+        onClose={() => setPastBestBeforeAlert({ visible: false, item: null, onUse: null, onDiscard: null })}
+      >
+        <View style={{ flexDirection: 'row', gap: 12, width: '100%', marginTop: 20 }}>
+          <TouchableOpacity
+            style={{
+              flex: 1,
+              backgroundColor: '#f5f5f5',
+              paddingVertical: 14,
+              borderRadius: 10,
+              borderWidth: 1,
+              borderColor: '#ddd',
+            }}
+            onPress={pastBestBeforeAlert.onDiscard}
+          >
+            <Text style={{ color: '#666', textAlign: 'center', fontWeight: '600', fontSize: 15 }}>
+              Discard
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={{
+              flex: 1,
+              backgroundColor: '#FF9800',
+              paddingVertical: 14,
+              borderRadius: 10,
+            }}
+            onPress={pastBestBeforeAlert.onUse}
+          >
+            <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '600', fontSize: 15 }}>
+              Inspect & Use
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </PantryAlert>
+
+      {/* Safety Disclaimer Modal */}
+      <SafetyDisclaimerModal
+        visible={safetyDisclaimerVisible}
+        itemName={disclaimerItem?.itemName || 'this item'}
+        onAccept={() => {
+          // User acknowledged disclaimer - enter selection mode with item selected
+          setSafetyDisclaimerVisible(false);
+          if (disclaimerItem) {
+            // Enter selection mode and auto-select this item
+            setSelectionMode(true);
+            setSelectedItems([disclaimerItem.itemID]);
+          }
+          setDisclaimerItem(null);
+        }}
+        onCancel={() => {
+          // User cancelled - close modal
+          setSafetyDisclaimerVisible(false);
+          setDisclaimerItem(null);
+        }}
+      />
     </AuthGuard>
   );
 };
@@ -2119,7 +2219,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#81A969', // Ensure same color
     minWidth: 220, // Slightly wider for options
   },
-  
+
   // Modal Styles
   centeredView: {
     flex: 1,
