@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
+import { LogAIResult } from '../utils/logger-utils';
 
 // ✅ Add detailed logging
 
@@ -188,7 +189,7 @@ export const recognizeFoodCombined = async (imageUri) => {
     }
 
     const data = await response.json();
-    console.log('✅ Combined API Response:', data);
+    LogAIResult(data, "Combined API Response");
     return data;
   } catch (error) {
     console.error('❌ Combined food recognition error:', error);

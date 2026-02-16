@@ -1,3 +1,4 @@
+import { LogAIResult } from '../../utils/logger-utils';
 import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
@@ -141,8 +142,9 @@ export default function FoodRecognitionResult() {
       (async () => {
         setLoading(true);
         try {
+// ... in useEffect ...
           const res = await recognizeFoodCombined(uri);
-          console.log('✅ Recognition result:', res);
+          LogAIResult(res, "Food Recognition Results"); // Restored structured logging
           setResult(res);
         } catch (e) {
           console.error('❌ Recognition error:', e);

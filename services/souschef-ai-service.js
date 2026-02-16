@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase';
 import ImageGenerationService from './image-generation-service';
 import Constants from 'expo-constants';
+import { LogSafetyAnalysis } from '../utils/logger-utils';
 
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
 
@@ -1174,7 +1175,7 @@ Examples:
       const content = data.choices[0].message.content.trim();
       const prediction = JSON.parse(content);
 
-      console.log(`✅ Prediction result:`, prediction);
+      LogSafetyAnalysis(prediction);
       return prediction;
 
     } catch (error) {
