@@ -39,6 +39,7 @@ import ExpiringItemsBanner from '../../components/pantry/expiring-items-banner';
 import AppAlert from '../../components/common/app-alert';
 import PantryAlert, { AnimatedButton } from '../../components/pantry/pantry-alert';
 import SafetyDisclaimerModal from '../../components/pantry/safety-disclaimer-modal';
+import ArchiveModal from '../../components/pantry/archive-modal';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import SousChefAIService from '../../services/souschef-ai-service';
 
@@ -93,7 +94,21 @@ const Pantry = () => {
   const [inventories, setInventories] = useState([]);
   const [groups, setGroups] = useState([]);
   const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [originalItems, setOriginalItems] = useState([]); // For search functionality
+  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingForeground, setIsLoadingForeground] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [pantryView, setPantryView] = useState('grid'); // 'grid' or 'category'
+  const [isGeneratingRecipe, setIsGeneratingRecipe] = useState(false);
+  const [isSearchingRecipes, setIsSearchingRecipes] = useState(false);
+  const [isFindingRecipes, setIsFindingRecipes] = useState(false);
+  const [searchingMode, setSearchingMode] = useState(false);
+  const [activeTab, setActiveTab] = useState('active'); // 'active' or 'archive'
+  const [archivedItems, setArchivedItems] = useState([]);
+  const [filters, setFilters] = useState({
+    category: '',
+    expiringOnly: false,
+  });
   const [refreshing, setRefreshing] = useState(false);
   const [highlightedItemId, setHighlightedItemId] = useState(null);
 
@@ -126,7 +141,7 @@ const Pantry = () => {
   const [alert, setAlert] = useState({ visible: false, type: 'info', message: '', title: null, onAction: null, actionLabel: 'OK' });
   const [duplicateAlert, setDuplicateAlert] = useState({ visible: false, existingItem: null, incomingItem: null, mergeAvailable: false, resolve: null });
   const [deleteAlert, setDeleteAlert] = useState({ visible: false, item: null, expired: false });
-  const [deleteExpiredAlert, setDeleteExpiredAlert] = useState({ visible: false, count: 0, items: [] });
+  const [archiveAlert, setArchiveAlert] = useState({ visible: false, count: 0, items: [] });
   const [itemMenuAlert, setItemMenuAlert] = useState({ visible: false, item: null });
   const [groupSelectionAlert, setGroupSelectionAlert] = useState({ visible: false, message: '', groups: [], onSelectGroup: null });
   const [deleteGroupAlert, setDeleteGroupAlert] = useState({ visible: false, group: null });
@@ -150,6 +165,8 @@ const Pantry = () => {
   // Safety Disclaimer Modal
   const [safetyDisclaimerVisible, setSafetyDisclaimerVisible] = useState(false);
   const [disclaimerItem, setDisclaimerItem] = useState(null);
+  // Archive Modal
+  const [archiveModalVisible, setArchiveModalVisible] = useState(false);
 
   // FAB Animation
   const fabScale = useRef(new Animated.Value(0)).current;
@@ -443,23 +460,37 @@ const Pantry = () => {
   const loadData = async () => {
     try {
       if (!refreshing) {
-        setLoading(true);
+        setIsLoading(true);
       }
       console.log('📥 Loading pantry data for user:', customUserData.userID);
 
-      const [inventoriesData, groupsData, itemsData] = await Promise.all([
+      const [inventoriesData, groupsData, itemsData, archivedItemsData] = await Promise.all([
         PantryService.getUserInventories(customUserData.userID),
         PantryService.getUserGroups(customUserData.userID),
-        PantryService.getUserItems(customUserData.userID),
+        PantryService.getUserItems(customUserData.userID), // Automatically excludes archived
+        PantryService.getUserArchivedItems(customUserData.userID),
       ]);
 
       console.log('📦 Inventories loaded:', inventoriesData);
       console.log('📁 Groups loaded:', groupsData.length, 'groups');
       console.log('📝 Items loaded:', itemsData.length, 'items');
+      console.log('🗄️ Archived items loaded:', archivedItemsData.length, 'items');
 
       setInventories(inventoriesData);
       setGroups(groupsData); // Groups now include groupCategory from database
       setItems(itemsData);
+      setArchivedItems(archivedItemsData);
+
+      // Check for past best-before items (only in active items)
+      const pastBestBeforeItems = itemsData.filter(item => getFreshnessStatus(item) === 'past');
+      if (pastBestBeforeItems.length > 0) {
+        console.log(`⚠️ Found ${pastBestBeforeItems.length} items past best-before date`);
+        setArchiveAlert({
+          visible: true,
+          count: pastBestBeforeItems.length,
+          items: pastBestBeforeItems,
+        });
+      }
 
       // If user has no inventory but is verified, create one automatically
       if (inventoriesData.length === 0) {
@@ -484,7 +515,7 @@ const Pantry = () => {
       console.error('❌ Error loading pantry data:', error);
       showAlert('error', 'Failed to load pantry data', 'Error');
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
@@ -815,16 +846,79 @@ const Pantry = () => {
     setDeleteAlert({ visible: true, item, expired });
   };
 
-  // Handle delete all expired items
-  const handleDeleteAllExpired = async () => {
-    const expiredItems = items.filter(item => isItemExpired(item));
+  // Handle manually archive single item
+  const handleArchiveItem = async (item) => {
+    try {
+      await PantryService.archiveItem(item.itemID);
+      console.log('✅ Item manually archived:', item.itemName);
 
-    if (expiredItems.length === 0) {
-      showAlert('info', 'There are no expired items to delete.', 'No Expired Items', true);
-      return;
+      // Reload data to reflect changes
+      await loadData();
+
+      showAlert('success', `"${item.itemName}" moved to archive`, 'Item Archived');
+    } catch (error) {
+      console.error('Error archiving item:', error);
+      showAlert('error', 'Failed to archive item', 'Error');
     }
+  };
 
-    setDeleteExpiredAlert({ visible: true, count: expiredItems.length, items: expiredItems });
+
+  // Handle archive all past best-before items
+  const handleArchiveAllPastBestBefore = async () => {
+    try {
+      const pastBestBeforeItems = items.filter(item => getFreshnessStatus(item) === 'past');
+
+      if (pastBestBeforeItems.length === 0) {
+        showAlert('info', 'There are no past best-before items to archive.', 'No Items to Archive');
+        return;
+      }
+
+      const itemIDs = pastBestBeforeItems.map(item => item.itemID);
+      await PantryService.archiveMultipleItems(itemIDs);
+
+      console.log(`✅ Archived ${pastBestBeforeItems.length} items`);
+
+      // Reload data to reflect changes
+      await loadData();
+
+      setArchiveAlert({ visible: false, count: 0, items: [] });
+      showAlert('success', `${pastBestBeforeItems.length} item${pastBestBeforeItems.length > 1 ? 's' : ''} moved to archive`, 'Items Archived');
+    } catch (error) {
+      console.error('Error archiving items:', error);
+      showAlert('error', 'Failed to archive items', 'Error');
+    }
+  };
+
+  // Handle restore item from archive
+  const handleRestoreItem = async (item) => {
+    try {
+      await PantryService.unarchiveItem(item.itemID);
+      console.log('✅ Item restored:', item.itemName);
+
+      // Reload data to reflect changes
+      await loadData();
+
+      showAlert('success', `"${item.itemName}" restored to pantry`, 'Item Restored');
+    } catch (error) {
+      console.error('Error restoring item:', error);
+      showAlert('error', 'Failed to restore item', 'Error');
+    }
+  };
+
+  // Handle permanent delete from archive
+  const handleDeleteFromArchive = async (item) => {
+    try {
+      await PantryService.deleteItem(item.itemID);
+      console.log('✅ Item permanently deleted:', item.itemName);
+
+      // Reload data to reflect changes
+      await loadData();
+
+      showAlert('success', `"${item.itemName}" permanently deleted`, 'Item Deleted');
+    } catch (error) {
+      console.error('Error deleting item:', error);
+      showAlert('error', 'Failed to delete item', 'Error');
+    }
   };
 
   // Handle item press
@@ -1261,14 +1355,18 @@ const Pantry = () => {
               }}
               pointerEvents={selectionMode ? 'none' : 'auto'}
             >
-              <PantryHeader onSearchPress={() => setSearchModalVisible(true)} />
+              <PantryHeader
+                onSearchPress={() => setSearchModalVisible(true)}
+                onArchivePress={() => setArchiveModalVisible(true)}
+                archivedCount={archivedItems.length}
+              />
             </Animated.View>
 
             <ExpiringItemsBanner
               expiringItems={expiringItems}
               onItemPress={handleItemPress}
               onViewAll={handleViewAllExpiring}
-              onDeleteAllExpired={handleDeleteAllExpired}
+              onDeleteAllExpired={handleArchiveAllPastBestBefore}
             />
 
             <View style={styles.groupsSectionSpacer}>
@@ -1661,58 +1759,6 @@ const Pantry = () => {
               backgroundColor: '#fff',
             }}
             onPress={() => setDeleteAlert({ visible: false, item: null, expired: false })}
-          >
-            <Text style={{ color: '#666', textAlign: 'center', fontWeight: '600', fontSize: 16 }}>Cancel</Text>
-          </TouchableOpacity>
-        </View>
-      </PantryAlert>
-
-      {/* Delete Expired Items Alert */}
-      <PantryAlert
-        visible={deleteExpiredAlert.visible}
-        type="error"
-        title="Delete All Expired Items"
-        message={`Found ${deleteExpiredAlert.count} expired item(s). Delete all of them?`}
-        onClose={() => setTimeout(() => setDeleteExpiredAlert({ visible: false, count: 0, items: [] }), 50)}
-        hideCloseButton={true}
-      >
-        <View style={{ width: '100%', marginTop: 20, gap: 12 }}>
-          <TouchableOpacity
-            style={{
-              backgroundColor: '#dc3545',
-              paddingVertical: 16,
-              borderRadius: 12,
-              shadowColor: '#dc3545',
-              shadowOffset: { width: 0, height: 4 },
-              shadowOpacity: 0.3,
-              shadowRadius: 6,
-              elevation: 4
-            }}
-            onPress={async () => {
-              try {
-                console.log(`Deleting ${deleteExpiredAlert.items.length} expired items...`);
-                await Promise.all(deleteExpiredAlert.items.map(item => PantryService.deleteItem(item.itemID)));
-                await loadData();
-                showAlert('success', `Deleted ${deleteExpiredAlert.items.length} expired item(s) successfully`, 'Success', true);
-              } catch (error) {
-                console.error('Error deleting expired items:', error);
-                showAlert('error', 'Failed to delete some expired items', 'Error', true);
-              }
-              setDeleteExpiredAlert({ visible: false, count: 0, items: [] });
-            }}
-            activeOpacity={0.8}
-          >
-            <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '700', fontSize: 16 }}>Delete {deleteExpiredAlert.count} Item(s)</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={{
-              paddingVertical: 16,
-              borderRadius: 12,
-              borderWidth: 1,
-              borderColor: '#ccc',
-              backgroundColor: '#fff',
-            }}
-            onPress={() => setDeleteExpiredAlert({ visible: false, count: 0, items: [] })}
           >
             <Text style={{ color: '#666', textAlign: 'center', fontWeight: '600', fontSize: 16 }}>Cancel</Text>
           </TouchableOpacity>
@@ -2133,6 +2179,52 @@ const Pantry = () => {
         </View>
       </PantryAlert>
 
+      {/* Items Past Best Before Detected Alert */}
+      <PantryAlert
+        visible={archiveAlert.visible}
+        type="warning"
+        title="Items Past Best Before Detected"
+        message={
+          archiveAlert.count > 0
+            ? `You have ${archiveAlert.count} item${archiveAlert.count > 1 ? 's' : ''} past ${archiveAlert.count > 1 ? 'their' : 'its'} best-before date.\n\nWould you like to move ${archiveAlert.count > 1 ? 'them' : 'it'} to the archive for review?`
+            : ''
+        }
+        hideCloseButton={false}
+        onClose={() => setArchiveAlert({ visible: false, count: 0, items: [] })}
+      >
+        <View style={{ flexDirection: 'row', gap: 12, width: '100%', marginTop: 20 }}>
+          <TouchableOpacity
+            style={{
+              flex: 1,
+              backgroundColor: '#f5f5f5',
+              paddingVertical: 14,
+              borderRadius: 10,
+              borderWidth: 1,
+              borderColor: '#ddd',
+            }}
+            onPress={() => setArchiveAlert({ visible: false, count: 0, items: [] })}
+          >
+            <Text style={{ color: '#666', textAlign: 'center', fontWeight: '600', fontSize: 15 }}>
+              Keep Items
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={{
+              flex: 1,
+              backgroundColor: '#FF9800',
+              paddingVertical: 14,
+              borderRadius: 10,
+            }}
+            onPress={handleArchiveAllPastBestBefore}
+          >
+            <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '600', fontSize: 15 }}>
+              Move to Archive
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </PantryAlert>
+
       {/* Safety Disclaimer Modal */}
       <SafetyDisclaimerModal
         visible={safetyDisclaimerVisible}
@@ -2152,6 +2244,15 @@ const Pantry = () => {
           setSafetyDisclaimerVisible(false);
           setDisclaimerItem(null);
         }}
+      />
+
+      {/* Archive Modal */}
+      <ArchiveModal
+        visible={archiveModalVisible}
+        onClose={() => setArchiveModalVisible(false)}
+        archivedItems={archivedItems}
+        onRestore={handleRestoreItem}
+        onDelete={handleDeleteFromArchive}
       />
     </AuthGuard>
   );

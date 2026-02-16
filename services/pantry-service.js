@@ -603,18 +603,25 @@ class PantryService {
   /**
    * Get all items for a user (across all inventories)
    * @param {number} userID - The user's ID
+   * @param {boolean} includeArchived - Whether to include archived items (default: false)
    * @returns {Promise<Array>} Array of item objects with inventory info
    */
-  async getUserItems(userID) {
+  async getUserItems(userID, includeArchived = false) {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('tbl_items')
         .select(`
           *,
           tbl_inventories!inner("userID")
         `)
-        .eq('tbl_inventories."userID"', userID)
-        .order('itemAdded', { ascending: false });
+        .eq('tbl_inventories."userID"', userID);
+
+      // Filter out archived items unless explicitly requested
+      if (!includeArchived) {
+        query = query.or('isArchived.is.null,isArchived.eq.false');
+      }
+
+      const { data, error } = await query.order('itemAdded', { ascending: false });
 
       if (error) throw error;
       return data || [];
@@ -623,6 +630,112 @@ class PantryService {
       throw error;
     }
   }
+
+  /**
+   * Get all archived items for a user
+   * @param {number} userID - The user's ID
+   * @returns {Promise<Array>} Array of archived item objects
+   */
+  async getUserArchivedItems(userID) {
+    try {
+      const { data, error } = await supabase
+        .from('tbl_items')
+        .select(`
+          *,
+          tbl_inventories!inner("userID")
+        `)
+        .eq('tbl_inventories."userID"', userID)
+        .eq('isArchived', true)
+        .order('updatedAt', { ascending: false });
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching archived items:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Archive a single item
+   * @param {number} itemID - The item ID to archive
+   * @returns {Promise<Object>} Updated item object
+   */
+  async archiveItem(itemID) {
+    try {
+      const { data, error } = await supabase
+        .from('tbl_items')
+        .update({
+          isArchived: true,
+          updatedAt: new Date().toISOString(),
+        })
+        .eq('"itemID"', itemID)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      console.log('✅ Item archived:', itemID);
+      return data;
+    } catch (error) {
+      console.error('Error archiving item:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Archive multiple items
+   * @param {Array<number>} itemIDs - Array of item IDs to archive
+   * @returns {Promise<Array>} Array of updated items
+   */
+  async archiveMultipleItems(itemIDs) {
+    try {
+      const { data, error } = await supabase
+        .from('tbl_items')
+        .update({
+          isArchived: true,
+          updatedAt: new Date().toISOString(),
+        })
+        .in('"itemID"', itemIDs)
+        .select();
+
+      if (error) throw error;
+
+      console.log(`✅ ${itemIDs.length} items archived`);
+      return data || [];
+    } catch (error) {
+      console.error('Error archiving multiple items:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Unarchive an item (restore to active pantry)
+   * @param {number} itemID - The item ID to unarchive
+   * @returns {Promise<Object>} Updated item object
+   */
+  async unarchiveItem(itemID) {
+    try {
+      const { data, error } = await supabase
+        .from('tbl_items')
+        .update({
+          isArchived: false,
+          updatedAt: new Date().toISOString(),
+        })
+        .eq('"itemID"', itemID)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      console.log('✅ Item restored from archive:', itemID);
+      return data;
+    } catch (error) {
+      console.error('Error unarchiving item:', error);
+      throw error;
+    }
+  }
+
 
   /**
    * Create a new item
