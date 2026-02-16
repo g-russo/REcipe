@@ -56,6 +56,10 @@ export const LogSafetyAnalysis = (prediction) => {
   if (!prediction.is_safe && prediction.safety_reason) {
     console.log(`⚠️ Safety Reason: ${prediction.safety_reason}`);
   }
+
+  if (prediction.storage_tips) {
+    console.log(`📦 Storage Tips: ${prediction.storage_tips}`);
+  }
   
   if (prediction.reasoning) {
     console.log(`📝 Reasoning: ${prediction.reasoning}`);

@@ -467,6 +467,10 @@ export default function FoodRecognitionResult() {
         inventoryID: inventoryList[0].inventoryID,
         isAI: true, // Flag for UI
         aiReasoning: prediction.reasoning, // Pass reasoning to modal
+        foodCondition: prediction.food_condition,
+        isSafe: prediction.is_safe,
+        safetyReason: prediction.safety_reason,
+        storageTips: prediction.storage_tips,
       });
 
       setLoading(false); // Stop loading

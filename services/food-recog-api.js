@@ -162,11 +162,7 @@ export const recognizeFoodCombined = async (imageUri) => {
       name: `photo.${fileExtension}`,
     });
 
-    console.log('📦 Sending FormData with:', {
-      uri: imageUri,
-      type: mimeType,
-      name: `photo.${fileExtension}`
-    });
+    console.log('📦 Sending FormData for Backend Analysis...');
 
     const response = await fetchWithTimeout(
       `${API_BASE_URL}/recognize-food-combined`,
