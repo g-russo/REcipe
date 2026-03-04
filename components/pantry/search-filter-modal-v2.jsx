@@ -36,23 +36,23 @@ const SearchFilterModal = ({
   const [selectedCategories, setSelectedCategories] = useState([]);
   const [selectedGroups, setSelectedGroups] = useState([]);
   const [selectedInventory, setSelectedInventory] = useState(null);
-  const [expiryFilter, setExpiryFilter] = useState(null); // null, 'expiring', 'expired', 'valid'
-  
+  const [expiryFilter, setExpiryFilter] = useState(null); // null, 'nearing', 'past', 'fresh'
+
   // UI state
   const [categoriesExpanded, setCategoriesExpanded] = useState(true);
   const [groupsExpanded, setGroupsExpanded] = useState(false);
-  
+
   // Debounce search
   const [debouncedQuery, setDebouncedQuery] = useState('');
-  
+
   // Group items mapping (groupID -> itemIDs[])
   const [groupItemsMap, setGroupItemsMap] = useState({});
-  
+
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedQuery(searchQuery);
     }, 300);
-    
+
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
@@ -60,22 +60,22 @@ const SearchFilterModal = ({
   useEffect(() => {
     const loadGroupItems = async () => {
       if (!visible || groups.length === 0) return;
-      
+
       try {
         const PantryService = require('../../services/pantry-service').default;
         const map = {};
-        
+
         for (const group of groups) {
           const groupItems = await PantryService.getGroupItems(group.groupID);
           map[group.groupID] = groupItems.map(item => item.itemID);
         }
-        
+
         setGroupItemsMap(map);
       } catch (error) {
         console.error('Error loading group items:', error);
       }
     };
-    
+
     loadGroupItems();
   }, [visible, groups]);
 
@@ -121,7 +121,7 @@ const SearchFilterModal = ({
     // Search filter
     if (debouncedQuery.trim()) {
       const query = debouncedQuery.toLowerCase();
-      filtered = filtered.filter(item => 
+      filtered = filtered.filter(item =>
         item.itemName?.toLowerCase().includes(query) ||
         item.itemCategory?.toLowerCase().includes(query) ||
         item.itemDescription?.toLowerCase().includes(query)
@@ -130,7 +130,7 @@ const SearchFilterModal = ({
 
     // Category filter
     if (selectedCategories.length > 0) {
-      filtered = filtered.filter(item => 
+      filtered = filtered.filter(item =>
         selectedCategories.includes(item.itemCategory)
       );
     }
@@ -152,20 +152,20 @@ const SearchFilterModal = ({
     }
 
     // Expiry filter
-    if (expiryFilter === 'expiring') {
+    if (expiryFilter === 'nearing') {
       filtered = filtered.filter(item => {
         const daysUntilExpiry = calculateDaysUntilExpiry(item.itemExpiration);
-        return daysUntilExpiry !== null && daysUntilExpiry > 0 && daysUntilExpiry <= 3;
+        return daysUntilExpiry !== null && daysUntilExpiry >= 0 && daysUntilExpiry <= 7;
       });
-    } else if (expiryFilter === 'expired') {
+    } else if (expiryFilter === 'past') {
       filtered = filtered.filter(item => {
         const daysUntilExpiry = calculateDaysUntilExpiry(item.itemExpiration);
-        return daysUntilExpiry !== null && daysUntilExpiry <= 0;
+        return daysUntilExpiry !== null && daysUntilExpiry < 0;
       });
-    } else if (expiryFilter === 'valid') {
+    } else if (expiryFilter === 'fresh') {
       filtered = filtered.filter(item => {
         const daysUntilExpiry = calculateDaysUntilExpiry(item.itemExpiration);
-        return daysUntilExpiry === null || daysUntilExpiry > 3;
+        return daysUntilExpiry === null || daysUntilExpiry > 7;
       });
     }
 
@@ -183,7 +183,7 @@ const SearchFilterModal = ({
 
   // Toggle category selection
   const toggleCategory = (category) => {
-    setSelectedCategories(prev => 
+    setSelectedCategories(prev =>
       prev.includes(category)
         ? prev.filter(c => c !== category)
         : [...prev, category]
@@ -192,7 +192,7 @@ const SearchFilterModal = ({
 
   // Toggle group selection
   const toggleGroup = (groupId) => {
-    setSelectedGroups(prev => 
+    setSelectedGroups(prev =>
       prev.includes(groupId)
         ? prev.filter(id => id !== groupId)
         : [...prev, groupId]
@@ -214,13 +214,13 @@ const SearchFilterModal = ({
   // Check if item is expiring soon
   const isExpiringSoon = (date) => {
     const daysUntilExpiry = calculateDaysUntilExpiry(date);
-    return daysUntilExpiry !== null && daysUntilExpiry > 0 && daysUntilExpiry <= 3;
+    return daysUntilExpiry !== null && daysUntilExpiry >= 0 && daysUntilExpiry <= 7;
   };
 
   // Check if item is expired
   const isExpired = (date) => {
     const daysUntilExpiry = calculateDaysUntilExpiry(date);
-    return daysUntilExpiry !== null && daysUntilExpiry <= 0;
+    return daysUntilExpiry !== null && daysUntilExpiry < 0;
   };
 
   // Get category icon
@@ -270,16 +270,16 @@ const SearchFilterModal = ({
     >
       {/* Item Image */}
       {item.imageURL ? (
-        <Image 
-          source={{ uri: item.imageURL }} 
+        <Image
+          source={{ uri: item.imageURL }}
           style={styles.itemImage}
         />
       ) : (
         <View style={styles.itemImagePlaceholder}>
-          <MaterialCommunityIcons 
-            name={getCategoryIcon(item.itemCategory)} 
-            size={40} 
-            color="#ccc" 
+          <MaterialCommunityIcons
+            name={getCategoryIcon(item.itemCategory)}
+            size={40}
+            color="#ccc"
           />
         </View>
       )}
@@ -287,12 +287,12 @@ const SearchFilterModal = ({
       {/* Expiry Badge */}
       {isExpired(item.itemExpiration) && (
         <View style={[styles.expiryBadge, styles.expiredBadge]}>
-          <Text style={styles.expiryBadgeText}>Expired</Text>
+          <Text style={styles.expiryBadgeText}>Past Best Before</Text>
         </View>
       )}
       {!isExpired(item.itemExpiration) && isExpiringSoon(item.itemExpiration) && (
         <View style={[styles.expiryBadge, styles.expiringSoonBadge]}>
-          <Text style={styles.expiryBadgeText}>Expiring Soon</Text>
+          <Text style={styles.expiryBadgeText}>Use Soon</Text>
         </View>
       )}
 
@@ -348,12 +348,12 @@ const SearchFilterModal = ({
   const getActiveFiltersSummary = () => {
     const parts = [];
     if (debouncedQuery.trim()) parts.push(`"${debouncedQuery}"`);
-    if (expiryFilter === 'expiring') parts.push('Expiring Soon');
-    if (expiryFilter === 'expired') parts.push('Expired');
-    if (expiryFilter === 'valid') parts.push('Valid Items');
+    if (expiryFilter === 'nearing') parts.push('Use Soon');
+    if (expiryFilter === 'past') parts.push('Past Best Before');
+    if (expiryFilter === 'fresh') parts.push('Fresh');
     if (selectedCategories.length > 0) {
-      parts.push(selectedCategories.length === 1 
-        ? selectedCategories[0] 
+      parts.push(selectedCategories.length === 1
+        ? selectedCategories[0]
         : `${selectedCategories.length} categories`
       );
     }
@@ -416,57 +416,57 @@ const SearchFilterModal = ({
           </View>
         )}
 
-        <ScrollView 
+        <ScrollView
           style={styles.filtersScrollView}
           showsVerticalScrollIndicator={false}
         >
           {/* Quick Expiry Filters */}
           <View style={styles.filterSection}>
             <Text style={styles.filterSectionTitle}>Quick Filters</Text>
-            <ScrollView 
-              horizontal 
+            <ScrollView
+              horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.filterChipsContainer}
             >
               <TouchableOpacity
-                style={[styles.filterChip, expiryFilter === 'expiring' && styles.activeFilterChip]}
-                onPress={() => toggleExpiryFilter('expiring')}
+                style={[styles.filterChip, expiryFilter === 'nearing' && styles.activeFilterChip]}
+                onPress={() => toggleExpiryFilter('nearing')}
               >
-                <Ionicons 
-                  name="time-outline" 
-                  size={16} 
-                  color={expiryFilter === 'expiring' ? '#fff' : '#FF9800'} 
+                <Ionicons
+                  name="time-outline"
+                  size={16}
+                  color={expiryFilter === 'nearing' ? '#fff' : '#FF9800'}
                 />
-                <Text style={[styles.filterChipText, expiryFilter === 'expiring' && styles.activeFilterChipText]}>
-                  Expiring Soon
+                <Text style={[styles.filterChipText, expiryFilter === 'nearing' && styles.activeFilterChipText]}>
+                  Use Soon
                 </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.filterChip, expiryFilter === 'expired' && styles.activeFilterChip]}
-                onPress={() => toggleExpiryFilter('expired')}
+                style={[styles.filterChip, expiryFilter === 'past' && styles.activeFilterChip]}
+                onPress={() => toggleExpiryFilter('past')}
               >
-                <Ionicons 
-                  name="alert-circle-outline" 
-                  size={16} 
-                  color={expiryFilter === 'expired' ? '#fff' : '#ff4d4d'} 
+                <Ionicons
+                  name="alert-circle-outline"
+                  size={16}
+                  color={expiryFilter === 'past' ? '#fff' : '#F44336'}
                 />
-                <Text style={[styles.filterChipText, expiryFilter === 'expired' && styles.activeFilterChipText]}>
-                  Expired
+                <Text style={[styles.filterChipText, expiryFilter === 'past' && styles.activeFilterChipText]}>
+                  Past Best Before
                 </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.filterChip, expiryFilter === 'valid' && styles.activeFilterChip]}
-                onPress={() => toggleExpiryFilter('valid')}
+                style={[styles.filterChip, expiryFilter === 'fresh' && styles.activeFilterChip]}
+                onPress={() => toggleExpiryFilter('fresh')}
               >
-                <Ionicons 
-                  name="checkmark-circle-outline" 
-                  size={16} 
-                  color={expiryFilter === 'valid' ? '#fff' : '#81A969'} 
+                <Ionicons
+                  name="leaf-outline"
+                  size={16}
+                  color={expiryFilter === 'fresh' ? '#fff' : '#4CAF50'}
                 />
-                <Text style={[styles.filterChipText, expiryFilter === 'valid' && styles.activeFilterChipText]}>
-                  Valid Items
+                <Text style={[styles.filterChipText, expiryFilter === 'fresh' && styles.activeFilterChipText]}>
+                  Fresh
                 </Text>
               </TouchableOpacity>
             </ScrollView>
@@ -474,20 +474,20 @@ const SearchFilterModal = ({
 
           {/* Category Filters */}
           <View style={styles.filterSection}>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.filterSectionHeader}
               onPress={() => setCategoriesExpanded(!categoriesExpanded)}
             >
               <Text style={styles.filterSectionTitle}>
                 Categories {selectedCategories.length > 0 && `(${selectedCategories.length})`}
               </Text>
-              <Ionicons 
-                name={categoriesExpanded ? 'chevron-up' : 'chevron-down'} 
-                size={20} 
-                color="#666" 
+              <Ionicons
+                name={categoriesExpanded ? 'chevron-up' : 'chevron-down'}
+                size={20}
+                color="#666"
               />
             </TouchableOpacity>
-            
+
             {categoriesExpanded && (
               <View style={styles.categoryGrid}>
                 {categories.map(category => (
@@ -499,10 +499,10 @@ const SearchFilterModal = ({
                     ]}
                     onPress={() => toggleCategory(category)}
                   >
-                    <MaterialCommunityIcons 
-                      name={getCategoryIcon(category)} 
-                      size={20} 
-                      color={selectedCategories.includes(category) ? '#fff' : '#81A969'} 
+                    <MaterialCommunityIcons
+                      name={getCategoryIcon(category)}
+                      size={20}
+                      color={selectedCategories.includes(category) ? '#fff' : '#81A969'}
                     />
                     <Text style={[
                       styles.categoryGridText,
@@ -519,20 +519,20 @@ const SearchFilterModal = ({
           {/* Group Filters */}
           {groups.length > 0 && (
             <View style={styles.filterSection}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.filterSectionHeader}
                 onPress={() => setGroupsExpanded(!groupsExpanded)}
               >
                 <Text style={styles.filterSectionTitle}>
                   Groups {selectedGroups.length > 0 && `(${selectedGroups.length})`}
                 </Text>
-                <Ionicons 
-                  name={groupsExpanded ? 'chevron-up' : 'chevron-down'} 
-                  size={20} 
-                  color="#666" 
+                <Ionicons
+                  name={groupsExpanded ? 'chevron-up' : 'chevron-down'}
+                  size={20}
+                  color="#666"
                 />
               </TouchableOpacity>
-              
+
               {groupsExpanded && (
                 <View style={styles.categoryGrid}>
                   {groups.map(group => (
@@ -545,10 +545,10 @@ const SearchFilterModal = ({
                       onPress={() => toggleGroup(group.groupID)}
                       activeOpacity={0.7}
                     >
-                      <Ionicons 
-                        name="folder-outline" 
-                        size={20} 
-                        color={selectedGroups.includes(group.groupID) ? '#fff' : '#81A969'} 
+                      <Ionicons
+                        name="folder-outline"
+                        size={20}
+                        color={selectedGroups.includes(group.groupID) ? '#fff' : '#81A969'}
                       />
                       <Text style={[
                         styles.categoryGridText,
@@ -572,9 +572,9 @@ const SearchFilterModal = ({
           {/* Results Section */}
           <View style={styles.resultsSection}>
             {!hasActiveFilters && renderEmptyState()}
-            
+
             {hasActiveFilters && filteredItems.length === 0 && renderNoResults()}
-            
+
             {hasActiveFilters && filteredItems.length > 0 && (
               <>
                 <View style={styles.resultsHeader}>
@@ -768,7 +768,7 @@ const styles = StyleSheet.create({
     zIndex: 5,
   },
   expiredBadge: {
-    backgroundColor: '#ff4d4d',
+    backgroundColor: '#F44336',
   },
   expiringSoonBadge: {
     backgroundColor: '#FF9800',

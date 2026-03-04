@@ -124,7 +124,8 @@ const SignUp = () => {
     const hasUppercase = /[A-Z]/.test(password);
     const hasLowercase = /[a-z]/.test(password);
     const hasNumber = /\d/.test(password);
-    const hasSpecialChar = /[!@#$%^&*(),.?":{}|<>_]/.test(password);
+    // Allow any non-alphanumeric character as a special character
+    const hasSpecialChar = /[^A-Za-z0-9]/.test(password);
 
     return minLength && hasUppercase && hasLowercase && hasNumber && hasSpecialChar;
   };
@@ -249,6 +250,10 @@ const SignUp = () => {
       return;
     }
 
+    // Trim variables for actual validation and submission
+    const trimmedEmail = email.trim();
+    const trimmedName = name.trim();
+
     // Check if terms are accepted
     if (!termsAccepted) {
       showStyledError('Please read and accept the Terms & Conditions to continue');
@@ -259,31 +264,36 @@ const SignUp = () => {
     const birthdateValidation = validateBirthdate(birthdate);
     if (!birthdateValidation.valid) {
       setBirthdateError(birthdateValidation.message);
-      return;
+      hasError = true;
     }
 
     // R3: Email format validation
-    if (!validateEmail(email)) {
+    if (!validateEmail(trimmedEmail)) {
       setEmailError('Please enter a valid email address.');
-      return;
+      hasError = true;
     }
 
     // R4: Password validation
     if (!validatePassword(password)) {
       setPasswordError('Password must be at least 8 characters, and include at least 1 uppercase letter, 1 lowercase letter, 1 number, and 1 special character');
-      return;
+      hasError = true;
     }
 
     // R5: Password match validation
     if (password !== confirmPassword) {
       setConfirmPasswordError('Passwords do not match');
+      hasError = true;
+    }
+
+    // Stop if any logical validations failed
+    if (hasError) {
       return;
     }
 
     try {
       setLoading(true);
-      const { data, error } = await signUp(email, password, {
-        name: name.trim(),
+      const { data, error } = await signUp(trimmedEmail, password, {
+        name: trimmedName,
         birthdate: birthdate
       });
 
