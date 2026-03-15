@@ -8,7 +8,7 @@ const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
 // ✅ FIX: Use the same logic as food-recog-api.js
 const API_BASE_URL = Constants.expoConfig?.extra?.foodApiUrl ||
   process.env.EXPO_PUBLIC_FOOD_API_URL ||
-  'http://54.153.205.43:8000';
+  'http://52.65.143.136:8000';
 
 console.log('🔧 SousChef API Configuration:');
 console.log('📍 API_BASE_URL:', API_BASE_URL);

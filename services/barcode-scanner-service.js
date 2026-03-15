@@ -13,7 +13,7 @@ import OpenFoodFactsService from './openfoodfacts-service';
 import PhilippinesFoodService from './philippines-food-service';
 
 // Your EC2 backend URL
-const EC2_BACKEND_URL = 'http://54.153.205.43:8000';
+const EC2_BACKEND_URL = 'http://52.65.143.136:8000';
 
 class BarcodeScannerService {
   /**
