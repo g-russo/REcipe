@@ -203,7 +203,9 @@ const SignIn = () => {
       return;
     }
 
-    if (!email || !password) {
+    const trimmedEmail = email.trim();
+
+    if (!trimmedEmail || !password) {
       setAlert({ visible: true, type: 'error', message: 'Please fill in all fields', actionable: true });
       return;
     }
@@ -212,7 +214,7 @@ const SignIn = () => {
       setLoading(true);
 
       // Attempt sign-in first (validates both email AND password)
-      const { data, error } = await signIn(email, password);
+      const { data, error } = await signIn(trimmedEmail, password);
 
       // Always reset loading state immediately after sign-in attempt
       setLoading(false);
@@ -225,7 +227,7 @@ const SignIn = () => {
         const { data: dbUser, error: dbError } = await supabase
           .from('tbl_users')
           .select('isVerified, userName, userPassword')
-          .eq('userEmail', email)
+          .eq('userEmail', trimmedEmail)
           .single();
 
         // If user exists and is not verified, we need to verify the password
@@ -241,7 +243,7 @@ const SignIn = () => {
           // Only show verification modal if password is correct
           if (hashedPassword === dbUser.userPassword) {
             setLoading(false);
-            setUnverifiedEmail(email);
+            setUnverifiedEmail(trimmedEmail);
             setShowVerificationModal(true);
             return;
           }
@@ -279,9 +281,9 @@ const SignIn = () => {
         // Check for surveys after successful sign-in (fire-and-forget)
         setTimeout(async () => {
           try {
-            if (email) {
+            if (trimmedEmail) {
               console.log('📋 Checking for surveys after sign-in...');
-              await SurveyService.checkAndShowSurvey(email);
+              await SurveyService.checkAndShowSurvey(trimmedEmail);
             }
           } catch (error) {
             console.error('Error checking surveys:', error);
